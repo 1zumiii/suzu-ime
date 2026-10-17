@@ -25,6 +25,7 @@ time.sleep(1.5)
 subprocess.run([ADB, "forward", f"tcp:{PORT}", f"tcp:{PORT}"], check=True, capture_output=True)
 s = socket.create_connection(("127.0.0.1", PORT), timeout=30)
 assert rpc(s, ["H", sh(f"cat {D}/rime/llm_token")])[0] == "OK"
+assert rpc(s, ["C", "enabled", "1"]) == ["OK"]   # 守护进程默认关闭，测试前先启用
 cases = [("他在公司当", ["经理", "经历", "精力", "敬礼", "警力"], "经理"),
          ("我最近没有太多", ["精力", "经历", "经理", "敬礼", "警力"], "精力"),
          ("昨天下午我去参加了一次", ["经理", "经历", "精力"], "经历"),
