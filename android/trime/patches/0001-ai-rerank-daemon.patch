@@ -110,7 +110,7 @@ index 0867126c..ae9e5194 100644
                  onSwipe = swipeDownHideKeyboardCallback
 diff --git a/app/src/main/java/com/osfans/trime/ime/bar/ui/AiDaemonLauncher.kt b/app/src/main/java/com/osfans/trime/ime/bar/ui/AiDaemonLauncher.kt
 new file mode 100644
-index 00000000..8c6d5911
+index 00000000..756ff399
 --- /dev/null
 +++ b/app/src/main/java/com/osfans/trime/ime/bar/ui/AiDaemonLauncher.kt
 @@ -0,0 +1,140 @@
@@ -145,8 +145,8 @@ index 00000000..8c6d5911
 +
 +    private const val REQUEST_CODE = 7301
 +    private const val MODEL_NAME = "Qwen3.5-0.8B-Q4_K_M.gguf"
-+    private const val STUDENT_MODEL = "student.gguf"          // 放在 Trime 用户目录里即启用学生模型（需配套词表）
-+    private const val STUDENT_VOCAB = "student.vocab.txt"
++    private const val STUDENT_MODEL = "suzu.gguf"          // 放在 Trime 用户目录里即启用 Suzu 学生模型（需配套词表）
++    private const val STUDENT_VOCAB = "suzu.vocab.txt"
 +    private val main = Handler(Looper.getMainLooper())
 +
 +    @Volatile
@@ -193,8 +193,8 @@ index 00000000..8c6d5911
 +        if pidof rimellmd >/dev/null 2>&1; then echo RUNNING; exit 0; fi
 +        cp "$libDir/librimellmd.so" ${'$'}D/rimellmd.new && chmod 755 ${'$'}D/rimellmd.new && mv -f ${'$'}D/rimellmd.new ${'$'}D/rimellmd || { echo COPY_FAIL; exit 12; }
 +        if [ -f "$rimeDir/$STUDENT_MODEL" ] && [ -f "$rimeDir/$STUDENT_VOCAB" ]; then
-+          cp "$rimeDir/$STUDENT_MODEL" ${'$'}D/student.gguf && cp "$rimeDir/$STUDENT_VOCAB" ${'$'}D/student.vocab.txt || { echo MODEL_COPY_FAIL; exit 14; }
-+          ARGS="--model ${'$'}D/student.gguf --student-vocab ${'$'}D/student.vocab.txt --n-seq-max 10"
++          cp "$rimeDir/$STUDENT_MODEL" ${'$'}D/suzu.gguf && cp "$rimeDir/$STUDENT_VOCAB" ${'$'}D/suzu.vocab.txt || { echo MODEL_COPY_FAIL; exit 14; }
++          ARGS="--model ${'$'}D/suzu.gguf --student-vocab ${'$'}D/suzu.vocab.txt --n-seq-max 10"
 +        else
 +          if [ ! -f ${'$'}D/model.gguf ]; then
 +            [ -f "$rimeDir/$MODEL_NAME" ] || { echo NO_MODEL; exit 13; }

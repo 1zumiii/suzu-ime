@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """学生模式的端到端检查：在手机上单独起一个守护进程（端口 17921，不影响 Trime 里正在用的），
 用几组同音词核对排序，并测候选 6 个时的打分延迟。
-用法：python3 -I test_student.py <rimellmd 二进制> <student.gguf> <student.vocab.txt>"""
+用法：python3 -I test_student.py <rimellmd 二进制> <suzu.gguf> <suzu.vocab.txt>"""
 import os, socket, struct, subprocess, sys, time
 ADB = os.environ.get("ADB", "adb"); PORT = 17921; SEP = "\x1f"; D = "/data/local/tmp/stutest"
 def sh(c): return subprocess.run([ADB, "shell", c], capture_output=True, text=True).stdout.replace("\r", "").strip()
