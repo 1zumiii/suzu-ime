@@ -256,10 +256,10 @@ index 00000000..8c6d5911
 +}
 diff --git a/app/src/main/java/com/osfans/trime/ime/bar/ui/AiStatusButton.kt b/app/src/main/java/com/osfans/trime/ime/bar/ui/AiStatusButton.kt
 new file mode 100644
-index 00000000..743670c0
+index 00000000..fc9a7be5
 --- /dev/null
 +++ b/app/src/main/java/com/osfans/trime/ime/bar/ui/AiStatusButton.kt
-@@ -0,0 +1,238 @@
+@@ -0,0 +1,235 @@
 +/*
 + * SPDX-FileCopyrightText: 2026 1zumiii
 + * SPDX-License-Identifier: GPL-3.0-or-later
@@ -459,29 +459,26 @@ index 00000000..743670c0
 +
 +        val restarts = j?.optInt("restarts", 0) ?: 0
 +        val lastExit = j?.optString("last_exit", "none") ?: "none"
-+        val history = if (restarts > 0) "\n累计重启 $restarts 次，上次退出：$lastExit" else ""
++        // 长按详情用 Toast 显示，系统最多显示 2 行、每行约 24 个汉字，超出会被截断；所以每种状态都写成 2 行以内
++        val history = if (restarts > 0) "·重启$restarts" else ""
 +        when {
 +            fresh && !enabled ->
-+                show(GRAY, "AI 重排：已关闭（点一下开启，长按看详情）\n模型已卸载，推理进程待命，不占 CPU 和内存", "○ AI")
++                show(GRAY, "AI 重排：已关闭\n点一下开启，模型已卸载", "○ AI")
 +            !fresh ->
 +                show(
 +                    RED,
-+                    "AI 重排：离线（守护进程没有响应）$history\n点一下经 Shizuku 启动（上次尝试：${AiDaemonLauncher.lastResult}）",
++                    "AI 重排：离线$history\n点一下经 Shizuku 启动",
 +                )
 +            j!!.optString("role") == "supervisor" ->
-+                show(YELLOW, "AI 重排：重启中\n上次退出：$lastExit（累计 $restarts 次）")
++                show(YELLOW, "AI 重排：重启中\n上次退出 $lastExit，共 $restarts 次")
 +            loaded ->
 +                show(
 +                    GREEN,
-+                    "AI 重排：在线（${if (j.optBoolean("student")) "学生模型" else "Qwen 0.8B"}）\n内存 ${j.optLong("rss_kb") / 1024} MB，" +
-+                        "最近一次打分 ${j.optInt("last_score_ms")} ms（平均 ${"%.1f".format(j.optDouble("avg_score_ms"))} ms）\n" +
-+                        "已处理 ${j.optLong("scores")} 次，跳过 ${j.optLong("skipped")} 次，错误 ${j.optLong("errors")} 次\n" +
-+                        "屏幕${if (j.optString("screen") == "off") "熄灭" else "亮着"}，" +
-+                        (j.optInt("idle_unload_sec").let { if (it > 0) "空闲 $it 秒后自动卸载" else "不自动卸载（点徽标关闭）" }) +
-+                        history,
++                    "AI 重排：在线（${if (j.optBoolean("student")) "学生模型" else "Qwen 0.8B"}）\n${j.optLong("rss_kb") / 1024} MB·${j.optInt("last_score_ms")} ms·" +
++                        "跳${j.optLong("skipped")}错${j.optLong("errors")}$history",
 +                )
 +            else ->
-+                show(GRAY, "AI 重排：待机（模型还没加载，开始打字时自动加载）$history")
++                show(GRAY, "AI 重排：待机$history\n打字时自动加载模型")
 +        }
 +    }
 +
@@ -1400,7 +1397,7 @@ index 00000000..c2e49402
 +}
 diff --git a/app/src/main/java/com/osfans/trime/update/ConfigUpdater.kt b/app/src/main/java/com/osfans/trime/update/ConfigUpdater.kt
 new file mode 100644
-index 00000000..45cbd37a
+index 00000000..ea683180
 --- /dev/null
 +++ b/app/src/main/java/com/osfans/trime/update/ConfigUpdater.kt
 @@ -0,0 +1,294 @@
@@ -1560,9 +1557,9 @@ index 00000000..45cbd37a
 +                }
 +                // 新装默认关闭 AI（手机上手动启停）
 +                plan["rime_ice.custom.yaml"]?.let {
-+                    plan["rime_ice.custom.yaml"] = String(it).replace("name: ai_rerank, reset: 1,", "name: ai_rerank, reset: 0,").toByteArray()
++                    plan["rime_ice.custom.yaml"] = String(it).replace("name: ai_rerank, reset: 1,", "name: ai_rerank, reset: 0,").replace("name: ai_stage2, reset: 1,", "name: ai_stage2, reset: 0,").toByteArray()
 +                } ?: entries["rime_ice.custom.yaml"]?.let { e ->
-+                    val s = String(zf.getInputStream(e).readBytes()).replace("name: ai_rerank, reset: 1,", "name: ai_rerank, reset: 0,")
++                    val s = String(zf.getInputStream(e).readBytes()).replace("name: ai_rerank, reset: 1,", "name: ai_rerank, reset: 0,").replace("name: ai_stage2, reset: 1,", "name: ai_stage2, reset: 0,")
 +                    plan["rime_ice.custom.yaml"] = s.toByteArray()
 +                }
 +                // 找出真正有变化的文件
