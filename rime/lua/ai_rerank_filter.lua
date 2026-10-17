@@ -17,7 +17,7 @@
 --                           有纠错记忆命中的候选不受门控限制
 --   gate_margin_short       输入只有 1~2 个字母时用的门控值（简拼的候选多，更需要谨慎），默认 0（关闭）
 --   scan_limit              只在前 N 个候选里重排，其余惰性透传，默认 80
---   stage2                  四字两阶段总开关，默认 true
+--   stage2                  四字两阶段总开关，默认 true；另有方案开关 ai_stage2（方案菜单 / 手机三个点面板里的「单段/两段」）在运行时切换，两者都开才跑第二阶段
 --   stage2_context_chars    第二阶段只用最后 N 个字作为上文，默认 8（现场解码，越短越快）
 --   stage2_min_rest         剩余拼音至少 N 个字母才跑第二阶段，默认 4
 --   badge / badge2          首选候选的注释标记：重排后的首选 / 两阶段拼出来的首选，默认 ◇ / ◈（单字符，省空间；❖ 仍表示语法模型整句）
@@ -487,7 +487,7 @@ local function inner(translation, env)
         -- 第二阶段：第一阶段选中 w1 并入上文，对剩余拼音的候选再打分，拼成 w1..w2 作为首选
         -- （每阶段结果缓存；编辑键清缓存时一并清除）。任何一步失败都退回第一阶段结果。
         if best_e and best_e < #input and ordered[1] and context ~= ""
-           and cfg.stage2 and not shrinking and (#input - best_e) >= cfg.stage2_min_rest then
+           and cfg.stage2 and env.engine.context:get_option("ai_stage2") and not shrinking and (#input - best_e) >= cfg.stage2_min_rest then
             local w1 = ordered[1].text
             local rest = input:sub(best_e + 1)
             local fc = _G.llm_filter_cache

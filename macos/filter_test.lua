@@ -52,7 +52,7 @@ local function mk_env(input, hist, enabled, extra_conf)
         input = input,
         commit_history = ch,
         composition = { back = function() return {} end },
-        get_option = function(_, name) return name == "ai_rerank" and enabled end,
+        get_option = function(_, name) return (name == "ai_rerank" and enabled) or name == "ai_stage2" end,
       },
     },
   }
