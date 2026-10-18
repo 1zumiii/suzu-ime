@@ -131,6 +131,19 @@ do
   pp._reset_all()
 end
 
+-- B3: emoji 候选不参与重排，原位置不动
+do
+  hist = { "我最近没有太多" }
+  press(mk_env("", hist, true), "m")
+  _G.llm_filter_cache = nil
+  local cands = { mk("经理", 0, 6), mk("😀", 0, 6, "simplified"), mk("经历", 0, 6), mk("精力", 0, 6),
+                  mk("🙂", 0, 6, "simplified"), mk("敬礼", 0, 6) }
+  local texts = run(mk_env("jingli", hist, true), cands)
+  check("B3. emoji kept at original positions", texts[2] == "😀" and texts[5] == "🙂", table.concat(texts, ","))
+  check("B3. text candidates still reranked: 精力 first", texts[1] == "精力", table.concat(texts, ","))
+  check("B3. no candidate lost", #texts == 6, tostring(#texts))
+end
+
 -- C: 上文为空 → 不重排（原样）
 do
   hist = {}
