@@ -54,6 +54,15 @@ llama.cpp 默认会把权重重排为更适合 CPU 的布局，模型因此无�
 
 `port_to_mac.py` 默认生成“重排关”的版本。需要更快的打分且不在意内存时，删除 `mparams.use_extra_bufts = false;` 这一行并重新编译。
 
+## Suzu 学生模型（桌面端）
+
+用户目录（macOS 为 `~/Library/Rime`）里同时有 `suzu.gguf` 和 `suzu.vocab.txt` 时，`ai_rerank_processor.lua` 会自动改用 Suzu（字符级小模型，约 42 MB，进程内常驻约 115 MB），否则仍用上面的 Qwen。
+可用 `llm_rerank/student_model`、`llm_rerank/student_vocab` 指定路径，`llm_rerank/student: false` 强制不用；学生模式下默认不空闲卸载（`llm_rerank/idle_unload_minutes_student`，默认 0）。
+需要用包含学生模式补丁的 `port_to_mac.py` 重新构建 `rime_llm.so`。
+
+实测（Apple Silicon，进程内，600 次打分，墙钟按秒计时，精度较粗）：CPU 版 4 线程约 3.3 ms，2 线程约 6.7 ms；Metal 版约 6.7 ms。Suzu 这样的小模型用 CPU 更快，所以桌面端安装 CPU 版。
+Mac 与手机上的排序结果一致。测试脚本：`student_test.lua`（`lua student_test.lua <rime_llm.so 所在目录> <suzu.gguf> <suzu.vocab.txt> <日志目录> [线程数]`）。
+
 ## 可选：Metal GPU 推理（实验）
 
 默认使用 CPU 推理。Apple Silicon 上可改用 Metal，构建时加 `-DRIME_LLM_METAL=ON`（着色器库内嵌于 `.so`，不依赖外部文件）：
