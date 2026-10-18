@@ -1,0 +1,1364 @@
+雾凇 custom 分支：Windows（小狼毫）版 AI 重排的本地补丁
+==========================================================
+
+上游：zhanghaozhecn/rime-llm-rerank（署名许可协议，作者 zhanghaozhecn），基于提交 21503e5。
+本补丁只含 cpp/rime_llm.cpp、user/llm_filter.lua、user/llm_processor.lua 三个文件的修改；
+构建脚本里的本机路径（CMakeLists 的 LLAMA_ROOT 等）不在补丁里，按自己的环境设置。
+
+用法：在上游仓库根目录执行 git apply rime-llm-rerank-windows.patch，再按上游说明构建 rime_llm.dll，
+把 user/ 下的两个 Lua 文件放进小狼毫用户目录的 lua/，方案补丁见本仓库 windows/rime_ice.custom.yaml。
+
+主要改动（2026-10-19）：
+- 学生模式：rime_llm.dll 支持 Suzu 字符级小模型（移植自 llm-mac/port_to_mac.py 的学生模式段），
+  Lua 属性 student_vocab、student_ctx，status() 返回 {"loaded":..,"student":..}。
+- 选模型：用户目录有 suzu.gguf 与 suzu.vocab.txt 就用 Suzu，processor 与 filter 共用 _G.llm_desired_model，
+  模型路径与学生词表总是一起设置。修复前 processor 每键把 model_path 改回 Qwen、学生词表却还在，
+  DLL 用 Suzu 的字符词表跑 Qwen 的权重，首选几乎随机且打分慢（25 到 55 ms，修复后 4 到 6 ms）。
+- 护栏：学生词表行数必须等于模型词表大小，否则拒绝加载并在 rime_llm_log.txt 记 ERROR。
+- 上文净化：UIA/COM 读到的光标前文字遇到路径、代码符号或超过 10 个字母的英文串就截断；
+  llm_rerank/context_source: history 可改为和 Mac 一样只用本会话上屏的词。
+- 与 Mac 对齐：方案开关 ai_rerank、ai_stage2，个人词对与纠错记忆（personal_pairs.lua），置信度门控，
+  scan_limit，二阶段只取最后 8 字上文、剩余拼音不足 4 字母不跑、退格跳过，首选标记 ◇/◈ 加模型名。
+- 二阶段护栏：Rime 原生首位覆盖整串输入时，二阶段拼出的词在模型分加词频项上更高才抢首位。
+- 选词统计与训练语料记录：移植自 ai_rerank_processor.lua，需在用户目录放 select_stats.enabled、
+  select_corpus.enabled 才记录，文件只在本机。
+- 排查开关：llm_rerank/debug_latency（只记数字与原因码），llm_rerank/debug_text（另记候选词，不记上文）。
+
+diff --git a/cpp/rime_llm.cpp b/cpp/rime_llm.cpp
+index bb0536b..98cd786 100644
+--- a/cpp/rime_llm.cpp
++++ b/cpp/rime_llm.cpp
+@@ -37,6 +37,8 @@ extern "C" {
+ #include <cstdlib>
+ #include <algorithm>
+ #include <regex>
++#include <fstream>
++#include <unordered_map>
+ 
+ // ============================================================
+ // 配置默认值
+@@ -92,7 +94,13 @@ static std::atomic<int>         g_prep_seq{0};  // 请求序列号，跳过过
+ static long                      g_seq0_gen = 0; // seq0 KV 代次: 任何覆盖 seq0 的 decode 递增
+ static long                      g_prep_gen = 0; // prepare 完成时的代次
+ 
+-static int g_score_log_cnt = 0;  // score 日志限频计数器
++static int g_score_log_cnt = 0;
++static bool g_student = false;                          // 学生模式：字符级词表，不用 llama 的分词器
++static std::string g_student_vocab_path;
++static std::unordered_map<std::string, int> g_student_map;
++static int g_student_ctx_chars = 30;                    // 上文最多取最后 N 个字（训练时的上限）
++static constexpr int kStudentCandMax = 12;              // 候选最多打分的字数
++static constexpr int kStudentSeqCells = 48;             // 每条序列的 KV 格数（>= <bos> + 30 + 12）  // score 日志限频计数器
+ 
+ // ============================================================
+ // 轻量日志
+@@ -488,6 +496,14 @@ static bool uia_read(IUIAutomation * uia, std::string & out, DWORD & pid) {
+     bool ret = false;
+     int elpid = 0;
+     el->get_CurrentProcessId(&elpid);
++    // [local patch] 隐私: 焦点是密码框 (IsPassword) 一律不读上文; 返回 false 使调用方清空快照
++    {
++        BOOL is_pw = FALSE;
++        if (SUCCEEDED(el->get_CurrentIsPassword(&is_pw)) && is_pw) {
++            el->Release();
++            return false;
++        }
++    }
+     IUIAutomationTextPattern * tp = nullptr;
+     if (SUCCEEDED(el->GetCurrentPattern(UIA_TextPatternId,
+                                         (IUnknown **)&tp)) && tp) {
+@@ -806,7 +822,7 @@ static void load_model_async() {
+         llama_backend_init();
+ 
+         llama_model_params mparams = llama_model_default_params();
+-        mparams.use_mmap = 1;
++        mparams.load_mode = LLAMA_LOAD_MODE_MMAP;  // [local patch] llama.cpp b11632 API: use_mmap -> load_mode
+ 
+         g_model = llama_model_load_from_file(g_model_path.c_str(), mparams);
+         if (!g_model) {
+@@ -817,9 +833,34 @@ static void load_model_async() {
+         g_vocab = llama_model_get_vocab(g_model);
+ 
+         int n_thr = g_n_threads;
++        if (g_student) {
++            g_student_map.clear();
++            std::ifstream vf(g_student_vocab_path);
++            std::string line; int id = 0;
++            while (std::getline(vf, line)) {
++                if (!line.empty() && line.back() == '\r') line.pop_back();
++                g_student_map.emplace(line, id++);
++            }
++            if (id < 8) {
++                log_msg("ERROR: student vocab unreadable: %s", g_student_vocab_path.c_str());
++                llama_model_free(g_model); g_model = nullptr; g_vocab = nullptr;
++                g_loading.store(false);
++                return;
++            }
++            // 护栏（2026-10-19）：字符词表的行数必须等于模型自己的词表大小，否则说明 model_path 指向的不是学生模型
++            //（曾出现用 Suzu 的字符词表跑 Qwen 权重，分数全乱）。不一致就拒绝加载，不重排，也不会乱排。
++            if (llama_n_vocab(g_vocab) != id) {
++                log_msg("ERROR: student vocab has %d entries but model %s has %d tokens; refusing to load (model_path is not a student model?)",
++                        id, g_model_path.c_str(), llama_n_vocab(g_vocab));
++                llama_model_free(g_model); g_model = nullptr; g_vocab = nullptr;
++                g_loading.store(false);
++                return;
++            }
++            log_msg("student mode: vocab=%d ctx_chars=%d model=%s", id, g_student_ctx_chars, g_model_path.c_str());
++        }
+ 
+         llama_context_params cparams = llama_context_default_params();
+-        cparams.n_ctx           = g_n_ctx;
++        cparams.n_ctx           = g_student ? g_n_seq_max * kStudentSeqCells : g_n_ctx;
+         cparams.n_threads       = n_thr;
+         cparams.n_threads_batch = n_thr;
+         cparams.n_seq_max       = g_n_seq_max;
+@@ -843,7 +884,9 @@ static void load_model_async() {
+             llama_memory_clear(llama_get_memory(g_ctx), false);
+             const char * warmup = "\n";
+             llama_token tokens[4];
+-            int n_tokens = llama_tokenize(g_vocab, warmup, (int)strlen(warmup),
++            int n_tokens = 0;
++            if (g_student) { tokens[0] = 2; n_tokens = 1; }   // <bos>
++            else n_tokens = llama_tokenize(g_vocab, warmup, (int)strlen(warmup),
+                                            tokens, 4, true, true);
+             if (n_tokens > 0) {
+                 llama_batch batch = llama_batch_get_one(tokens, n_tokens);
+@@ -879,7 +922,22 @@ static void unload_model() {
+ // ============================================================
+ // 分词
+ // ============================================================
++// 学生模式分词：按 UTF-8 字符查表，查不到记 <unk>
++static std::vector<llama_token> student_chars(const char * text) {
++    std::vector<llama_token> out;
++    const unsigned char * p = (const unsigned char *)text;
++    while (*p) {
++        int len = (*p < 0x80) ? 1 : (*p >> 5) == 6 ? 2 : (*p >> 4) == 14 ? 3 : (*p >> 3) == 30 ? 4 : 1;
++        std::string ch((const char *)p, len);
++        auto it = g_student_map.find(ch);
++        out.push_back(it == g_student_map.end() ? 1 : it->second);
++        for (int i = 0; i < len && *p; i++) p++;
++    }
++    return out;
++}
++
+ static std::vector<llama_token> tokenize(const char * text) {
++    if (g_student) return student_chars(text);
+     std::vector<llama_token> toks(128);
+     int n = llama_tokenize(g_vocab, text, (int)strlen(text),
+                             toks.data(), (int)toks.size(), true, true);
+@@ -898,6 +956,13 @@ static std::vector<llama_token> tokenize(const char * text) {
+ // token 数不足 min_tokens（方案 llm_rerank/min_tokens，lua 传入）→ 返回空
+ //（空 ctx 无推理是配置语义, 非 bug）。
+ static std::vector<llama_token> ctx_token_ids(const char * context) {
++    if (g_student) {
++        auto ids = student_chars(context);
++        if (ids.size() < 2) return {};                       // 上文不足两个字：不重排（与训练时 min_ctx 一致）
++        if ((int)ids.size() > g_student_ctx_chars) ids.erase(ids.begin(), ids.end() - g_student_ctx_chars);
++        ids.insert(ids.begin(), 2);                          // <bos>
++        return ids;
++    }
+     auto ids = tokenize(context);
+     if ((int)ids.size() < g_min_tokens) return {};
+     if ((int)ids.size() > g_max_ctx_tokens)
+@@ -942,6 +1007,65 @@ static double ce_target(float * logits, int target_id, float m, double lse) {
+ //       多 token 候选每个 seq 仅 1 个新 token，SSM 跨序列干扰可忽略
+ //       ith = batch 数组索引（不是 logits 标记序号）
+ // ============================================================
++static void score_student_locked(const std::vector<llama_token> & ctx_ids,
++                                 const std::vector<std::vector<llama_token>> & cands,
++                                 std::vector<double> & out) {
++    int n = (int)cands.size(), ctx_len = (int)ctx_ids.size(), vs = llama_n_vocab(g_vocab);
++    auto * mem = llama_get_memory(g_ctx);
++    bool use_prep = g_prep_ready && ctx_ids == g_prep_ctx && g_seq0_gen == g_prep_gen;
++    std::vector<float> ctx_logits;
++    if (!use_prep) {
++        llama_memory_clear(mem, false);
++        llama_batch cb = llama_batch_init(ctx_len, 0, 1);
++        for (int j = 0; j < ctx_len; j++) { cb.token[j] = ctx_ids[j]; cb.pos[j] = j; cb.n_seq_id[j] = 1; cb.seq_id[j][0] = 0; }
++        cb.logits[ctx_len - 1] = 1; cb.n_tokens = ctx_len;
++        if (llama_decode(g_ctx, cb) == 0) {
++            g_seq0_gen++;
++            float * cl = llama_get_logits_ith(g_ctx, ctx_len - 1);
++            if (cl) ctx_logits.assign(cl, cl + vs);
++        }
++        llama_batch_free(cb);
++        if (ctx_logits.empty()) return;
++        g_prep_gen = g_seq0_gen; g_prep_ctx = ctx_ids; g_prep_logits = ctx_logits; g_prep_ready = true;
++    } else {
++        ctx_logits = g_prep_logits;
++    }
++    std::vector<double> ce(n, 0);
++    float m0; double lse0;
++    logits_normalizer(ctx_logits.data(), vs, m0, lse0);
++    for (int i = 0; i < n; i++) ce[i] = ce_target(ctx_logits.data(), cands[i][0], m0, lse0);
++    std::vector<int> act, seq_of(n, -1);
++    int maxlen = 1;
++    for (int i = 0; i < n; i++) if (cands[i].size() >= 2) { seq_of[i] = (int)act.size() + 1; act.push_back(i); maxlen = std::max(maxlen, (int)cands[i].size()); }
++    maxlen = std::min(maxlen, kStudentCandMax);
++    for (int ci : act) llama_memory_seq_cp(mem, 0, seq_of[ci], 0, -1);
++    bool failed = false;
++    for (int p = 1; p < maxlen && !failed; p++) {
++        std::vector<int> cur;
++        for (int ci : act) if ((int)cands[ci].size() > p) cur.push_back(ci);
++        if (cur.empty()) break;
++        llama_batch b = llama_batch_init((int)cur.size(), 0, (int)cur.size());
++        for (int k = 0; k < (int)cur.size(); k++) {
++            int ci = cur[k];
++            b.token[k] = cands[ci][p - 1]; b.pos[k] = ctx_len + p - 1;
++            b.n_seq_id[k] = 1; b.seq_id[k][0] = seq_of[ci]; b.logits[k] = 1;
++        }
++        b.n_tokens = (int)cur.size();
++        if (llama_decode(g_ctx, b) == 0) {
++            for (int k = 0; k < (int)cur.size(); k++) {
++                float * l = llama_get_logits_ith(g_ctx, k);
++                if (l) ce[cur[k]] += cross_entropy(l, vs, cands[cur[k]][p]); else ce[cur[k]] = 1e10;
++            }
++        } else {
++            failed = true; g_prep_ready = false;
++            log_msg("WARN: student decode failed at position %d", p);
++        }
++        llama_batch_free(b);
++    }
++    for (int ci : act) llama_memory_seq_rm(mem, seq_of[ci], 0, -1);
++    for (int i = 0; i < n; i++) out[i] = (!failed && ce[i] < 1e9) ? -ce[i] : -1e10;
++}
++
+ static void score_batch(const std::vector<llama_token> & ctx_ids,
+                          const std::vector<std::vector<llama_token>> & cands,
+                          std::vector<double> & scores_out) {
+@@ -950,7 +1074,31 @@ static void score_batch(const std::vector<llama_token> & ctx_ids,
+     if (n_cands == 0) return;
+ 
+     auto t0 = std::chrono::high_resolution_clock::now();
+-    std::lock_guard<std::mutex> lock(g_mutex);
++    // 后台预解码（prepare）会长时间持有 g_mutex（整段上文解码约 44 ms）。打分最多等 10 ms，
++    // 拿不到就放弃这次重排（返回空结果，Lua 侧沿用原生顺序），避免输入被阻塞；下一次按键会重新打分。
++    std::unique_lock<std::mutex> lock(g_mutex, std::defer_lock);
++    {
++        const auto deadline = t0 + std::chrono::milliseconds(g_student ? 30 : 10);   // 学生模式上文解码只要几毫秒，多等一会儿
++        while (!lock.try_lock()) {
++            if (std::chrono::high_resolution_clock::now() >= deadline) {
++                scores_out.clear();
++                return;
++            }
++            std::this_thread::sleep_for(std::chrono::microseconds(500));
++        }
++    }
++    if (g_student) {
++        auto ts0 = std::chrono::high_resolution_clock::now();
++        bool had_prep = g_prep_ready && ctx_ids == g_prep_ctx && g_seq0_gen == g_prep_gen;
++        score_student_locked(ctx_ids, cands, scores_out);
++        auto ts1 = std::chrono::high_resolution_clock::now();
++        // 只记数字：等锁毫秒、解码毫秒、是否命中预解码、上文 token 数、候选数
++        log_msg("score(student): wait=%.1fms cmp=%.1fms prep=%d ctx_tok=%d cand=%d",
++                std::chrono::duration<double, std::milli>(ts0 - t0).count(),
++                std::chrono::duration<double, std::milli>(ts1 - ts0).count(),
++                had_prep ? 1 : 0, (int)ctx_ids.size(), n_cands);
++        return;
++    }
+     auto t1 = std::chrono::high_resolution_clock::now();
+     double wait_ms = std::chrono::duration<double, std::milli>(t1 - t0).count();
+ 
+@@ -1242,7 +1390,7 @@ static int lua_score(lua_State * L) {
+     std::vector<std::string> cand_texts;
+     int n = (int)luaL_len(L, 2);
+     if (n < 2) { lua_pushnil(L); return 1; }
+-    if (n > g_n_seq_max) n = g_n_seq_max;
++    if (n > g_n_seq_max - 1) n = g_n_seq_max - 1;
+     for (int i = 1; i <= n; i++) {
+         lua_rawgeti(L, 2, i);
+         const char * s = lua_tostring(L, -1);
+@@ -1270,6 +1418,9 @@ static int lua_score(lua_State * L) {
+         return 1;
+     }
+ 
++    // 没拿到锁（预解码占用中）：本次不重排，返回 nil
++    if (scores.empty()) { lua_pushnil(L); return 1; }
++
+     // 按分数降序排列
+     std::vector<int> order(scores.size());
+     for (int i = 0; i < (int)order.size(); i++) order[i] = i;
+@@ -1302,6 +1453,15 @@ static int lua_is_ready(lua_State * L) {
+     return 1;
+ }
+ 
++// 打分状态（与 Mac/Android 的约定一致）：JSON 字符串，学生模式时含 "student":true
++static int lua_status(lua_State * L) {
++    char buf[96];
++    snprintf(buf, sizeof(buf), "{\"loaded\":%s,\"student\":%s}",
++             g_loaded.load() ? "true" : "false", g_student ? "true" : "false");
++    lua_pushstring(L, buf);
++    return 1;
++}
++
+ // 光标上文（三层前两层，2026-09-10）：成功返回 (text, "com"|"uia")，
+ // 无可用快照返回 nil —— lua 侧回落 commit_history。
+ // COM/UIA 调用全部在后台线程（本函数只读 mutex 快照 + 前台窗口判定，
+@@ -1430,7 +1590,8 @@ static int lua_match_code(lua_State * L) {
+ // ============================================================
+ static int lua_index(lua_State * L) {
+     const char * key = luaL_checkstring(L, 2);
+-    if (strcmp(key, "is_ready") == 0)       lua_pushcfunction(L, lua_is_ready);
++    if (strcmp(key, "status") == 0)         lua_pushcfunction(L, lua_status);
++    else if (strcmp(key, "is_ready") == 0)  lua_pushcfunction(L, lua_is_ready);
+     else if (strcmp(key, "get_scores") == 0) lua_pushcfunction(L, lua_get_scores);
+     else if (strcmp(key, "score") == 0)     lua_pushcfunction(L, lua_score);
+     else if (strcmp(key, "prepare") == 0)   lua_pushcfunction(L, lua_prepare);
+@@ -1465,6 +1626,8 @@ static int lua_newindex(lua_State * L) {
+     else if (strcmp(key, "n_threads") == 0)  g_n_threads = (int)luaL_checkinteger(L, 3);
+     else if (strcmp(key, "n_ctx") == 0)      g_n_ctx = (int)luaL_checkinteger(L, 3);
+     else if (strcmp(key, "n_seq_max") == 0)  g_n_seq_max = (int)luaL_checkinteger(L, 3);
++    else if (strcmp(key, "student_vocab") == 0) { g_student_vocab_path = luaL_checkstring(L, 3); g_student = !g_student_vocab_path.empty(); }
++    else if (strcmp(key, "student_ctx") == 0) g_student_ctx_chars = (int)luaL_checkinteger(L, 3);
+     else if (strcmp(key, "log_dir") == 0)    g_log_dir = luaL_checkstring(L, 3);  // RIME 用户目录
+     return 0;
+ }
+diff --git a/user/llm_filter.lua b/user/llm_filter.lua
+index b8be8c2..a67cec8 100644
+--- a/user/llm_filter.lua
++++ b/user/llm_filter.lua
+@@ -19,10 +19,40 @@ local cfg = {
+     max_candidates   = 5,
+     cpu_cores        = nil,  -- nil = 不设置，走 C++ 默认（固定 4，bench_threads 实测后可配）
+     debug_fusion     = false, -- true = 逐候选融合明细写 rime_llm_debug.txt (诊断用)
++    debug_latency    = false, -- true = 写 llm_latency.txt / llm_errors.txt (仅数字与报错文本, 默认关)
++    two_stage_max_chars = 4, -- 第二阶段只在整句候选 <= 此字数时启用 (长句不切分)
++    emoji_to_page2 = true,   -- true = emoji 候选后移到第一页之后
++    page_size = 5,           -- 与 menu/page_size 保持一致 (schema 里读不到时用这个)
++    scan_limit = 80,         -- 只在前 N 个候选里重排，其余惰性透传（同步自 Mac 端）
++    stage2_context_chars = 8, -- 第二阶段只用「上文+第一阶段选中词」的最后 N 个字（现场解码，越短越快；同步自 Mac 端）
++    stage2_min_rest = 4,      -- 剩余拼音至少 N 个字母才跑第二阶段（输入过程中的半截拼音不值得推理）
++    debug_text = false,      -- 仅排查时临时打开：诊断日志里带候选词文字（不含上文）；用完关掉并删除日志
++    badge_model = true,      -- 首选标记后面带当前模型名（Suzu / Qwen）
++    badge_source = false,    -- 首选标记后面再带上文来源（UIA/COM/历史）
+     expected_length_weight = 0.2,  -- 预期词长加成 (冷启动标定 2026-09-03; 0=关闭)
+     freq_beta = 1.5,  -- 对数词频融合系数 (0=关闭); fused = score + β·log(1+eff)
++    pair_gamma = 1.5, -- 个人词对融合系数（前一个词→当前词，见 personal_pairs.lua）；0=关闭
++    corr_gamma = 3.0, -- 纠错记忆融合系数（前一个词+输入的拼音→你选过的词）；0=关闭
++    gate_margin = 0,  -- 置信度门控：模型首位的融合分比 Rime 原首位高出至少这么多才换；0=关闭
++    gate_margin_short = 0,  -- 输入只有 1~2 个字母时用的门控值；0=关闭
+ }
+ 
++-- 同步自 Mac 端（2026-10-19）：个人词对与纠错记忆（personal_pairs.lua 由 recent_boost_filter 在上屏时记录）。
++-- 模块不可用或没有前一个词时恒为 0。
++local okpp, pp = pcall(require, "personal_pairs")
++local function pair_eff(prev, w)
++    if not okpp or not prev or cfg.pair_gamma <= 0 then return 0 end
++    local ok, v = pcall(pp.eff, prev, w)
++    return (ok and v) or 0
++end
++local function choice_eff(prev, input, w)
++    if not okpp or not prev or cfg.corr_gamma <= 0 then return 0 end
++    local ok, v = pcall(pp.choice_eff, prev, input, w)
++    return (ok and v) or 0
++end
++-- 调试/统计标志（仅数字与原因码）：inner 填写，外层包装读取
++local flags = {}
++
+ local lat_max   = 0
+ local lat_count = 0
+ 
+@@ -82,15 +112,23 @@ local function load_llm(env)
+     local ok, cpp = pcall(require, "rime_llm")
+     if ok and cpp then
+         local sc = env.engine.schema.config
+-        local mp = sc:get_string("llm_rerank/model_path")
+-        -- 未配置时留给 C++ 默认（RIME 用户目录根，2026-08-31）
+-        if mp and mp ~= "" then cpp.model_path = mp end
+         cpp.max_ctx    = cfg.max_tokens
+         -- min_tokens 不设置：固定用 C++ 默认 1（用户配置面已移除，2026-09-30）
+         if cfg.cpu_cores then cpp.n_threads = cfg.cpu_cores end
+         -- 日志目录: RIME 用户目录 (未设置时 C++ 回退 %TEMP%)
+         local okd, ud = pcall(function() return rime_api.get_user_data_dir() end)
+         if okd and ud and ud ~= "" then cpp.log_dir = ud end
++        -- 模型与学生词表由 llm_processor.lua 的 _G.llm_desired_model 统一决定（Suzu 文件在就用 Suzu，否则 Qwen），
++        -- 两边必须一致：曾因两处各设一半，DLL 用 Suzu 的字符词表去跑 Qwen 的权重（2026-10-19 修复）。
++        if _G.llm_desired_model then
++            local dmp, dsv = _G.llm_desired_model(sc)
++            if dmp and dmp ~= "" and (cpp.model_path ~= dmp or _G.llm_student_vocab_set ~= dsv) then
++                pcall(function() cpp.student_vocab = dsv end)
++                _G.llm_student_vocab_set = dsv
++                if cpp.model_path == dmp then cpp.model_path = "" end
++                cpp.model_path = dmp
++            end
++        end
+         llm = cpp
+         llm_loaded_for = true
+     end
+@@ -106,6 +144,26 @@ local function init_config(env)
+     if v ~= nil then cfg.expected_length_weight = math.max(0, v) end
+     v = get_config_number(sc, "llm_rerank/freq_beta")
+     if v ~= nil then cfg.freq_beta = math.max(0, v) end
++    v = get_config_number(sc, "llm_rerank/pair_gamma")
++    if v ~= nil then cfg.pair_gamma = math.max(0, v) end
++    v = get_config_number(sc, "llm_rerank/corr_gamma")
++    if v ~= nil then cfg.corr_gamma = math.max(0, v) end
++    v = get_config_number(sc, "llm_rerank/gate_margin")
++    if v ~= nil then cfg.gate_margin = math.max(0, v) end
++    v = get_config_number(sc, "llm_rerank/gate_margin_short")
++    if v ~= nil then cfg.gate_margin_short = math.max(0, v) end
++    v = sc:get_int("llm_rerank/stage2_context_chars")
++    if v and v > 0 then cfg.stage2_context_chars = v end
++    v = sc:get_int("llm_rerank/stage2_min_rest")
++    if v and v >= 0 then cfg.stage2_min_rest = v end
++    local dtx = sc:get_bool("llm_rerank/debug_text")
++    if dtx ~= nil then cfg.debug_text = dtx end
++    local bm = sc:get_bool("llm_rerank/badge_model")
++    if bm ~= nil then cfg.badge_model = bm end
++    local bs = sc:get_bool("llm_rerank/badge_source")
++    if bs ~= nil then cfg.badge_source = bs end
++    v = sc:get_int("llm_rerank/scan_limit")
++    if v and v > 0 then cfg.scan_limit = v end
+     v = sc:get_int("llm_rerank/max_tokens")
+     if v then cfg.max_tokens = v end
+     v = sc:get_int("llm_rerank/max_candidates")
+@@ -115,10 +173,171 @@ local function init_config(env)
+     -- min_tokens 不再从 schema 读取（2026-09-30 用户配置面移除；固定 C++ 默认 1）
+     local dbg = sc:get_bool("llm_rerank/debug_fusion")
+     if dbg ~= nil then cfg.debug_fusion = dbg end
++    local dl = sc:get_bool("llm_rerank/debug_latency")
++    if dl ~= nil then cfg.debug_latency = dl end
++    v = sc:get_int("llm_rerank/two_stage_max_chars")
++    if v then cfg.two_stage_max_chars = v end
++    local e2 = sc:get_bool("llm_rerank/emoji_to_page2")
++    if e2 ~= nil then cfg.emoji_to_page2 = e2 end
++    v = sc:get_int("llm_rerank/page_size") or sc:get_int("menu/page_size")
++    if v and v > 0 then cfg.page_size = v end
++end
++
++-- [local round2] yield 包装: capture 非空时把候选收集起来 (供测试记录器对比),
++-- 否则直接 yield。
++local capture = nil
++local function Y(c)
++    if capture then capture[#capture + 1] = c else yield(c) end
+ end
+ 
++local function user_dir()
++    local ok, ud = pcall(function() return rime_api.get_user_data_dir() end)
++    if ok and ud and ud ~= "" then return ud end
++    return nil
++end
++
++local function append_line(name, line)
++    local ud = user_dir()
++    if not ud then return end
++    local f = io.open(ud .. "\\" .. name, "a")
++    if f then f:write(line .. "\n"); f:close() end
++end
++
++
+ -- === Filter ===
+-return function(translation, env)
++-- [round2] 第二阶段: 用 ScriptTranslator 查剩余拼音的候选 (繁体 -> Opencc t2s),
++-- 以 "上文 + 第一阶段选中词" 为上文打分, 返回最优词。
++-- 翻译器对象绑定创建它的引擎: 必须挂在当前引擎的 env 上 (env.s2_tr), 不能放模块级变量。
++-- Weasel 切换应用或方案时会销毁并重建引擎, 模块级缓存会让旧翻译器指向已销毁的引擎,
++-- 下次 query 访问野指针 (WeaselServer 在 rime.dll 内崩溃)。Opencc 与引擎无关, 可以跨引擎复用。
++local s2_cc = nil
++local function s2_init(env)
++    if not env.s2_tr then
++        -- 探针实测: 只有 Component.Translator(engine, "", "script_translator@translator")
++        -- 的 query 能返回候选; ScriptTranslator(engine, "", "translator") 的 query 返回 nil。
++        local ok, e = pcall(function()
++            env.s2_tr = Component.Translator(env.engine, "", "script_translator@translator")
++        end)
++    end
++    if not s2_cc then
++        local ok, e = pcall(function() s2_cc = Opencc("t2s.json") end)
++    end
++end
++
++-- 返回 w2, cands2 (供缓存); 失败返回 nil
++local function tail_chars(str, n)
++    local len = utf8.len(str)
++    if not len or len <= n then return str end
++    return str:sub(utf8.offset(str, len - n + 1))
++end
++
++local function second_stage(env, context, w1, rest)
++    s2_init(env)
++    local s2_tr = env.s2_tr
++    if not s2_tr or not s2_cc or not llm or rest == "" then
++        return nil
++    end
++    local okseg, seg = pcall(function() return env.engine.context.composition:back() end)
++    if not okseg or not seg then return nil end
++    local cands2, seen = {}, {}
++    local okq, qerr = pcall(function()
++        local t = s2_tr:query(rest, seg)
++        if not t then return end
++        local n = 0
++        for cand in t:iter() do
++            n = n + 1
++            if n > 60 then break end
++            local e = cand._end
++            if type(e) == "number" and e >= #rest then
++                local txt = s2_cc:convert(cand.text)
++                if txt and txt ~= "" and not seen[txt] then
++                    seen[txt] = true
++                    cands2[#cands2 + 1] = txt
++                    if #cands2 >= cfg.max_candidates then break end
++                end
++            end
++        end
++    end)
++    if not okq or #cands2 == 0 then return nil end
++    if #cands2 == 1 then return cands2[1], cands2 end
++    _G.llm_infer_n = (_G.llm_infer_n or 0) + 1
++    local t_s2 = os.clock()
++    local ok2, result = pcall(function() return llm.score(tail_chars(context .. w1, cfg.stage2_context_chars), cands2) end)
++    flags.s2ms = (os.clock() - t_s2) * 1000
++    if not ok2 or type(result) ~= "table" or not result[1] then return cands2[1], cands2 end
++    local okg, scores = pcall(function() return llm.get_scores() end)
++    local best = result[1]
++    if okg and type(scores) == "table" then
++        local freq_eff = _G.user_freq_eff
++        local best_t = nil
++        for _, w in ipairs(cands2) do
++            local s = scores[w]
++            if is_valid_llm_score(s) then
++                local t = s + cfg.freq_beta * math.log(1 + (freq_eff and freq_eff(w) or 0))
++                if not best_t or t > best_t then best_t = t; best = w end
++            end
++        end
++    end
++    return best, cands2
++end
++
++-- [round3] 判断候选文字是不是 emoji / 图形符号 (看第一个码点)
++local function is_emoji_text(t)
++    if not t or t == "" then return false end
++    local ok, cp = pcall(utf8.codepoint, t, 1)
++    if not ok or not cp then return false end
++    return (cp >= 0x1F000 and cp <= 0x1FAFF)   -- 主要 emoji / 旗帜 / 表情
++        or (cp >= 0x2600 and cp <= 0x27BF)     -- 杂项符号、Dingbats (☀ ✂ ❤ 等)
++        or (cp >= 0x2B00 and cp <= 0x2BFF)     -- ⭐ ⬆ 等
++        or (cp >= 0x2300 and cp <= 0x23FF)     -- ⌚ ⏰ 等
++end
++
++-- 候选注释里的“推理标记”（一个字符，按上文来源区分）：
++--   ❖ = 从应用里读到的光标前文本 (UIA)    ◈ = Word/WPS 文档模型 (COM)    ◇ = 仅上屏历史兜底
++-- 来源/模型标记（2026-10-19 与 Mac、安卓统一）：◇ = AI 按上文重排后的首选，◈ = 两阶段拼出来的首选；
++-- ❖ 在 Mac 与安卓上表示语法模型整句，这里不再用来表示 UIA 上文。首选后面可带当前模型名（llm_rerank/badge_model，默认开）：
++-- 学生模式显示用户目录 suzu.name 的内容（没有就是 Suzu），否则显示 Qwen。llm_rerank/badge_source: true 时再附上上文来源（UIA/COM/历史）。
++local model_label_cache, model_label_ts = "", 0
++local function model_label()
++    if not cfg.badge_model then return "" end
++    local now = os.time()
++    if now - model_label_ts > 30 and llm and llm.status then
++        model_label_ts = now
++        local ok, st = pcall(llm.status)
++        if ok and type(st) == "string" and st:find('"student":true', 1, true) then
++            model_label_cache = "Suzu"
++            local okd, ud = pcall(function() return rime_api.get_user_data_dir() end)
++            if okd and ud and ud ~= "" then
++                local fh = io.open(ud .. "/suzu.name", "r")
++                if fh then
++                    local nm = fh:read("*l")
++                    fh:close()
++                    if nm and nm ~= "" then model_label_cache = nm:gsub("%s+$", "") end
++                end
++            end
++        else
++            model_label_cache = "Qwen"
++        end
++    end
++    return model_label_cache
++end
++
++local function badge_for(src, two)
++    local b = two and "◈" or "◇"
++    local lab = model_label()
++    if lab ~= "" then b = b .. " " .. lab end
++    if cfg.badge_source then
++        b = b .. "·" .. ((src == "com" and "COM") or (src == "uia" and "UIA") or "历史")
++    end
++    return b
++end
++
++-- 排查"为什么没触发推理"：debug_latency 为 true 时只记原因码（llm_errors.txt，不含任何输入或候选文字）
++local function why(code)
++    if cfg.debug_latency then append_line("llm_errors.txt", os.date("%H:%M:%S") .. " " .. code) end
++end
++
++local function inner(translation, env)
+     -- 每次调用都从 schema 读取 enabled，确保重新部署后立即生效
+     local sc = env.engine.schema.config
+     local enabled = sc:get_bool("llm_rerank/enabled") or false
+@@ -131,9 +350,22 @@ return function(translation, env)
+ 
+     local all = {}
+     for cand in translation:iter() do table.insert(all, cand) end
+-    if #all < 2 then for _, c in ipairs(all) do yield(c) end; return end
++    if #all < 2 then why("skip:lt2cand"); for _, c in ipairs(all) do Y(c) end; return end
+ 
+     local input = env.engine.context.input or ""
++    -- 输入串变短 = 用户在退格改字：跳过第二阶段（它要现场解码），改完再往后打时恢复。
++    -- 同一个输入串被过滤器多次调用时保持"改字中"的判断（同步自 Mac 端）。
++    local shrinking
++    if _G.llm_skip_input == input then
++        shrinking = true
++    elseif (_G.llm_last_len or 0) > 0 and #input < _G.llm_last_len then
++        _G.llm_skip_input = input
++        shrinking = true
++    else
++        _G.llm_skip_input = nil
++        shrinking = false
++    end
++    _G.llm_last_len = (#input > 0) and #input or nil
+ 
+     -- 候选窗快照: (input, 前 max_candidates 个候选) 供 llm_processor 上屏时
+     -- 关联真实候选窗写入训练语料 (与 LLM 打分范围一致)。所有路径统一记录,
+@@ -148,7 +380,7 @@ return function(translation, env)
+ 
+     -- enabled false → 原样透传，不推理
+     if not enabled then
+-        for _, c in ipairs(all) do yield(c) end; return
++        for _, c in ipairs(all) do Y(c) end; return
+     end
+ 
+     -- Lazy load DLL on first use (enabled 变化时重载, 重新部署立即生效)
+@@ -157,7 +389,7 @@ return function(translation, env)
+     end
+ 
+     if not llm then
+-        for _, c in ipairs(all) do yield(c) end; return
++        why("skip:nollm"); for _, c in ipairs(all) do Y(c) end; return
+     end
+ 
+     -- 触发条件：编码串是否匹配 code_pattern（2026-09-30 取代 min/max_code_len 区间）
+@@ -165,7 +397,101 @@ return function(translation, env)
+     -- （与源码版 boost::regex 同一套 ECMAScript 语法）；DLL 不提供该函数时
+     -- 回退 Lua 模式——两种写法对 .{4} / .{4,} / .{3,4} / [abcde]{4} 等价。
+     if not match_code_pattern(input) then
+-        for _, c in ipairs(all) do yield(c) end; return
++        why("skip:pattern len=" .. #input); for _, c in ipairs(all) do Y(c) end; return
++    end
++
++    -- [local patch] 全拼适配：只在"覆盖整串输入"的候选之间重排。
++    -- 全拼候选窗里混有只覆盖前几个音节的前缀词 (_end < #input)，LLM 只看
++    -- 每个候选的前 3 个 token，短前缀词会系统性占优。这里把整串覆盖的候选
++    -- 抽出来单独评分/重排，重排结果按原位次回填，前缀词位置不动。
++    -- 取不到 _end 时视为全部覆盖 (退化为原行为)。
++    local orig = all
++    -- 长拼音时整串覆盖的候选常只有 1 个 (整句)，此时改为在"覆盖最长、
++    -- 且至少有 2 个候选"的那一组 (相同 _end) 内重排。
++    local full, full_pos, has_end = {}, {}, false
++    local groups, best_e = {}, nil
++    for i, c in ipairs(orig) do
++        local okend, e = pcall(function() return c._end end)
++        if okend and type(e) == "number" and not is_emoji_text(c.text) then
++            has_end = true
++            local g = groups[e]
++            if not g then g = {}; groups[e] = g end
++            g[#g + 1] = i
++        end
++    end
++    -- [round3] 第二阶段只在"整句候选不超过 two_stage_max_chars 个字"时启用 (默认 4):
++    -- 长句 (如 wozhidaoleyiqie) 强行切成"两字词 + 其余"会把正确整句 (我知道了一切)
++    -- 挤下去, 变成 我只+到了一切。取 Rime 原生顺序里第一个整串覆盖候选的字数判断。
++    local top_full_len = nil
++    for _, c in ipairs(orig) do
++        local okend, e = pcall(function() return c._end end)
++        if okend and e == #input and not is_emoji_text(c.text) then top_full_len = utf8.len(c.text or ""); break end
++    end
++    local two_stage_ok = top_full_len ~= nil and top_full_len <= cfg.two_stage_max_chars
++        and env.engine.context:get_option("ai_stage2")   -- 方案开关 ai_stage2（单段/两段），默认开
++    -- [round2] 两阶段: 输入有剩余时优先选"两字词"那一组做第一阶段
++    -- (四字 = 两个两字词); 没有再退回"覆盖最长且 >=2 个候选"的组。
++    -- 修正: (1) 整串覆盖的组 (e == #input) 有 >=2 个候选时直接用它 (两音节输入,
++    -- 无第二阶段); (2) 否则取 Rime 原生顺序里第一个"两字词且未覆盖整串"的候选
++    -- 所在的组 (Rime 排最前的切分最可能是对的; 不能取最小 e, 否则会选到 yi+yu 之类
++    -- 的错误切分前缀)。
++    if groups[#input] and #groups[#input] >= 2 then
++        best_e = #input
++    else
++        for _, c in ipairs(orig) do
++            local okend, e = pcall(function() return c._end end)
++            if okend and type(e) == "number" and e < #input
++               and (utf8.len(c.text or "") or 0) == 2 and groups[e] and #groups[e] >= 2 then
++                best_e = e
++                break
++            end
++        end
++    end
++    if not best_e then
++        for e, g in pairs(groups) do
++            if #g >= 2 and (not best_e or e > best_e) then best_e = e end
++        end
++    end
++    if best_e then
++        for _, i in ipairs(groups[best_e]) do
++            full[#full + 1] = orig[i]
++            full_pos[#full_pos + 1] = i
++        end
++    end
++    if not has_end then
++        full, full_pos = orig, {}
++        for i = 1, #orig do full_pos[i] = i end
++    end
++    if #full < 2 then
++        why("skip:group<2 len=" .. #input); for _, c in ipairs(orig) do Y(c) end; return
++    end
++    all = full
++    local out = {}
++    local function emit(c) out[#out + 1] = c end
++    local extra_first = nil   -- [round2] 两阶段拼接候选, 置于首位
++    local function finish()
++        -- 把 out (整串覆盖候选的新顺序) 按原位次填回, 其余候选原样保留
++        local res = {}
++        if #out ~= #full_pos then
++            for _, c in ipairs(out) do res[#res + 1] = c end
++            local isfull = {}
++            for _, p in ipairs(full_pos) do isfull[p] = true end
++            for i, c in ipairs(orig) do
++                if not isfull[i] then res[#res + 1] = c end
++            end
++        else
++            local slot = {}
++            for k, p in ipairs(full_pos) do slot[p] = out[k] end
++            for i, c in ipairs(orig) do res[#res + 1] = slot[i] or c end
++        end
++        if extra_first then
++            Y(extra_first)
++            for _, c in ipairs(res) do
++                if c.text ~= extra_first.text then Y(c) end
++            end
++        else
++            for _, c in ipairs(res) do Y(c) end
++        end
+     end
+ 
+     local ctx_text, ctx_src = "", "rime"
+@@ -176,6 +502,7 @@ return function(translation, env)
+     -- 不需过滤尾部 ASCII: Rime 编码显示在候选窗, 不写入编辑器,
+     -- 外挂读到的光标前文本不会包含编码字母 (微软拼音式 inline composition 才会)
+     local context = (ctx_text or ""):gsub('%s+', '')
++    if context == "" then why("noctx src=" .. tostring(ctx_src)) end
+     local cands = {}
+     for i, c in ipairs(all) do
+         if i > cfg.max_candidates then break end
+@@ -193,8 +520,10 @@ return function(translation, env)
+         dbg_cache = "HIT"
+     else
+         local t0 = os.clock()
++        _G.llm_infer_n = (_G.llm_infer_n or 0) + 1
+         ok, result = pcall(function() return llm.score(context, cands) end)
+         local elapsed_ms = (os.clock() - t0) * 1000
++        flags.s1ms = elapsed_ms
+         if ok and type(result) == "table" then
+             scores = get_scores(cands)
+             _G.llm_filter_cache = {
+@@ -208,7 +537,8 @@ return function(translation, env)
+             log_dir = os.getenv("TEMP") or "C:\\Windows\\Temp"
+         end
+         local epath = log_dir .. "\\rime_llm_events.txt"
+-        local ef = io.open(epath, "a")
++        -- [local patch] 事件日志已禁用：不再写 rime_llm_events.txt
++        local ef = nil
+         -- 日志轮转 (2026-09-04): >5MB 改名 .old (单文件轮转), 防无限增长
+         if ef then
+             local esz = ef:seek("end")
+@@ -261,6 +591,26 @@ return function(translation, env)
+         end
+     end
+ 
++    why(string.format("scored ok=%s result=%s src=%s ctxlen=%d cache=%s len=%d", tostring(ok), type(result),
++        tostring(ctx_src), utf8.len(context) or #context, dbg_cache, #input))
++    -- 排查用（debug_text，临时）：原生候选（文字、_end、是否在重排组）、送去打分的候选、模型返回的顺序与分数；不含上文文字
++    if cfg.debug_latency and cfg.debug_text then
++        local ingroup = {}
++        for _, p in ipairs(full_pos) do ingroup[p] = true end
++        local nat = {}
++        for i, c in ipairs(orig) do
++            if i > 8 then break end
++            local oke, e = pcall(function() return c._end end)
++            nat[#nat + 1] = string.format("%s/e%s%s", c.text, tostring(oke and e or "?"), ingroup[i] and "/G" or "")
++        end
++        local sc_parts = {}
++        for _, w in ipairs(cands) do
++            local v = scores and scores[w]
++            sc_parts[#sc_parts + 1] = string.format("%s=%s", w, v and string.format("%.2f", v) or "nil")
++        end
++        why("detail native=[" .. table.concat(nat, " ") .. "] sent=[" .. table.concat(cands, ",") .. "] result=["
++            .. (type(result) == "table" and table.concat(result, ",") or tostring(result)) .. "] scores=[" .. table.concat(sc_parts, " ") .. "]")
++    end
+     if ok and result then
+         local seen = {}
+         local ordered = {}
+@@ -289,15 +639,20 @@ return function(translation, env)
+         local fused_scores = nil
+         if #ordered > 1 and scores then
+             local freq_eff = _G.user_freq_eff
++            local prev_any = okpp and pp.prev() or nil
++            local prev_word = cfg.pair_gamma > 0 and prev_any or nil
+             fused_scores = {}
+             local arr = {}
+             for i, c in ipairs(ordered) do
+                 local s = scores[c.text]
+                 if is_valid_llm_score(s) then
+                     local n = freq_eff and freq_eff(c.text) or 0
+-                    local t = s + cfg.freq_beta * math.log(1 + n)
++                    local fb = cfg.freq_beta * math.log(1 + n)
++                    local pb = cfg.pair_gamma * math.log(1 + pair_eff(prev_word, c.text))
++                    local cb = cfg.corr_gamma * math.log(1 + choice_eff(prev_any, input, c.text))
++                    local t = s + fb + pb + cb
+                     fused_scores[c.text] = t
+-                    arr[i] = { c = c, t = t, idx = i }
++                    arr[i] = { c = c, t = t, idx = i, s = s, fb = fb, pb = pb, cb = cb }
+                     if dbg then
+                         dbg[c.text] = { ce = s, eff = n,
+                                         fb = cfg.freq_beta * math.log(1 + n),
+@@ -317,6 +672,43 @@ return function(translation, env)
+                 return a.idx < b.idx  -- 同分保持 LLM 评分序
+             end)
+             for i = 1, #arr do ordered[i] = arr[i].c end
++            -- 排查用（debug_latency）：只记数字，不含任何文字：每个候选的 原位次:模型分 词频项 词对项 纠错项，以及上文的形状
++            if cfg.debug_latency then
++                local pos0 = {}
++                for i0, tx in ipairs(cands) do pos0[tx] = i0 end
++                local parts = {}
++                for i, a in ipairs(arr) do
++                    if i > 5 then break end
++                    parts[#parts + 1] = string.format("%so%d:m%.1f f%.1f p%.1f c%.1f", cfg.debug_text and (a.c.text .. " ") or "", pos0[a.c.text] or 0, a.s or -99, a.fb or 0, a.pb or 0, a.cb or 0)
++                end
++                local nb = select(2, context:gsub("[\228-\233][\128-\191][\128-\191]", ""))
++                local nn = select(2, context:gsub("\n", ""))
++                local na = select(2, context:gsub("[A-Za-z]", ""))
++                why(string.format("fusion in=%d | %s | ctx chars=%d cjk=%d ascii=%d nl=%d src=%s", #input, table.concat(parts, " | "),
++                    utf8.len(context) or #context, nb, na, nn, tostring(ctx_src)))
++            end
++            -- 置信度门控（同步自 Mac 端）：模型选出的首位只有比 Rime 原首位高出足够多才换，否则保持原顺序
++            -- （纠错记忆命中的候选不受限制：用户明确选过的优先）。margin 和模型首位的原位次记入选词统计。
++            local orig_first = full[1]
++            local t0g = orig_first and fused_scores[orig_first.text]
++            if orig_first and t0g and t0g > -math.huge and arr[1] then
++                local margin = arr[1].t - t0g
++                flags.mg = margin
++                local pos = {}
++                for i, tx in ipairs(cands) do pos[tx] = i end
++                flags.mtop = pos[arr[1].c.text] or 0
++                local need = (#input <= 2) and cfg.gate_margin_short or cfg.gate_margin
++                if need > 0 and arr[1].c.text ~= orig_first.text and margin < need then
++                    local remembered = false
++                    for _, a in ipairs(arr) do
++                        if choice_eff(prev_any, input, a.c.text) >= 1.0 then remembered = true; break end
++                    end
++                    if not remembered then
++                        table.sort(ordered, function(a, b) return (pos[a.text] or 99) < (pos[b.text] or 99) end)
++                        flags.gated = 1
++                    end
++                end
++            end
+         end
+         -- 预期词长加权 (expected_length_weight): 两码一字方案 L 码对应 floor(L/2) 字
+         if cfg.expected_length_weight > 0 and #ordered > 1 and fused_scores then
+@@ -406,25 +798,157 @@ return function(translation, env)
+                 end
+             end)
+         end
++        -- [round2] 第二阶段: 第一阶段选中 w1 并入上文, 对剩余拼音的候选再打分,
++        -- 拼成 w1..w2 作为首选 (每阶段结果缓存; 编辑键清缓存时一并清除)。
++        _G.llm_s1 = ordered[1] and ordered[1].text or nil
++        if two_stage_ok and best_e and best_e < #input and ordered[1] and context ~= ""
++           and not shrinking and (#input - best_e) >= cfg.stage2_min_rest then
++            local w1 = ordered[1].text
++            local rest = input:sub(best_e + 1)
++            local fc = _G.llm_filter_cache
++            local w2 = nil
++            if fc and fc.s2 and fc.s2.w1 == w1 and fc.s2.rest == rest then
++                w2 = fc.s2.w2 or nil
++            else
++                local okc, r1 = pcall(second_stage, env, context, w1, rest)
++                if okc and r1 then w2 = r1 end
++                -- 护栏（2026-10-19）：Rime 原生首位已经覆盖整串输入（常是整句/整词候选）时，两阶段拼出来的词
++                -- 必须在模型分加词频项上不低于它才能抢首位，否则保持原生首位。
++                -- （实测 henqiguai：原生首位“很奇怪”是对的，两阶段拼成“很气”+“拐”把它挤到第二。）
++                if w2 then
++                    local nat = orig[1]
++                    local oke, ne = pcall(function() return nat._end end)
++                    local comp = w1 .. w2
++                    if oke and type(ne) == "number" and ne >= #input and comp ~= nat.text then
++                        local okq, rq = pcall(function() return llm.score(context, { nat.text, comp }) end)
++                        local okg2, sc2 = pcall(function() return llm.get_scores() end)
++                        local keep = false
++                        if okq and type(rq) == "table" and okg2 and type(sc2) == "table" then
++                            local fe = _G.user_freq_eff
++                            local function fz(w)
++                                local s = sc2[w]
++                                if not is_valid_llm_score(s) then return -math.huge end
++                                return s + cfg.freq_beta * math.log(1 + ((fe and fe(w)) or 0))
++                            end
++                            keep = fz(comp) > fz(nat.text)
++                        end
++                        why("stage2-guard native_full=1 keep=" .. tostring(keep))
++                        if not keep then w2 = nil end
++                    end
++                end
++                if fc then fc.s2 = { w1 = w1, rest = rest, w2 = w2 or false } end
++            end
++            if w2 then
++                local okcand, cand = pcall(function()
++                    local st = orig[1]._start
++                    return Candidate("sentence", type(st) == "number" and st or 0,
++                                     #input, w1 .. w2, badge_for(ctx_src, true))
++                end)
++                if okcand and cand then extra_first = cand end
++            end
++        end
+         -- 来源徽章（与源码版对齐）：com = COM 文档模型（Word/WPS 文字）、
+         -- uia = UIA TextPattern（通用现代应用）、rime = 历史上屏
+-        local badge = (ctx_src == "com" and "AI·COM")
+-                   or (ctx_src == "uia" and "AI·UIA")
+-                   or "AI·历史"
++        local badge = badge_for(ctx_src)
+         for i, c in ipairs(ordered) do
+             if i == 1 then
+                 local cm = c.comment
+                 if cm and cm ~= "" then cm = cm .. " " .. badge
+                 else cm = badge end
+-                yield(ShadowCandidate(c, c.type, c.text, cm, true))
++                emit(ShadowCandidate(c, c.type, c.text, cm, true))
+             else
+-                yield(c)
++                emit(c)
+             end
+         end
+         for _, c in ipairs(all) do
+-            if not seen[c.text] then yield(c) end
++            if not seen[c.text] then emit(c) end
+         end
+     else
+-        for _, c in ipairs(all) do yield(c) end
++        for _, c in ipairs(all) do emit(c) end
+     end
++    finish()
++end
++
++-- === 外层包装 ===
++-- 先把候选全部收集再 yield (Rime 只拉取窗口所需数量, 之后会丢弃协程);
++-- inner 出错时退回原生顺序, 不让候选窗变空。
++-- 诊断日志默认关闭: schema llm_rerank/debug_latency: true 时才写 llm_latency.txt
++-- (只含 输入长度|毫秒|推理次数, 不含任何文字) 和 llm_errors.txt (Lua 报错文本)。
++return function(translation, env)
++    -- 同步自 Mac 端（2026-10-19）：方案开关 ai_rerank（Control+Shift+5 或方案菜单切换）。
++    -- 关闭时原样惰性透传，不取尽候选、不推理。
++    if not env.engine.context:get_option("ai_rerank") then
++        _G.ai_select_info = nil
++        local first_seen = false
++        for cand in translation:iter() do
++            if _G.ai_select_stats_on and not first_seen then
++                first_seen = true
++                _G.ai_select_info = { input = env.engine.context.input or "", o = {}, f = {}, n = 0,
++                                      s1 = "-", s2 = "-", ft = cand.text, of = cand.text, off = true }
++            end
++            yield(cand)
++        end
++        return
++    end
++
++    local t0 = os.clock()
++    local n0 = _G.llm_infer_n or 0
++    flags = {}
++
++    -- 只取前 scan_limit 个候选做重排（雾凇词库大，输入单个字母时候选数以万计，取尽会卡），其余候选惰性透传
++    local native = {}
++    for cand in translation:iter() do
++        native[#native + 1] = cand
++        if #native >= cfg.scan_limit then break end
++    end
++    local k = 0
++    local proxy = { iter = function() return function() k = k + 1; return native[k] end end }
++
++    capture = {}
++    local ok, err = pcall(inner, proxy, env)
++    local cap = capture
++    capture = nil
++    if not ok and cfg.debug_latency then
++        append_line("llm_errors.txt", os.date("%H:%M:%S") .. " " .. tostring(err))
++    end
++    if not ok or #cap == 0 then cap = native end
++
++    -- [round3] emoji 候选后移: 前 page 个非 emoji 候选保持原位, emoji 紧接其后
++    -- (即第二页开头), 其余非 emoji 候选排在 emoji 之后。无 emoji 时不动。
++    if cfg.emoji_to_page2 then
++        local keep, emo = {}, {}
++        for _, c in ipairs(cap) do
++            if is_emoji_text(c.text) then emo[#emo + 1] = c else keep[#keep + 1] = c end
++        end
++        if #emo > 0 and #keep > 0 then
++            local res = {}
++            local page = cfg.page_size
++            for i = 1, math.min(page, #keep) do res[#res + 1] = keep[i] end
++            for _, c in ipairs(emo) do res[#res + 1] = c end
++            for i = page + 1, #keep do res[#res + 1] = keep[i] end
++            cap = res
++        end
++    end
++
++    -- 选词统计（见 llm_processor 的 select_stats）：只记每个候选在原始顺序和最终顺序里的位次
++    if _G.ai_select_stats_on then
++        local o, fpos = {}, {}
++        for i, c in ipairs(native) do if not o[c.text] then o[c.text] = i end end
++        for i, c in ipairs(cap) do if not fpos[c.text] then fpos[c.text] = i end end
++        _G.ai_select_info = { input = env.engine.context.input or "", o = o, f = fpos, n = #native,
++                              s1 = "-", s2 = "-",
++                              ft = cap[1] and cap[1].text or "", of = native[1] and native[1].text or "",
++                              mg = flags.mg, gated = flags.gated or 0, mtop = flags.mtop or 0 }
++    end
++
++    if cfg.debug_latency then
++        local input = env.engine.context.input or ""
++        append_line("llm_latency.txt", string.format("%d|%.1f|%d|s1=%s|s2=%s", #input,
++            (os.clock() - t0) * 1000, (_G.llm_infer_n or 0) - n0,
++            flags.s1ms and string.format("%.1f", flags.s1ms) or "-", flags.s2ms and string.format("%.1f", flags.s2ms) or "-"))
++    end
++
++    for _, c in ipairs(cap) do yield(c) end
++    -- scan_limit 之后的候选：惰性透传
++    for cand in translation:iter() do yield(cand) end
+ end
+diff --git a/user/llm_processor.lua b/user/llm_processor.lua
+index 1ec3958..32f9419 100644
+--- a/user/llm_processor.lua
++++ b/user/llm_processor.lua
+@@ -64,12 +64,8 @@ local function trigger_prepare()
+     end
+ end
+ 
++-- [local patch] 训练语料日志已禁用：不再写 llm_training.txt（明文上屏记录）
+ local function append_raw(text)
+-    local f = io.open(rime_api.get_user_data_dir() .. "\\llm_training.txt", "a")
+-    if f then
+-        f:write(text)
+-        f:close()
+-    end
+ end
+ 
+ -- === 用户词频计数 (llm_filter 排序融合用, 2026-08-19; 2026-08-21 改 Rime 时间衰减) ===
+@@ -94,6 +90,10 @@ end
+ local function freq_load()
+     _G.user_word_freq = _G.user_word_freq or {}
+     local tick, maxt, legacy = nil, 0, {}
++    if not _G.llm_persist_freq then   -- [local patch] 不读盘, 词频只在内存
++        _G.user_freq_tick = _G.user_freq_tick or 0
++        return
++    end
+     local f = io.open(freq_file(), "r")
+     if f then
+         for line in f:lines() do
+@@ -119,6 +119,7 @@ local function freq_load()
+     end
+ end
+ local function freq_save()
++    if not _G.llm_persist_freq then return end   -- [local patch] 默认不落盘
+     local f = io.open(freq_file(), "w")
+     if f then
+         f:write("#tick=" .. (_G.user_freq_tick or 0) .. "\n")
+@@ -172,11 +173,58 @@ local function find_overlap(prev, curr)
+     return 0
+ end
+ 
++local revise_hook = nil   -- 选词后立刻退格的回调（setup_select_stats 里设置）
++
++-- 选模型（processor 与 filter 共用，保证两边设置一致）：用户目录有 suzu.gguf 与 suzu.vocab.txt 就用 Suzu（学生模式），
++-- 否则用 yaml 的 llm_rerank/model_path（Qwen）并关闭学生模式。llm_rerank/student: false 强制不用 Suzu；
++-- llm_rerank/student_model、student_vocab 可指定路径。文件是否存在的检查结果缓存 30 秒。
++local dm_cache = { t = -1e9 }
++_G.llm_desired_model = function(sc)
++    local now = os.time()
++    if now - dm_cache.t < 30 and dm_cache.mp ~= nil then return dm_cache.mp, dm_cache.sv end
++    local mp = sc:get_string("llm_rerank/model_path") or ""
++    local sv = ""
++    local okd, ud = pcall(function() return rime_api.get_user_data_dir() end)
++    if okd and ud and ud ~= "" and sc:get_bool("llm_rerank/student") ~= false then
++        local function exists(path)
++            local fh = path and io.open(path, "rb")
++            if fh then fh:close() return true end
++            return false
++        end
++        local sm = sc:get_string("llm_rerank/student_model")
++        local svp = sc:get_string("llm_rerank/student_vocab")
++        if not sm or sm == "" then sm = ud .. "/suzu.gguf" end
++        if not svp or svp == "" then svp = ud .. "/suzu.vocab.txt" end
++        if exists(sm) and exists(svp) then mp, sv = sm, svp end
++    end
++    dm_cache = { t = now, mp = mp, sv = sv }
++    return mp, sv
++end
++
+ local function processor(key, env)
+     if key:release() then return 2 end
+ 
++    -- 同步自 Mac 端：下面两件事与 AI 开关无关，开关关闭时也要做
++    -- 1) 编辑位置变化键（退格、方向键、回车等，且没有未上屏编码）：个人词对的“前一个词”作废
++    -- 2) 选词后立刻退格：给刚记的那条训练语料打“被修改”标记
++    do
++        local c0 = env.engine.context
++        if c0.input == "" then
++            local k0 = key:repr()
++            if is_edit_key(k0) then
++                local okp, pp0 = pcall(require, "personal_pairs")
++                if okp then pcall(pp0.reset) end
++                if k0 == "BackSpace" and revise_hook then pcall(revise_hook) end
++            end
++        end
++    end
++
+     -- 上文检查 + 预解码 (每次按键): commit_history 变化 → 立即异步预解码
+     local sc = env.engine.schema.config
++    local cmode = sc:get_string("llm_rerank/context_source")
++    if cmode == "history" or cmode == "auto" then
++        if cmode ~= _G.llm_ctx_mode then _G.llm_ctx_mode = cmode; _G.llm_filter_cache = nil end
++    end
+     local enabled = sc:get_bool("llm_rerank/enabled") or false
+     if not enabled then
+         llm_prep = nil  -- 释放已加载的 DLL 引用
+@@ -187,6 +235,11 @@ local function processor(key, env)
+                 -- 日志目录: RIME 用户目录 (与 filter 共用同一模块实例)
+                 local okd, ud = pcall(function() return rime_api.get_user_data_dir() end)
+                 if okd and ud and ud ~= "" then result.log_dir = ud end
++                -- [local patch] 线程数必须在首次 prepare (触发模型加载) 之前设好:
++                -- 实测 processor 先于 filter 触发加载, 之前 cpu_cores 配置一直没生效
++                -- (日志 threads=4 而不是配置的 7)。
++                local nt = sc:get_int("llm_rerank/cpu_cores")
++                if nt and nt > 0 then pcall(function() result.n_threads = nt end) end
+                 llm_prep = result
+             end
+         end
+@@ -195,14 +248,27 @@ local function processor(key, env)
+         -- 会话（部署期编译会话/配置未就绪的瞬间）会把默认路径永久固化到
+         -- 模块级 llm_prep，之后的按键永不重读。prepare 是懒加载触发点，
+         -- 同步必须发生在它之前——本键同步、本键 prepare，路径必然就位。
+-        local mp = sc:get_string("llm_rerank/model_path")
+-        if mp and mp ~= "" and llm_prep and llm_prep.model_path ~= mp then
+-            llm_prep.model_path = mp
++        -- 2026-10-19 修复：模型路径与学生词表必须一起决定、一起设置。之前这里每键把 model_path 改回 yaml 里的
++        -- Qwen 路径，而 filter 设过的 student_vocab 还在，结果 DLL 用 Suzu 的字符词表去跑 Qwen 的权重：
++        -- 分数全乱（简单 -30 对 -5.5）且慢（0.8B 打分 25~55 ms）。现在由 _G.llm_desired_model 统一决定。
++        local dmp, dsv = _G.llm_desired_model(sc)
++        if llm_prep and dmp and dmp ~= "" and (llm_prep.model_path ~= dmp or _G.llm_student_vocab_set ~= dsv) then
++            pcall(function() llm_prep.student_vocab = dsv end)      -- 先设词表（"" = 关闭学生模式）
++            _G.llm_student_vocab_set = dsv
++            if llm_prep.model_path == dmp then llm_prep.model_path = "" end   -- 同路径也要强制重载，让词表生效
++            llm_prep.model_path = dmp
+             -- 模型将卸载重载, 旧模型的评分缓存作废 (2026-09-04; 源码版
+             -- unload_model 清 s_cache 同理)——不清则同码重打期间继续用旧分
+             _G.llm_filter_cache = nil
+         end
+     end
++    -- [local patch] 隐私: 关闭时不做任何记录/追踪 (词频、上屏历史、训练语料都不动)。
++    -- 词频是否落盘由 llm_rerank/persist_freq 决定, 默认 false (仅内存, 重启即清)。
++    if not enabled then return 2 end
++    -- 方案开关 ai_rerank 关闭：不预解码、不记录（Control+Shift+5 或方案菜单切换）
++    if not env.engine.context:get_option("ai_rerank") then return 2 end
++    _G.llm_persist_freq = sc:get_bool("llm_rerank/persist_freq") or false
++
+     -- 鼠标点击检测（2026-09-11 深夜用户定案：任何点击=光标可能移动→
+     -- 清历史上文兜底，不做例外排除——候选窗/工具栏点击也清，上下文
+     -- 宁可变短不可错；2026-09-12 起同时失效 COM/UIA 快照+重读——真文
+@@ -392,20 +458,200 @@ local function processor(key, env)
+     return 2
+ end
+ 
++-- 上文净化（2026-10-19）：UIA/COM 读到的光标前文字可能夹着路径、代码、网址、界面文字（实测：上文里 30 个是英文字母），
++-- 字符级学生模型只在中文句子上训练，这样的上文会把重排带偏。从光标处往回取，遇到明显不是自然语言的字符
++-- （路径、代码符号）或过长的英文串就截断，只保留靠近光标的那一段；截完不足 2 个字则按没有上文处理（不重排）。
++-- processor 的预解码和 filter 的打分都经过 get_context，用的是同一份净化结果，预解码才能命中。
++local BAD_CTX_CHARS = { ["\\"] = true, ["/"] = true, ["_"] = true, ["="] = true, ["<"] = true, [">"] = true,
++                        ["{"] = true, ["}"] = true, ["["] = true, ["]"] = true, ["|"] = true, ["`"] = true,
++                        ["@"] = true, ["#"] = true, ["^"] = true, ["~"] = true, ["$"] = true, ["%"] = true,
++                        ["*"] = true, ["+"] = true, ["&"] = true }
++local MAX_ASCII_RUN = 10
++local function clean_ctx(t)
++    if not t or t == "" then return "" end
++    local chars = {}
++    for _, cp in utf8.codes(t) do chars[#chars + 1] = utf8.char(cp) end
++    local out, run, hit_bad = {}, 0, false
++    for i = #chars, math.max(1, #chars - 80), -1 do
++        local c = chars[i]
++        if BAD_CTX_CHARS[c] then hit_bad = true; break end
++        if #c == 1 and c:match("[%w]") then
++            run = run + 1
++            if run > MAX_ASCII_RUN then
++                for _ = 1, run - 1 do table.remove(out) end   -- 丢掉这一长串英文
++                break
++            end
++        else
++            run = 0
++        end
++        out[#out + 1] = c
++    end
++    local res = {}
++    for i = #out, 1, -1 do res[#res + 1] = out[i] end
++    local str = table.concat(res)
++    if hit_bad then str = str:gsub("^%w+", "") end   -- 紧挨着路径/代码符号的那截英文是残片，丢掉
++    if (utf8.len(str) or 0) < 2 then return "" end
++    return str
++end
++
++-- llm_rerank/context_source（_G.llm_ctx_mode）：auto（UIA/COM 优先，读不到用上屏历史）| history（和 Mac 一样只用本会话上屏的词，排查用）
++
+ local function get_context()
+     -- 三层上文（2026-09-10 全功能）：COM（Word/WPS 文字文档模型）→
+     -- UIA TextPattern（通用现代应用）→ 上屏历史（兜底）。前两层由 DLL
+     -- llm_context() 完成（前台门控 + 快照新鲜度 + 来源进程校验都在 C++，
+     -- 按键路径零阻塞）；失败回落历史。旁路无常关配置（2026-09-29 定案删
+     -- com_context 配置项；排障改文件头 com_ctx_enabled 重部署）
+-    if com_ctx_enabled and llm_prep and llm_prep.llm_context then
++    if com_ctx_enabled and _G.llm_ctx_mode ~= "history" and llm_prep and llm_prep.llm_context then
+         local ok, t, src = pcall(llm_prep.llm_context)
+         if ok and type(t) == "string" and #t > 0 then
+-            return t, src
++            return clean_ctx((t:gsub("%s+", ""))), src
+         end
+     end
+-    return table.concat(history, ""), "rime"
++    return clean_ctx(table.concat(history, "")), "rime"
+ end
+ 
+ _G.llm_context_get = get_context
+-return processor
++
++-- ===== 以下同步自 Mac 端（2026-10-19，lua/ai_rerank_processor.lua），数据只留本机 =====
++local function user_dir()
++    local ok, ud = pcall(function() return rime_api.get_user_data_dir() end)
++    if ok and ud and ud ~= "" then return ud end
++    return nil
++end
++
++-- 纠错记忆（默认开启，见 personal_pairs.lua）：在“前一个词 + 输入的拼音”这个情境下，记下用户选了哪个词：
++-- 选了非首位的权重 2.0（明确的纠正），选了首位的 0.5。记录在用户目录 recent_choices.tsv（明文，仅本机）。
++local function setup_choice_memory(env)
++    local okp, pp = pcall(require, "personal_pairs")
++    if not okp then return end
++    pcall(pp.init)
++    env.engine.context.select_notifier:connect(function(ctx)
++        pcall(function()
++            local input = ctx.input or ""
++            if not input:match("^[a-z]+$") then return end
++            local cand = ctx:get_selected_candidate()
++            if not cand then return end
++            local e, st = cand._end, cand._start
++            if type(e) == "number" and e - (type(st) == "number" and st or 0) < #input then return end   -- 只选了前半截：不记
++            local prev = pp.prev()
++            if not prev then return end
++            local seg = ctx.composition:back()
++            local sel = (seg and seg.selected_index or 0) + 1
++            pp.record_choice(prev, input, cand.text or "", sel > 1 and 2.0 or 0.5)
++        end)
++    end)
++end
++
++-- 选词统计与训练语料（默认关闭，需要用户在用户目录放空文件才开）：
++--   select_stats.enabled  → select_stats.tsv（纯数字：位次、候选数等，不含任何文字）
++--   select_corpus.enabled → select_corpus.tsv（明文，只记难例全记、选了首位的按 select_anchor_rate 抽样；选词后 3 秒内退格追加一行 revise<Tab>id）
++-- 删除对应的 .enabled 文件即停止记录，删除 tsv 即清空。文件只在本机，不会同步，也不会进入仓库。
++local function last_chars(str, n)
++    local len = utf8.len(str)
++    if not len or len == 0 then return "" end
++    local from = math.max(1, len - n + 1)
++    return str:sub(utf8.offset(str, from))
++end
++local function setup_select_stats(env)
++    local ud = user_dir()
++    if not ud then return end
++    local function enabled(name)
++        local probe = io.open(ud .. "/" .. name, "r")
++        if probe then probe:close(); return true end
++        return false
++    end
++    local stats_on, corpus_on = enabled("select_stats.enabled"), enabled("select_corpus.enabled")
++    _G.ai_select_stats_on = stats_on or corpus_on     -- 过滤器只在需要时才整理位次信息
++    if not _G.ai_select_stats_on then return end
++    local spath, cpath = ud .. "/select_stats.tsv", ud .. "/select_corpus.tsv"
++    local anchor_rate = env.engine.schema.config:get_double("llm_rerank/select_anchor_rate") or 0.1
++    local function model_kind()
++        local llm = llm_prep
++        if llm and llm.status then
++            local ok, st = pcall(llm.status)
++            if ok and type(st) == "string" and st:find('"student":true', 1, true) then return "s" end
++        end
++        return "q"
++    end
++    local function append(path, line, limit)
++        local fh = io.open(path, "a")
++        if not fh then return end
++        local size = fh:seek("end")
++        fh:write(line)
++        fh:close()
++        if size and size > limit then
++            if path == cpath then
++                local ok, arc = pcall(require, "corpus_archive")
++                if ok then arc.rotate(path) end            -- 训练语料不丢弃：分卷并压缩
++            else
++                os.remove(path .. ".old")
++                os.rename(path, path .. ".old")
++            end
++        end
++    end
++    local last_key, last_t = "", 0
++    local prev_commit_t = os.time()
++    local seq, last_corpus_id, last_corpus_t = 0, nil, 0
++    env.engine.context.commit_notifier:connect(function() prev_commit_t = os.time() end)
++    env.engine.context.select_notifier:connect(function(ctx)
++        pcall(function()
++            local cand = ctx:get_selected_candidate()
++            if not cand then return end
++            local text = cand.text or ""
++            local input = ctx.input or ""
++            local now = os.time()
++            local key = input .. "\1" .. text
++            if key == last_key and now - last_t <= 1 then return end   -- 同一次选择被通知两次时只记一次
++            last_key, last_t = key, now
++            local seg = ctx.composition:back()
++            local sel = (seg and seg.selected_index or 0) + 1          -- 最终顺序里的位次（从 1 起）
++            local ai = ctx:get_option("ai_rerank") and 1 or 0
++            local info = _G.ai_select_info
++            local fresh = info and info.input == input
++            local o, f, n, s1 = sel, sel, 0, "-"
++            local mg10, gated, mtop = "-", 0, 0
++            if ai == 1 and fresh then
++                o, f, n, s1 = info.o[text] or 0, info.f[text] or sel, info.n, info.s1
++                if info.mg then mg10 = math.max(-99, math.min(99, math.floor(info.mg * 10 + 0.5))) end
++                gated, mtop = info.gated or 0, info.mtop or 0
++            end
++            local ctx_all = get_context()
++            local clen = utf8.len(ctx_all) or 0
++            local bucket = clen == 0 and 0 or clen <= 2 and 1 or clen <= 9 and 2 or 3
++            if stats_on then
++                append(spath, string.format("%d\t%d\t%s\t%d\t%d\t%d\t%d\t%d\t%d\t%s\t%s\t%s\t%d\t%d\n",
++                    now, ai, model_kind(), #input, n, o, f, bucket, utf8.len(text) or 0, tostring(cand.type), s1,
++                    tostring(mg10), gated, mtop), 2 * 1024 * 1024)
++            end
++            if corpus_on and text:find("[\228-\233][\128-\191][\128-\191]") and (utf8.len(text) or 99) <= 12 then
++                local kind = nil
++                if sel > 1 then kind = "hard" elseif math.random() < anchor_rate then kind = "anchor" end
++                if kind then
++                    seq = seq + 1
++                    local id = string.format("%d-%d", now, seq)
++                    local ft = (fresh and info.ft) or text
++                    local of = (fresh and info.of) or text
++                    append(cpath, string.format("%s\t%d\t%d\t%s\t%s\t%s\t%s\t%s\t%d\t%s\n",
++                        id, now - now % 60, #input, last_chars(ctx_all, 6), text, ft, of, kind,
++                        math.min(now - prev_commit_t, 9999), model_kind()), 2 * 1024 * 1024)
++                    last_corpus_id, last_corpus_t = id, now
++                end
++            end
++        end)
++    end)
++    -- 选词后 3 秒内按退格：给最近一条语料追加“被修改”标记
++    revise_hook = function()
++        if corpus_on and last_corpus_id and os.time() - last_corpus_t <= 3 then
++            local fh = io.open(cpath, "a")
++            if fh then fh:write("revise\t" .. last_corpus_id .. "\n"); fh:close() end
++            last_corpus_id = nil
++        end
++    end
++end
++
++-- 会话（引擎）创建时初始化；仍可当函数直接调用（测试脚本这样用）
++return setmetatable({
++    init = function(env) pcall(setup_choice_memory, env); pcall(setup_select_stats, env) end,
++    func = processor,
++}, { __call = function(_, key, env) return processor(key, env) end })
