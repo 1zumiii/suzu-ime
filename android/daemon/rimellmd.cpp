@@ -126,6 +126,7 @@ std::string        g_token;
 long long          g_start_ms = 0;
 std::atomic<int>   g_clients{0};
 std::atomic<long long> g_requests{0}, g_errors{0}, g_scores{0}, g_skipped{0};
+std::atomic<long long> g_skip_unprepared{0}, g_skip_busy{0};   // 跳过原因拆分：上文未预解码 / 后台预解码占锁（其余归入 skipped 总数）
 std::atomic<int>   g_last_score_ms{0}, g_max_score_ms{0};
 std::atomic<long long> g_score_ms_sum{0};
 std::atomic<bool>  g_screen_off{false};
@@ -206,6 +207,8 @@ std::vector<std::string> call_score(const std::string & ctx, const std::vector<s
     if (!lua_istable(g_L, r1)) {
         g_skipped++;
         const char * why = lua_isstring(g_L, r2) ? lua_tostring(g_L, r2) : "";
+        if (strcmp(why, "unprepared") == 0) g_skip_unprepared++;
+        else if (strcmp(why, "busy") == 0) g_skip_busy++;
         return {"N", why};
     }
     std::vector<std::string> ranked;
@@ -260,10 +263,10 @@ std::string build_status(const char * role, const char * state) {
     snprintf(buf, sizeof buf,
         "{\"ts\":%lld,\"role\":\"%s\",\"state\":\"%s\",\"pid\":%d,\"version\":\"%s\",\"uptime_s\":%lld,"
         "\"enabled\":%s,\"model_loaded\":%s,\"rss_kb\":%ld,\"clients\":%d,\"requests\":%lld,\"errors\":%lld,"
-        "\"scores\":%lld,\"skipped\":%lld,\"last_score_ms\":%d,\"avg_score_ms\":%.1f,\"max_score_ms\":%d,"
+        "\"scores\":%lld,\"skipped\":%lld,\"skip_unprepared\":%lld,\"skip_busy\":%lld,\"last_score_ms\":%d,\"avg_score_ms\":%.1f,\"max_score_ms\":%d,"
         "\"student\":%s,\"screen\":\"%s\",\"idle_unload_sec\":%d,\"restarts\":%d,\"last_exit\":\"%s\",\"last_request_s\":%lld,\"port\":%d}",
         now_s(), role, state, (int)getpid(), proto::kVersion, up, g_enabled.load() ? "true" : "false", ready ? "true" : "false", read_rss_kb(),
-        g_clients.load(), g_requests.load(), g_errors.load(), sc, g_skipped.load(), g_last_score_ms.load(),
+        g_clients.load(), g_requests.load(), g_errors.load(), sc, g_skipped.load(), g_skip_unprepared.load(), g_skip_busy.load(), g_last_score_ms.load(),
         sc ? (double)g_score_ms_sum.load() / (double)sc : 0.0, g_max_score_ms.load(),
         g_opt.student_vocab.empty() ? "false" : "true",
         g_screen_off.load() ? "off" : "on", effective_idle(),
