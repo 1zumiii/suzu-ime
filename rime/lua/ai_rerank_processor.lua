@@ -98,6 +98,26 @@ local function load_llm(env)
     local mp = sc:get_string("llm_rerank/model_path")
     if mp and mp ~= "" then cpp.model_path = mp
     elseif ud then cpp.model_path = ud .. "/Qwen3.5-0.8B-Q4_K_M.gguf" end   -- 默认：用户目录下的模型（macOS 即 ~/Library/Rime）
+    -- Suzu 学生模型（字符级小模型）：桌面端（进程内加载）用户目录里有 suzu.gguf 和 suzu.vocab.txt 就自动使用，否则用上面的 Qwen；
+    -- 也可用 llm_rerank/student_model、llm_rerank/student_vocab 指定路径，llm_rerank/student: false 强制不用。
+    -- 安卓不走这里：守护进程启动时自己按同名文件选择模型。
+    local student = false
+    if ud and not cpp.set_enabled and sc:get_bool("llm_rerank/student") ~= false then
+        local function exists(path)
+            local fh = path and io.open(path, "rb")
+            if fh then fh:close() return true end
+            return false
+        end
+        local sm = sc:get_string("llm_rerank/student_model")
+        local sv = sc:get_string("llm_rerank/student_vocab")
+        if not sm or sm == "" then sm = ud .. "/suzu.gguf" end
+        if not sv or sv == "" then sv = ud .. "/suzu.vocab.txt" end
+        if exists(sm) and exists(sv) then
+            cpp.model_path = sm
+            cpp.student_vocab = sv
+            student = true
+        end
+    end
     local mt = sc:get_int("llm_rerank/max_tokens")
     if mt then cpp.max_ctx = mt end
     local cores = sc:get_int("llm_rerank/cpu_cores")
@@ -107,6 +127,8 @@ local function load_llm(env)
     -- 0 = 不卸载。默认 20 分钟。
     local idle = sc:get_int("llm_rerank/idle_unload_minutes")
     if idle == nil then idle = 20 end
+    -- 学生模型只占一百多 MB，默认常驻（不卸载）；llm_rerank/idle_unload_minutes_student 可改
+    if student then idle = sc:get_int("llm_rerank/idle_unload_minutes_student") or 0 end
     cpp.idle_unload_sec = math.max(0, idle) * 60
     -- Android：Trime 在亮屏/熄屏时设置 Rime 选项 screen_off；转给常驻推理进程，熄屏后它会更快卸载模型（其他平台没有这个函数）
     if cpp.screen_off then
