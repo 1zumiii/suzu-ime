@@ -66,6 +66,14 @@ local function is_finite_number(v)
     return type(v) == "number" and v == v and v > -math.huge and v < math.huge
 end
 
+-- emoji 候选（simplifier 生成，文字里没有字母、数字、汉字、假名、谚文）不参与重排。
+-- 识别方式与 emoji_defer_filter 相同，直接复用它的判断；模块缺失时视为没有 emoji。
+local okdefer, defer = pcall(require, "emoji_defer_filter")
+local function is_emoji_cand(c)
+    if not (okdefer and type(defer) == "table" and defer.is_emoji_text) then return false end
+    return c.type == "simplified" and defer.is_emoji_text(c.text)
+end
+
 local function is_valid_llm_score(v)
     return is_finite_number(v) and v > -1e9
 end
@@ -272,6 +280,7 @@ local function inner(translation, env)
     -- 全拼适配：候选窗里混有只覆盖前几个音节的前缀词（_end < #input），模型只看每个
     -- 候选的前 3 个 token，短前缀词会系统性占优。所以只在同一覆盖长度（相同 _end）的
     -- 一组候选内重排，结果按原位次回填，其余候选位置不动。取不到 _end 时视为全部覆盖。
+    -- emoji 候选不参与重排：不占打分名额，位置也不动（它们属于“其余候选”，按原位次保留）。
     local orig = all
     local full, full_pos, has_end = {}, {}, false
     local groups, best_e = {}, nil
@@ -279,6 +288,8 @@ local function inner(translation, env)
         local okend, e = pcall(function() return c._end end)
         if okend and type(e) == "number" then
             has_end = true
+        end
+        if okend and type(e) == "number" and not is_emoji_cand(c) then
             local g = groups[e]
             if not g then g = {}; groups[e] = g end
             g[#g + 1] = i
@@ -294,7 +305,7 @@ local function inner(translation, env)
     else
         for _, c in ipairs(orig) do
             local okend, e = pcall(function() return c._end end)
-            if okend and type(e) == "number" and e < #input
+            if okend and type(e) == "number" and e < #input and not is_emoji_cand(c)
                and (utf8.len(c.text or "") or 0) == 2 and groups[e] and #groups[e] >= 2 then
                 best_e = e
                 break
@@ -313,8 +324,13 @@ local function inner(translation, env)
         end
     end
     if not has_end then
-        full, full_pos = orig, {}
-        for i = 1, #orig do full_pos[i] = i end
+        full, full_pos = {}, {}
+        for i, c in ipairs(orig) do
+            if not is_emoji_cand(c) then
+                full[#full + 1] = c
+                full_pos[#full_pos + 1] = i
+            end
+        end
     end
     if #full < 2 then
         dbg(string.format("skip: group<2 (has_end=%s, groups=%d, input_len=%d)",
