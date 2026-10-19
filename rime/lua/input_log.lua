@@ -8,7 +8,9 @@
 -- 事件（每行一个 JSON；公共字段 v 格式版本、t 秒级时间戳、q 会话内序号、s 会话 id、k 类型）：
 --   start  会话开始
 --   sel    选词：in 拼音、w 所选词、i 所选位次、ty 类型、ai 重排开关、top 最终首位、orig 原首位、c 候选与各项分数（有重排时）
---   cmt    上屏（取自 commit_history，含选词、标点、直接上屏的拼音等）：w 文字、ty 类型
+--          所选词不含汉字（英文单词等）时不记
+--   cmt    上屏（取自 commit_history）：w 文字、ty 类型。只记含汉字的上屏与纯标点（句末标点用于断句）；
+--          含字母或数字而没有汉字的上屏（英文、数字串、回车上屏的拼音）不记内容，只记一次 cut（why = ascii）
 --   del    没有未上屏拼音时的退格
 --   cut    失步：why 为原因码（nav 方向键等、enter 回车、mod 组合键、delete 向后删除、ascii 英文模式直接输入）
 local json = require("rerank_json")
@@ -18,6 +20,21 @@ local M = {}
 local NAV = { Left = true, Right = true, Up = true, Down = true, Home = true, End = true,
               Page_Up = true, Page_Down = true, Tab = true }
 local HARMLESS_MOD = { ["Control+c"] = true, ["Super+c"] = true, ["Control+C"] = true, ["Super+C"] = true }
+
+local function has_han(s)
+    for _, cp in utf8.codes(s) do
+        if (cp >= 0x3400 and cp <= 0x9FFF) or (cp >= 0xF900 and cp <= 0xFAFF) or (cp >= 0x20000 and cp <= 0x2FFFF) then
+            return true
+        end
+    end
+    return false
+end
+
+-- 不含汉字时，含字母或数字（含全角）就不记内容
+local function is_alnum_only(s)
+    return not has_han(s) and (s:find("%w") ~= nil or s:find("\239\188[\144-\153\161-\186]") ~= nil
+                                or s:find("\239\189[\129-\154]") ~= nil)
+end
 
 local function user_dir()
     local ok, ud = pcall(function() return rime_api.get_user_data_dir() end)
@@ -91,7 +108,19 @@ local function flush_commits(st, ctx, quiet)
     end
     -- 快照非空却完全不重叠：多为引擎清空了历史，新历史全部算新增。quiet：只建立快照，不记录
     for i = quiet and #cur + 1 or overlap + 1, #cur do
-        if cur[i].text ~= "" then write(st, { k = "cmt", w = cur[i].text, ty = cur[i].type }) end
+        local text = cur[i].text
+        local okh, alnum = pcall(is_alnum_only, text)
+        if text == "" then
+            -- 空上屏：忽略
+        elseif not okh or alnum then
+            if not st.ascii then
+                st.ascii = true
+                write(st, { k = "cut", why = "ascii" })
+            end
+        else
+            st.ascii = false
+            write(st, { k = "cmt", w = text, ty = cur[i].type })
+        end
     end
     st.snap = cur
 end
@@ -130,7 +159,7 @@ function M.attach(env)
         pcall(function()
             flush_commits(st, c)
             local cand = c:get_selected_candidate()
-            if not cand then return end
+            if not cand or not has_han(cand.text or "") then return end
             local seg = c.composition:back()
             local input = c.input or ""
             local info = _G.ai_select_info
@@ -142,7 +171,6 @@ function M.attach(env)
                 top = fresh and info.ft or nil, orig = fresh and info.of or nil,
                 c = fresh and info.rp and info.rp.nat and info.rp or nil,
             })
-            st.ascii = false
         end)
     end)
     ctx.commit_notifier:connect(function(c) pcall(flush_commits, st, c) end)
