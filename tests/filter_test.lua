@@ -1,6 +1,6 @@
 -- 用模拟的 Rime 环境 + 真实 rime_llm.so + 真实模型，端到端跑 ai_rerank_filter / ai_rerank_processor
 local repo, ud, model = arg[1], arg[2], arg[3]
-package.path = repo .. "/lua/?.lua;" .. package.path
+package.path = repo .. "/rime/lua/?.lua;" .. package.path
 
 local fails = 0
 local function check(name, cond, extra)

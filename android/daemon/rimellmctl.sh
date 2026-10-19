@@ -1,6 +1,6 @@
 #!/bin/bash
 # 在手机上部署、启动、停止 AI 重排守护进程 rimellmd（shell 身份，经 adb；重启手机后需要重新 start）。
-# 用法：llm-android/daemon/rimellmctl.sh <deploy|start|stop|restart|status|log> [选项]
+# 用法：android/daemon/rimellmctl.sh <deploy|start|stop|restart|status|log> [选项]
 #   deploy   推送二进制和模型到 /data/local/tmp/rimellm/（模型大小一致则跳过）
 #   start    （必要时先 deploy）以「监督进程 + 工作进程」方式启动；已在运行则不重复启动
 #   stop     停止（先终止监督进程，它会带走工作进程）

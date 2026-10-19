@@ -1,7 +1,7 @@
 -- 个人词对（personal_pairs）与 recent_boost_filter 的单元测试，不需要模型。
--- 用法：lua llm-mac/pairs_test.lua <仓库目录> <临时目录>
+-- 用法：lua macos/pairs_test.lua <仓库目录> <临时目录>
 local repo, tmp = arg[1], arg[2]
-package.path = repo .. "/lua/?.lua;" .. package.path
+package.path = repo .. "/rime/lua/?.lua;" .. package.path
 local fails = 0
 local function check(name, cond, extra)
   print((cond and "PASS " or "FAIL ") .. name .. (extra and ("  [" .. extra .. "]") or ""))

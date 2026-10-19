@@ -1,5 +1,8 @@
 # rime-llm-rerank 的 Android 移植（Trime，已可日常使用）
 
+> 本目录是 Android 端的推理守护进程、客户端库与改版 Trime 补丁。手机端的配置推送脚本（`deploy_trime.sh`）、手机专属覆盖配置（`*.overlay.yaml`）和主题补丁（`*.custom.yaml`）放在配置仓库 [rime-ice-Custom](https://github.com/1zumiii/rime-ice-Custom) 的 `llm-android/trime/` 下。改版 Trime 的“从仓库更新”按这个固定路径读取，路径不能改名。下文提到这些文件时，均指配置仓库里的位置。
+
+
 目标设备：ASUS Zenfone 10（骁龙 8 Gen 2，16 GB，Android 15）。目标前端：[Trime（同文输入法）](https://github.com/osfans/trime)。
 
 ## 已验证的事实
@@ -32,7 +35,7 @@ Trime 的 nightly 构建（arm64，v3.3.12-73）：
 
 ## 第一档配置的部署
 
-`llm-android/deploy_trime.sh` 通过 `adb push` 将本仓库的配置推送到手机的 `/sdcard/Android/data/com.osfans.trime/files/rime`，再用 Trime 自带的广播 `com.osfans.trime.action.DEPLOY` 触发部署，无需在手机上操作界面：
+`rime-ice-Custom` 仓库的 `llm-android/deploy_trime.sh` 通过 `adb push` 将本仓库的配置推送到手机的 `/sdcard/Android/data/com.osfans.trime/files/rime`，再用 Trime 自带的广播 `com.osfans.trime.action.DEPLOY` 触发部署，无需在手机上操作界面：
 
 ```bash
 llm-android/deploy_trime.sh --with-gram        # 首次：配置 + 语法模型（约 380 MB）
@@ -114,7 +117,7 @@ Trime（改版 APK）                              rimellmd（shell 身份，由
 
 - 启用：把 `suzu.gguf`（建议 Q8_0）和词表 `suzu.vocab.txt` 放进 Trime 的用户目录，然后让守护进程重启（先结束旧进程，再点工具栏的 AI 徽标启动）。启动脚本发现这两个文件就自动使用学生模式，否则仍用 0.8B。徽标长按的详情会显示当前模型。
 - 回退：删除这两个文件并重启守护进程即可回到 0.8B；此时候选数自动限制为 3 个（`--n-seq-max 4`），不会因为配置里的候选数变多而变慢。
-- 实现：推理核心的补丁在 `llm-mac/port_to_mac.py` 里（Lua 属性 `student_vocab` 开启）。输入为 `<bos>` + 上文最后 30 个字 + 候选的字，不使用 llama 的分词器；打分为候选各字对数概率之和，各位置权重为 1，与蒸馏评测同口径；候选的字按位置并行解码，上文的预解码沿用原有机制。
+- 实现：推理核心的补丁在 `macos/port_to_mac.py` 里（Lua 属性 `student_vocab` 开启）。输入为 `<bos>` + 上文最后 30 个字 + 候选的字，不使用 llama 的分词器；打分为候选各字对数概率之和，各位置权重为 1，与蒸馏评测同口径；候选的字按位置并行解码，上文的预解码沿用原有机制。
 - 学生模式下，打分遇到后台预解码持锁最多等 30 ms，上文没有预解码好也现场解码（约 20 ms），不再像 0.8B 那样直接跳过；0.8B 解码上文要 40~55 ms，仍保留跳过保护。
 - 注意：学生的训练上下文上限为 64，上文最多取 30 个字；候选最多打分前 12 个字。
 - 验证：`daemon/test_student.py` 在手机上单独起一个守护进程（端口 17921），核对几组同音词的排序并测延迟。
@@ -125,19 +128,19 @@ Trime（改版 APK）                              rimellmd（shell 身份，由
 改版 Trime 在工具栏左侧三个点打开的面板里提供“从仓库更新”入口（与原有的“更新配置”不同，后者只是重新部署本地配置），打开后可填写仓库地址与分支（默认 `1zumiii/rime-ice-Custom` 的 `custom` 分支），点击“立即更新”即完成下载、覆盖和重新部署。
 
 - 地址格式：`https://github.com/用户/仓库`、`用户/仓库`、`.../tree/分支`，或直接给 `.zip` 链接。仓库须公开。
-- 覆盖范围与 `deploy_trime.sh` 一致：排除其他平台文件、文档、构建产物、个人数据和大模型；`llm-android/trime/*.overlay.yaml` 追加到同名 `.custom.yaml`，`llm-android/trime/*.custom.yaml`（主题补丁）直接放入用户目录；新装默认关闭 AI 的处理也一并执行。
+- 覆盖范围与 `deploy_trime.sh` 一致：排除其他平台文件、文档、构建产物、个人数据和大模型；`rime-ice-Custom` 仓库 `llm-android/trime/*.overlay.yaml` 追加到同名 `.custom.yaml`，`llm-android/trime/*.custom.yaml`（主题补丁）直接放入用户目录；新装默认关闭 AI 的处理也一并执行。
 - 备份与回退：覆盖前把将被改动的文件备份到应用私有目录，只保留上一个版本。更新后 45 秒内进程被重启两次（即连续崩溃两次）自动回退，部署本身失败时立即回退，也可在界面上手动回退。回退会恢复被改动的文件、删除新增的文件并强制重新编译。
 - 需要联网，因此改版 Trime 声明了 `INTERNET` 权限。更新界面不对外导出，只能从该面板进入。
 - 相关源码：补丁中的 `update/ConfigUpdater.kt`、`update/ConfigUpdateActivity.kt`、`ime/switches/SwitchOptionWindow.kt` 中的入口。
 
 ## 构建与测试
 
-整套产物（改版 APK、客户端库、守护进程）由 `trime/build_apk.sh` 一次完成。前提：JDK 17、Android NDK r27d（`27.3.13750724`）、CMake 3.31.6，以及 `../../rime-llm-mac-port/` 中的 llama.cpp 与转换后的 `rime_llm_mac.cpp`（见 [llm-mac/README.md](../llm-mac/README.md)）。
+整套产物（改版 APK、客户端库、守护进程）由 `trime/build_apk.sh` 一次完成。前提：JDK 17、Android NDK r27d（`27.3.13750724`）、CMake 3.31.6，以及 `../../rime-llm-mac-port/` 中的 llama.cpp 与转换后的 `rime_llm_mac.cpp`（见 [macos/README.md](../macos/README.md)）。
 
 单独编译守护进程和客户端：
 
 ```bash
-cmake -G Ninja -S llm-android -B build_android \
+cmake -G Ninja -S android -B build_android \
   -DCMAKE_TOOLCHAIN_FILE=$NDK/build/cmake/android.toolchain.cmake \
   -DANDROID_ABI=arm64-v8a -DANDROID_PLATFORM=android-30 \
   -DRIME_LLM_HOST_LIB=<librime_jni.so>
