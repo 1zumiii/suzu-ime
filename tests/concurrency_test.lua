@@ -27,7 +27,10 @@ local function setup(m)
 end
 local function wait_ready(m, limit)
   local t0 = os.time()
-  while not m.score("他在公司当", cands) do
+  while true do
+    local r, why = m.score("他在公司当", cands)
+    if r then break end
+    if why == "no_model" then print("FAIL: model failed to load (see rime_llm_log.txt)"); os.exit(1) end
     os.execute("sleep 0.05"); if os.time() - t0 > (limit or 60) then return false end
   end
   return true
@@ -96,7 +99,7 @@ elseif case == "loading" then
 
 elseif case == "reinit" then
   -- 模块被回收（__gc）后重新 require：工作线程不泄漏，空闲卸载仍然有效
-  m.idle_unload_sec = 2
+  m.idle_unload_sec = 1
   check("model loads", wait_ready(m))
   local th1 = nthreads()
   m = nil
@@ -106,11 +109,11 @@ elseif case == "reinit" then
   check("module gc stops the worker and its thread pool", th_after_gc < th1, string.format("%d -> %d", th1, th_after_gc))
   local m2 = require("rime_llm")
   setup(m2)
-  m2.idle_unload_sec = 2
+  m2.idle_unload_sec = 1
   check("re-initialised module is a fresh table that can load", wait_ready(m2))
   local th2 = nthreads()
   check("no thread leak across re-init", th2 <= th1, string.format("%d -> %d", th1, th2))
-  os.execute("sleep 3.5")
+  os.execute("sleep 2")
   check("idle unload still works after re-init", m2.is_ready() == false)
   check("works again afterwards", wait_ready(m2))
   finish()
@@ -121,12 +124,12 @@ elseif case == "toggles" then
   check("model loads", wait_ready(m))
   local th0 = nthreads()
   for i = 1, 200 do m.idle_unload_sec = (i % 4 == 0) and 0 or (i % 7 + 1) end
-  m.idle_unload_sec = 2
+  m.idle_unload_sec = 1
   os.execute("sleep 0.5")
   local th1 = nthreads()
   check("200 config changes: thread count unchanged", th1 <= th0, string.format("%d -> %d", th0, th1))
-  os.execute("sleep 3")
-  check("last setting (2 s) still takes effect", m.is_ready() == false)
+  os.execute("sleep 1.8")
+  check("last setting (1 s) still takes effect", m.is_ready() == false)
   finish()
 
 elseif case == "exit_wait" then

@@ -22,6 +22,6 @@ check("match_code('','x') == true (empty pattern)", m.match_code("", "x") == tru
 m.log_dir = log_dir
 m.model_path = log_dir .. "/no_such_model.gguf"
 check("score() with no model returns nil", m.score("你好", { "世界", "是借" }) == nil)
-os.execute("sleep 2")
+os.execute("sleep 0.5")   -- 新核心加载失败是立即的；留一点余量给后台线程
 check("still not ready after failed load", m.is_ready() == false)
 print("ALL OK")

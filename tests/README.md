@@ -6,7 +6,14 @@
 tests/run_all.sh <core 的构建目录> <suzu.gguf> <suzu.vocab.txt> [--quick]
 ```
 
-构建目录须含 `rime_llm.so`；含 `rimellmd` 与 `client/librime_llm.so` 时一并测试守护进程。Lua 解释器优先用构建目录里的 `lua54`（`-DSUZU_BUILD_TOOLS=ON`）。构建方法见 `core/README.md`。
+构建目录须含 `rime_llm.so`；含 `rimellmd` 时一并测试守护进程（守护进程只在 Linux 上构建）。Lua 解释器优先用构建目录里的 `lua54`（`-DSUZU_BUILD_TOOLS=ON`）。构建方法见 `core/README.md`。
+
+在 4 核的 Linux 主机上依次运行全部测试约 50 秒（以前约 2 分钟）；6 核以上并行时更短。为此做了这几件事：
+
+- Lua 测试、留出集对照、守护进程测试三组互不依赖，在 6 核及以上的机器上默认并行，核数更少时依次运行；`--parallel`、`--serial` 可强制指定。Lua 测试组里有计时检查，组内始终依次运行。
+- 功能检查（排序是否正确、两阶段是否运行）用宽松的时限，机器忙时不会因为超时而误报；时限本身由专门的检查验证（`filter_test.lua` 的 I 组、`test_daemon.py` 的 Q 请求）。
+- 开跑前先确认模型能加载，路径一律转为绝对路径。模型加载失败时整个脚本立即中止，各测试的等待循环也在核心返回 `no_model` 时立即退出，不会每个测试都空等 60 秒。
+- 空闲卸载类测试的时限用 1 秒；守护进程测试在主机上把监督进程的心跳调为 0.5 秒（`--heartbeat-ms 500 --max-backoff-s 1`），冻结检测由约 22 秒缩短到约 3 秒。
 
 ## 清单
 

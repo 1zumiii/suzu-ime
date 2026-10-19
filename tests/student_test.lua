@@ -21,7 +21,9 @@ local cases = {
 
 local t0 = os.time()
 while true do
-  if m.score(cases[1][1], cases[1][2]) then break end
+  local r, why = m.score(cases[1][1], cases[1][2])
+  if r then break end
+  if why == "no_model" then print("FAIL: model failed to load (see rime_llm_log.txt)"); os.exit(1) end
   if os.time() - t0 > 60 then print("FAIL: model not ready in 60s"); os.exit(1) end
   os.execute("sleep 0.2")
 end
