@@ -171,5 +171,24 @@ do
   check("选项被还原成 false（可再次触发）", opts.ai_ctx_reset == false)
 end
 
+
+-- 诊断文件：初始化、通知到达、回调出错都有记录，且不含输入与候选文字
+do
+  local function read_diag()
+    local f = io.open(tmp .. "/select_stats_diag.txt", "r"); local c = f and f:read("*a") or ""; if f then f:close() end
+    return c
+  end
+  local d1 = read_diag()
+  check("diag: 初始化有记录", d1:find("init stats_on=true", 1, true) ~= nil, d1:sub(1, 80))
+  check("diag: 选词通知到达有记录", d1:find("select_notifier fired #1", 1, true) ~= nil)
+  -- 回调出错：get_selected_candidate 抛错，错误被记录而不是被吞掉
+  local env2, fire2 = mk_env("精力", 0, true, "jingli")
+  env2.engine.context.get_selected_candidate = function() error("boom-test") end
+  mod.init(env2)
+  fire2()
+  local d2 = read_diag()
+  check("diag: 回调出错有记录", d2:find("callback error", 1, true) ~= nil and d2:find("boom-test", 1, true) ~= nil)
+  check("diag: 不含输入与候选文字", not d2:find("jingli", 1, true) and not d2:find("精力", 1, true))
+end
 print(fails == 0 and "全部通过" or ("失败 " .. fails))
 os.exit(fails == 0 and 0 or 1)
