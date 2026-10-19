@@ -50,6 +50,7 @@ struct Options {
     int max_ctx = 10;
     int n_ctx = 0;                              // 0 = 用引擎默认（128）；手机上候选少，可以收紧以省内存
     int n_seq_max = 0;                          // 0 = 用引擎默认（12）
+    bool repack = false;                        // 打开 CPU 权重重排（小模型上多占的内存可以忽略；实测见 README）
     int idle_sec = 0;                           // 屏幕亮着时的空闲卸载时限；0 = 不自动卸载
     int screen_off_sec = 0;                     // 熄屏后的空闲卸载时限；0 = 不单独设（手动启停为主，默认不自动卸载）
     int orphan_sec = 600;                       // 状态目录（Trime 的数据目录）消失超过这么久就自己退出；0 = 不检查
@@ -392,6 +393,7 @@ int run_daemon() {
     g_mod_ref2 = luaL_ref(g_L2, LUA_REGISTRYINDEX);
     g_idle_normal.store(g_opt.idle_sec);
     set_prop_str("log_dir", g_opt.log_dir);
+    if (g_opt.repack) set_prop_int("use_repack", 1);   // 引擎里用 lua_toboolean 读取，只在需要时设置
     set_prop_str("model_path", g_opt.model);
     if (!g_opt.student_vocab.empty()) set_prop_str("student_vocab", g_opt.student_vocab);
     set_prop_int("n_threads", g_opt.threads);
@@ -577,6 +579,7 @@ int main(int argc, char ** argv) {
         else if (a == "--rime-dir")   { v = need("--rime-dir");        g_opt.rime_dir = v; }
         else if (a == "--log-dir")    { v = need("--log-dir");         g_opt.log_dir = v; }
         else if (a == "--threads")    { v = need("--threads");         g_opt.threads = atoi(v.c_str()); }
+        else if (a == "--repack")     { g_opt.repack = true; }
         else if (a == "--max-ctx")    { v = need("--max-ctx");         g_opt.max_ctx = atoi(v.c_str()); }
         else if (a == "--orphan-sec") { v = need("--orphan-sec");      g_opt.orphan_sec = atoi(v.c_str()); }
         else if (a == "--n-ctx")      { v = need("--n-ctx");           g_opt.n_ctx = atoi(v.c_str()); }
