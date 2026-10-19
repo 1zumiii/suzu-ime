@@ -82,8 +82,9 @@ bool Connection::connect_locked(long long deadline) {
     if (ipc::mono_ms() < retry_at_) return false;
     std::string token = read_token_locked();
     if (token.empty()) { fail_locked(); return false; }   // 守护进程还没启动过
-    int fd = socket(AF_INET, SOCK_STREAM | SOCK_CLOEXEC, 0);
+    int fd = socket(AF_INET, SOCK_STREAM, 0);   // SOCK_CLOEXEC 在 macOS 上没有，统一用 fcntl 设置
     if (fd < 0) { fail_locked(); return false; }
+    fcntl(fd, F_SETFD, FD_CLOEXEC);
     fcntl(fd, F_SETFL, O_NONBLOCK);
     struct sockaddr_in a;
     memset(&a, 0, sizeof a);
