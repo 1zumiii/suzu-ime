@@ -50,6 +50,19 @@ local function user_dir()
     return nil
 end
 
+-- 诊断日志（只写事件名与错误信息，不含任何输入和候选文字）：初始化与选词统计出问题时用来定位
+local function diag_line(msg)
+    local ud = user_dir()
+    if not ud then return end
+    local path = ud .. "/select_stats_diag.txt"
+    local fh = io.open(path, "a")
+    if not fh then return end
+    local size = fh:seek("end")
+    fh:write(os.date("%m-%d %H:%M:%S "), msg, "\n")
+    fh:close()
+    if size and size > 20 * 1024 then os.rename(path, path .. ".old") end
+end
+
 -- 上文：只用本会话上屏的词。去空白（与 filter 保持一致，保证预解码命中）
 local function get_context()
     return table.concat(history, "")
@@ -252,16 +265,8 @@ local function setup_select_stats(env)
     local seq, last_corpus_id, last_corpus_t = 0, nil, 0
     env.engine.context.commit_notifier:connect(function() prev_commit_t = os.time() end)
     -- 诊断：记录统计功能是否初始化、选词通知是否到达、回调是否出错（只写事件名与错误信息，不含任何输入和候选文字）。
-    local dpath = ud .. "/select_stats_diag.txt"
     local fired = 0
-    local function diag(msg)
-        local fh = io.open(dpath, "a")
-        if not fh then return end
-        local size = fh:seek("end")
-        fh:write(os.date("%m-%d %H:%M:%S "), msg, "\n")
-        fh:close()
-        if size and size > 20 * 1024 then os.rename(dpath, dpath .. ".old") end
-    end
+    local diag = diag_line
     diag(string.format("init stats_on=%s corpus_on=%s", tostring(stats_on), tostring(corpus_on)))
     env.engine.context.select_notifier:connect(function(ctx)
         fired = fired + 1
@@ -441,6 +446,10 @@ end
 
 -- 会话创建时就加载并同步一次开关（之前要等第一次按键才加载：在那之前点安卓徽标切换开关，守护进程收不到，表现为第一次点击失效）
 return setmetatable({
-    init = function(env) pcall(load_llm, env); pcall(setup_ctx_reset, env); pcall(setup_choice_memory, env); pcall(setup_select_stats, env) end,
+    init = function(env)
+        pcall(load_llm, env); pcall(setup_ctx_reset, env); pcall(setup_choice_memory, env)
+        -- 选词统计的初始化出错时记入诊断文件，不再静默失败
+        xpcall(setup_select_stats, function(e) diag_line("setup_select_stats error: " .. tostring(e)) end, env)
+    end,
     func = processor,
 }, { __call = function(_, key, env) return processor(key, env) end })   -- 仍可当函数直接调用（测试脚本这样用）
