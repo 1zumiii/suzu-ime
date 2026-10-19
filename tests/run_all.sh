@@ -63,6 +63,7 @@ lua_tests() {
   run "student_test"          "$LUA" student_test.lua "$B" "$MODEL" "$VOCAB" "$(d student)" 2
   run "pairs_test"            "$LUA" pairs_test.lua "$REPO" "$(d pairs)"
   run "select_stats_test"     "$LUA" select_stats_test.lua "$REPO" "$(d select)"
+  run "replay_test"           "$LUA" replay_test.lua "$REPO" "$B" "$MODEL" "$VOCAB" "$(d replay)"
   run "filter_test"           "$LUA" filter_test.lua "$REPO" "$UD" "$UD/suzu.gguf"
   run "idle_test"             "$LUA" idle_test.lua "$B" "$MODEL" "$(d idle)" exit
   local c

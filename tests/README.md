@@ -25,6 +25,7 @@ tests/run_all.sh <core 的构建目录> <suzu.gguf> <suzu.vocab.txt> [--quick]
 | `idle_test.lua` | 空闲卸载、内存归还、透明重载 | 是 |
 | `concurrency_test.lua` | 卸载与输入交错、加载中输入、模块重新初始化、配置反复切换、退出 | 是 |
 | `pairs_test.lua`、`select_stats_test.lua` | 个人词对、选词统计 | 否 |
+| `replay_test.lua` | 回放数据的记录内容；`tools/replay.py` 用记录里的参数逐条复现最终首位；`tools/corpus_report.py` 可运行且不输出文字 | 是 |
 | `parity/run_cases.lua`、`parity/compare.py` | 1293 题留出集逐题打分与对照 | 是 |
 | `keysim.lua` | 按键仿真：跳过率、等待时间分布；`chaos=` 可做故障注入（配合 `chaos_daemon.sh`） | 是 |
 | `test_daemon.py` | 守护进程：协议、认证、非法输入、时限、并发；`--chaos` 做 kill -9、SIGSTOP、删除模型的恢复测试。`--host` 在本机运行，不加则经 adb 测手机上的守护进程 | 是 |

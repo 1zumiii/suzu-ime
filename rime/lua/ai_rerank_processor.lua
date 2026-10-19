@@ -218,8 +218,44 @@ end
 --     （默认 0.1）随机抽样，用来防止训练时学成“别选第一位”。每行：id、时间戳（分钟）、输入字母数、上文最后 6 个字、所选词、
 --     最终顺序第一位的词、原顺序第一位的词、类型（hard|anchor）、距上一次上屏的秒数（越大，上文越可能已经不对）、模型。
 --     选词后 3 秒内按退格，会追加一行 revise<Tab>id，表示这条可能选错了。只记含中文的候选，不记英文和数字。
+-- 三、select_replay.jsonl（明文，与 select_corpus 同一个开关、同一批样本、同一个 id）：离线回放用。每行一个 JSON：
+--     拼音、模型看到的上文（最多 30 个字）、所选词、打分组里每个候选的原位次、类型、Rime quality、模型分、模型名次、
+--     会话词频、个人词对与纠错记忆的原始计数、是否模糊音、是否怪词，以及当时的融合系数、门控结果、第二阶段拼出的候选、
+--     候选窗前 20 个候选的文字与覆盖长度。tools/replay.py 据此换一套参数重新排序，不需要再跑模型。
 -- 删除对应的 .enabled 文件即停止记录，删除 tsv 即清空。文件只在本机，不会同步，也不会进入仓库。
 local revise_hook = nil
+
+-- 最小的 JSON 编码：只处理本文件写出的数据（字符串、数字、布尔、表；表按是否为连续数组区分）
+local function json_encode(v)
+    local tv = type(v)
+    if tv == "string" then
+        return '"' .. v:gsub('[%c"\\]', function(ch)
+            local map = { ['"'] = '\\"', ['\\'] = '\\\\', ['\n'] = '\\n', ['\r'] = '\\r', ['\t'] = '\\t' }
+            return map[ch] or string.format("\\u%04x", ch:byte())
+        end) .. '"'
+    elseif tv == "number" then
+        if v ~= v or v == math.huge or v == -math.huge then return "null" end
+        if math.type(v) == "integer" then return tostring(v) end
+        return string.format("%.6g", v)
+    elseif tv == "boolean" then
+        return tostring(v)
+    elseif tv == "table" then
+        local n = #v
+        local is_arr = n > 0 or next(v) == nil
+        if is_arr then for k in pairs(v) do if type(k) ~= "number" then is_arr = false; break end end end
+        local parts = {}
+        if is_arr then
+            for i = 1, n do parts[i] = json_encode(v[i]) end
+            return "[" .. table.concat(parts, ",") .. "]"
+        end
+        local keys = {}
+        for k in pairs(v) do keys[#keys + 1] = tostring(k) end
+        table.sort(keys)
+        for _, k in ipairs(keys) do parts[#parts + 1] = json_encode(k) .. ":" .. json_encode(v[k]) end
+        return "{" .. table.concat(parts, ",") .. "}"
+    end
+    return "null"
+end
 local function last_chars(str, n)
     local len = utf8.len(str)
     if not len or len == 0 then return "" end
@@ -237,7 +273,7 @@ local function setup_select_stats(env)
     local stats_on, corpus_on = enabled("select_stats.enabled"), enabled("select_corpus.enabled")
     _G.ai_select_stats_on = stats_on or corpus_on     -- 过滤器只在需要时才整理位次信息
     if not _G.ai_select_stats_on then return end
-    local spath, cpath = ud .. "/select_stats.tsv", ud .. "/select_corpus.tsv"
+    local spath, cpath, rpath = ud .. "/select_stats.tsv", ud .. "/select_corpus.tsv", ud .. "/select_replay.jsonl"
     local anchor_rate = env.engine.schema.config:get_double("llm_rerank/select_anchor_rate") or 0.1
     local model_cache, model_ts = "q", 0
     local function model_kind()
@@ -259,7 +295,7 @@ local function setup_select_stats(env)
         fh:write(line)
         fh:close()
         if size and size > limit then
-            if path == cpath then
+            if path == cpath or path == rpath then
                 local ok, arc = pcall(require, "corpus_archive")
                 if ok then arc.rotate(path) end            -- 训练语料不丢弃：分卷并压缩
             else
@@ -319,6 +355,14 @@ local function setup_select_stats(env)
                         id, now - now % 60, #input, last_chars(ctx_all, 6), text, ft, of, kind,
                         math.min(now - prev_commit_t, 9999), model_kind()), 2 * 1024 * 1024)
                     last_corpus_id, last_corpus_t = id, now
+                    if fresh and info.rp and info.rp.nat then   -- 没有打分（跳过、上文不足）的也记，用来统计覆盖率
+                        append(rpath, json_encode({
+                            v = 1, id = id, ts = now - now % 60, kind = kind, model = model_kind(),
+                            input = input, sel = sel, chosen = text, ft = info.ft, of = info.of,
+                            s1 = info.s1, gated = info.gated, dt = math.min(now - prev_commit_t, 9999),
+                            rp = info.rp,
+                        }) .. "\n", 2 * 1024 * 1024)
+                    end
                 end
             end
         end, function(e) diag("callback error: " .. tostring(e)) end)
