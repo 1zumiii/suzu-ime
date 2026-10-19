@@ -10,6 +10,7 @@
 //   --poll N           常驻线程池的自旋程度 0~100（默认 0）
 //   --mode cold|warm   cold：每题上文都是新的（现场解码上文）；warm：先 prepare 再打分，只计打分（默认 cold）
 //   --repeat R         整套重复 R 轮（默认 1），报每轮的分位数
+//   --gap-ms N         每题打分前空闲 N 毫秒（模拟按键间隔：缓存变冷、线程睡眠）
 //   --out PATH         写出与 res_q8.tsv 同格式的打分结果（只在第一轮写）
 // cases.tsv 每行：编号 \t 0 \t 上文 \t 候选1|候选2|…
 #include <algorithm>
@@ -21,6 +22,7 @@
 #include <fstream>
 #include <sstream>
 #include <string>
+#include <thread>
 #include <vector>
 
 #include "llama.h"
@@ -72,7 +74,7 @@ int main(int argc, char ** argv) {
     opt.vocab_path = argv[2];
     const char * cases_path = argv[3];
     std::string mode = "cold", out_path;
-    int repeat = 1;
+    int repeat = 1, gap_ms = 0;
     for (int i = 4; i < argc; i++) {
         std::string a = argv[i];
         auto next = [&]() { return i + 1 < argc ? argv[++i] : ""; };
@@ -87,6 +89,7 @@ int main(int argc, char ** argv) {
         else if (a == "--mode") mode = next();
         else if (a == "--repeat") repeat = atoi(next());
         else if (a == "--out") out_path = next();
+        else if (a == "--gap-ms") gap_ms = atoi(next());
         else { fprintf(stderr, "unknown option %s\n", a.c_str()); return 64; }
     }
     llama_log_set([](ggml_log_level lvl, const char * text, void *) {
@@ -113,6 +116,7 @@ int main(int argc, char ** argv) {
             std::vector<suzu::TokenSeq> cands;
             for (auto & w : c.cands) cands.push_back(model->vocab().encode_candidate(w));
             if (mode == "warm") model->prepare(ctx, nullptr);
+            if (gap_ms > 0) std::this_thread::sleep_for(std::chrono::milliseconds(gap_ms));   // 模拟两次按键之间的空闲
             suzu::DecodeStats st;
             std::vector<double> sc;
             auto a = std::chrono::steady_clock::now();
