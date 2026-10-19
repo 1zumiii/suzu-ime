@@ -10,7 +10,11 @@
 
 第二阶段拼出的候选无法离线重算：某个配置让第一阶段的首位变了时，这条记录的第二阶段结果未知，计入“第二阶段未知”，
 不参与该配置的命中率。
---set 追加一个自定义配置，例如 --set fb=0.5 --set cg=1（可用的名字见 PARAMS）。
+--set 追加一个旧排序的自定义配置，例如 --set fb=0.5 --set cg=1（可用的名字见 PARAMS）；
+--uset 追加一个统一排序的自定义配置，例如 --uset alpha=2 --uset lam_max=1.5（可用的名字见 U_DEFAULTS）。
+
+统一排序（llm_rerank/ranker: unified，公式见 rime/lua/rank_unified.lua）可以用旧排序下记录的数据评估。
+旧记录没有组内原名次与“最近用过”时，按当时的候选顺序近似，计入“近似”。
 """
 import argparse
 import math
@@ -58,6 +62,62 @@ def stage1(g, inp, p):
     return order
 
 
+U_DEFAULTS = {"alpha": 1.0, "mu": 0.6, "fb": 0, "pg": 1.5, "cg": 3.0, "fp": 3.0,
+              "lam_max": 1.0, "lam_ctx_full": 4, "lam_short": 0.5}
+
+
+def u_lam(p, ctx_chars, input_len, use_model):
+    if not use_model or ctx_chars < 2:
+        return 0.0
+    lam = p["lam_max"] * min(1.0, (ctx_chars - 1) / max(1, p["lam_ctx_full"] - 1))
+    return lam * p["lam_short"] if input_len <= 2 else lam
+
+
+def u_score(e, p, lam, smax):
+    if e.get("wd") == 1:
+        return NEG
+    t = -p["alpha"] * math.log(e["r"])
+    if lam > 0:
+        if e.get("s") is None:
+            return NEG
+        t += lam * (e["s"] - smax)
+    t += (p["fb"] * math.log1p(e.get("fq", 0)) + p["pg"] * math.log1p(e.get("pr", 0))
+          + p["cg"] * math.log1p(e.get("ch", 0)) + p["mu"] * e.get("rec", 0))
+    if e.get("fz") == 1:
+        t -= p["fp"]
+    return t
+
+
+def u_feats(g):
+    """旧记录没有 r、rec 时按当时的组内顺序补上（近似）。"""
+    if all("r" in e for e in g):
+        return g, False
+    return [dict(e, r=e.get("r", i + 1), rec=e.get("rec", 0)) for i, e in enumerate(g)], True
+
+
+def unified_top(rec, p):
+    rp = rec["rp"]
+    g = rp.get("g")
+    if not g:
+        return (rec["of"], True) if rp.get("uni") else (None, False)
+    g, _ = u_feats(g)
+    use_model = any(e.get("s") is not None for e in g)
+    lam = u_lam(p, min(len(rp.get("c", "")), 30), len(rec["input"]), use_model)
+    smax = max((e["s"] for e in g if e.get("s") is not None), default=NEG)
+    order = sorted(g, key=lambda e: (-u_score(e, p, lam, smax), e["r"]))
+    w1 = order[0]["t"]
+    if rp.get("s2") and lam > 0:
+        if "s2cmp" not in rp or w1 != rp.get("s2w1"):
+            return None, False
+        win = rp["s2cmp"] == 0 or (rp.get("s2n") is not None and rp.get("s2x") is not None
+                                    and lam * (rp["s2x"] - rp["s2n"]) > p["alpha"] * math.log(2))
+        if win:
+            return rp["s2"], True
+    if rp.get("cat") == 1 or rp.get("gp1") == 1:
+        return w1, True
+    return rp.get("n1", rec["of"]), True
+
+
 def final_top(rec, p, base_w1):
     """返回 (最终首位, 是否已知)。base_w1：当时配置下第一阶段的首位，用来判断第二阶段结果能否沿用。"""
     rp = rec["rp"]
@@ -68,7 +128,7 @@ def final_top(rec, p, base_w1):
     w1 = order[0]["t"]
     if rp.get("s2"):
         if p["s2"]:
-            if w1 != base_w1:
+            if w1 != (rp.get("s2w1") or base_w1):
                 return None, False
             return rp["s2"], True
     if rp.get("cat") == 1 or rp.get("gp1") == 1:
@@ -101,7 +161,35 @@ CONFIGS = [
     ("Rime quality qa=0.5", {"qa": 0.5}),
     ("Rime quality qa=1", {"qa": 1}),
     ("Rime quality qa=2", {"qa": 2}),
+    ("关 AI（Rime 原首位）", {"mode": "off"}),
+    ("统一排序", {"mode": "unified"}),
+    ("统一排序 λ=0", {"mode": "unified", "lam_max": 0}),
+    ("统一排序 alpha=0.5", {"mode": "unified", "alpha": 0.5}),
+    ("统一排序 alpha=2", {"mode": "unified", "alpha": 2}),
+    ("统一排序 lam_max=0.5", {"mode": "unified", "lam_max": 0.5}),
+    ("统一排序 lam_max=2", {"mode": "unified", "lam_max": 2}),
+    ("统一排序 lam_ctx_full=2", {"mode": "unified", "lam_ctx_full": 2}),
+    ("统一排序 mu=0", {"mode": "unified", "mu": 0}),
+    ("统一排序 mu=1.2", {"mode": "unified", "mu": 1.2}),
+    ("统一排序 fb=1.5", {"mode": "unified", "fb": 1.5}),
 ]
+
+
+def evaluate(rec, over, base_w1):
+    """按配置返回 (最终首位, 是否已知)。over 为空表示“当时配置”：记录在哪种排序下产生就按哪种重算。"""
+    rp = rec["rp"]
+    mode = over.get("mode") or ("unified" if rp.get("uni") and not over else "legacy")
+    if mode == "off":
+        return rec["of"], True
+    if mode == "unified":
+        p = dict(U_DEFAULTS)
+        if not over and rp.get("ucfg"):
+            p.update(rp["ucfg"])
+        p.update({k: v for k, v in over.items() if k != "mode"})
+        return unified_top(rec, p)
+    p = base_params(rp)
+    p.update(over)
+    return final_top(rec, p, base_w1)
 
 
 def coverage(recs, rate):
@@ -139,6 +227,7 @@ def main():
     ap.add_argument("--anchor-rate", type=float, default=0.1)
     ap.add_argument("--keep-revised", action="store_true")
     ap.add_argument("--set", action="append", default=[], metavar="名=值")
+    ap.add_argument("--uset", action="append", default=[], metavar="名=值")
     ap.add_argument("--check", action="store_true", help="只做自检：当时配置必须复现全部记录的最终首位，否则退出码 1")
     a = ap.parse_args()
 
@@ -155,15 +244,18 @@ def main():
     # 自检：当时配置必须逐条复现
     base_w1 = {}
     mismatch = 0
+    n_uni = n_approx = 0
     for r in recs:
-        p = base_params(r["rp"])
         g = r["rp"].get("g")
-        base_w1[r["id"]] = stage1(g, r["input"], p)[0]["t"] if g else None
-        top, _ = final_top(r, p, base_w1[r["id"]])
+        base_w1[r["id"]] = stage1(g, r["input"], base_params(r["rp"]))[0]["t"] if g else None
+        top, _ = evaluate(r, {}, base_w1[r["id"]])
         if top != r["ft"]:
             mismatch += 1
+        n_uni += bool(r["rp"].get("uni"))
+        n_approx += bool(g) and u_feats(g)[1]
     print(f"回放记录 {n_all} 条，去掉 revise {n_all - len(recs) - len(skipped_ew)} 条，"
           f"不支持的配置（expected_length_weight>0）{len(skipped_ew)} 条；自检不一致 {mismatch} 条")
+    print(f"其中统一排序下记录的 {n_uni} 条；统一排序按近似特征评估的 {n_approx} 条")
     if a.check:
         sys.exit(1 if mismatch else 0)
 
@@ -176,6 +268,14 @@ def main():
                 sys.exit(f"未知参数 {k}，可用：{', '.join(PARAMS)}")
             extra[k] = float(v)
         configs.append(("自定义 " + " ".join(a.set), extra))
+    if a.uset:
+        extra = {"mode": "unified"}
+        for kv in a.uset:
+            k, _, v = kv.partition("=")
+            if k not in U_DEFAULTS:
+                sys.exit(f"未知参数 {k}，可用：{', '.join(U_DEFAULTS)}")
+            extra[k] = float(v)
+        configs.append(("统一排序自定义 " + " ".join(a.uset), extra))
 
     print("\n## 首位命中率（按抽样率还原）")
     print("救回、损失：与“当时配置”相比，该配置下变对、变错的次数。")
@@ -185,10 +285,8 @@ def main():
     for name, over in configs:
         hit_w = tot_w = gain = loss = unknown = 0.0
         for r in recs:
-            p = base_params(r["rp"])
-            p.update(over)
             wt = corpus_io.weight(r["kind"], a.anchor_rate)
-            top, known = final_top(r, p, base_w1[r["id"]])
+            top, known = evaluate(r, over, base_w1[r["id"]])
             if not known:
                 unknown += wt
                 continue

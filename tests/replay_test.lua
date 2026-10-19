@@ -38,13 +38,14 @@ local conf = {
   ["llm_rerank/cpu_cores"] = 2,
 }
 local hist = {}
+ai_on = true
 local select_cb
 local ctx
 ctx = {
   input = "",
   commit_history = { to_table = function() local t = {}; for i, w in ipairs(hist) do t[i] = { text = w } end; return t end },
   composition = { back = function(self) return { selected_index = ctx._sel or 0 } end },
-  get_option = function(_, name) return name == "ai_rerank" or name == "ai_stage2" end,
+  get_option = function(_, name) return (name == "ai_rerank" and ai_on) or name == "ai_stage2" end,
   set_option = function() end,
   get_selected_candidate = function() return ctx._cand end,
   option_update_notifier = { connect = function() end },
@@ -124,6 +125,26 @@ for round = 1, 4 do
   end
 end
 
+-- 统一排序：两轮开 AI，一轮关 AI（λ = 0 照样排序并记录）
+C.ranker = "unified"
+local n_uni_s2 = 0
+for round = 1, 3 do
+  ai_on = round <= 2
+  C.uni.alpha = ({ 1, 0.3, 1 })[round]
+  for i, c in ipairs(PY) do
+    hist[#hist + 1] = c
+    select("jingli", JL, (i + round) % 2 + 1)
+    n_sel = n_sel + 1
+    local list = { mk("经理过来", 0, 12, "sentence", "", 2.0) }
+    for _, c2 in ipairs(JL) do list[#list + 1] = mk(c2.text, 0, 6, "phrase", c2.comment, c2.quality) end
+    tail_cands["guolai"] = { mk("过来", 6, 12), mk("国来", 6, 12), mk("过赖", 6, 12) }
+    local out = select("jingliguolai", list, 1)
+    for _, c2 in ipairs(out) do if c2.comment == C.badge2 then n_uni_s2 = n_uni_s2 + 1 end end
+    n_sel = n_sel + 1
+  end
+end
+ai_on = true
+
 -- ---------- 检查回放数据 ----------
 local lines = {}
 for ln in io.lines(ud .. "/select_replay.jsonl") do lines[#lines + 1] = ln end
@@ -138,6 +159,14 @@ for _, ln in ipairs(lines) do
 end
 check("有打分组、模糊音、怪词、quality 字段", any_g and any_fz and any_wd and any_q)
 check("第二阶段生效过并被记录", n_s2 > 0 and any_s2, "stage2=" .. n_s2)
+local n_uni, n_cmp, n_lam0 = 0, 0, 0
+for _, ln in ipairs(lines) do
+  if ln:find('"uni":1') then n_uni = n_uni + 1 end
+  if ln:find('"s2cmp":1') then n_cmp = n_cmp + 1 end
+  if ln:find('"uni":1') and ln:find('"lam":0[,}]') then n_lam0 = n_lam0 + 1 end
+end
+check("统一排序：记录、与整句比分、关 AI 时 λ = 0", n_uni == 24 and n_cmp > 0 and n_lam0 >= 8 and n_uni_s2 > 0,
+  string.format("uni=%d cmp=%d lam0=%d s2=%d", n_uni, n_cmp, n_lam0, n_uni_s2))
 local nc = 0
 for _ in io.lines(ud .. "/select_corpus.tsv") do nc = nc + 1 end
 check("语料与回放数据同样条数", nc == #lines, nc .. "/" .. #lines)

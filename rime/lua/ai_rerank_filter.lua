@@ -41,6 +41,7 @@ local cfg = {
     stage2 = true,              -- 四字两阶段总开关；怀疑它有问题时设为 false
     stage2_context_chars = 8,   -- 第二阶段只用「上文+第一阶段选中词」的最后 N 个字，解码更快
     stage2_min_rest = 4,        -- 剩余拼音至少 N 个字母才跑第二阶段（输入过程中的半截拼音不值得推理）
+    ranker = "legacy",          -- legacy：现有的融合与门控；unified：统一排序（rank_unified.lua），关 AI 时也排序
     badge = "◇",       -- AI 按上文重排后的首选
     badge2 = "◈",      -- 两阶段拼出来的首选（四字 = 两个两字词）
     debug_latency = false,
@@ -66,6 +67,9 @@ local function choice_eff(prev, input, w)
     local ok, v = pcall(pp.choice_eff, prev, input, w)
     return (ok and v) or 0
 end
+
+-- 统一排序（llm_rerank/ranker: unified）的打分，见 rank_unified.lua
+local okru, ru = pcall(require, "rank_unified")
 
 -- 回放数据用：不看融合系数是否为 0，取原始计数
 local function pp_raw(fn, ...)
@@ -246,6 +250,9 @@ local function init_config(env)
     if b ~= nil then cfg.badge = b end
     b = sc:get_string("llm_rerank/badge2")
     if b ~= nil then cfg.badge2 = b end
+    local rk = sc:get_string("llm_rerank/ranker")
+    if rk ~= nil and rk ~= "" then cfg.ranker = rk end
+    if okru then cfg.uni = ru.load(sc) end
     local dl = sc:get_bool("llm_rerank/debug_latency")
     if dl ~= nil then cfg.debug_latency = dl end
 end
@@ -371,6 +378,19 @@ end
 -- mrank：模型排序名次（同分时融合排序按它保持顺序）。
 local function replay_cands(group, pos, n, mrank, scores, input, prev_any)
     local freq_eff = _G.ai_rerank_freq_eff
+    -- r：组内的 Rime 原名次。最近使用提升会先改顺序，这里按它记下的提升前位次还原（没有提示时按当前顺序）
+    local hints = _G.rank_hints
+    local ro = (hints and hints.input == input) and hints.ro or {}
+    local rec = (hints and hints.input == input) and hints.rec or {}
+    local idx = {}
+    for i = 1, n do idx[i] = i end
+    table.sort(idx, function(a, b)
+        local ka, kb = ro[group[a].text] or (1000 + a), ro[group[b].text] or (1000 + b)
+        if ka ~= kb then return ka < kb end
+        return a < b
+    end)
+    local rank = {}
+    for k, i in ipairs(idx) do rank[i] = k end
     local list = {}
     for i = 1, n do
         local c = group[i]
@@ -386,6 +406,7 @@ local function replay_cands(group, pos, n, mrank, scores, input, prev_any)
             ch = pp_raw("choice_eff", prev_any, input, c.text),
             fz = fuzzy_raw(c, input) and 1 or 0,
             wd = is_weird(c.text) and 1 or 0,
+            r = rank[i], rec = rec[c.text] or 0,
         }
     end
     return list
@@ -420,15 +441,23 @@ local function inner(translation, env)
     st.last = input
     flags.shr = shrinking and "1" or "0"
     local llm = _G.ai_rerank_llm   -- 由 ai_rerank_processor 加载
-    if not llm then
-        dbg("skip: llm module not loaded (_G.ai_rerank_llm is nil)")
-        for _, c in ipairs(all) do Y(c) end; return
-    end
+    local unified = cfg.ranker == "unified" and okru
+    local use_model = llm ~= nil and env.engine.context:get_option("ai_rerank")
+    if unified then
+        -- 统一排序：只处理普通拼音输入；不用模型（关 AI、编码不匹配、模块未加载）时 λ = 0，照样按先验与个人习惯排序
+        if not input:match("^[a-z' ]+$") then for _, c in ipairs(all) do Y(c) end; return end
+        if use_model and not match_code_pattern(llm, input) then use_model = false end
+    else
+        if not llm then
+            dbg("skip: llm module not loaded (_G.ai_rerank_llm is nil)")
+            for _, c in ipairs(all) do Y(c) end; return
+        end
 
-    -- 触发条件：编码串匹配 code_pattern
-    if not match_code_pattern(llm, input) then
-        dbg("skip: code_pattern mismatch, input_len=" .. #input)
-        for _, c in ipairs(all) do Y(c) end; return
+        -- 触发条件：编码串匹配 code_pattern
+        if not match_code_pattern(llm, input) then
+            dbg("skip: code_pattern mismatch, input_len=" .. #input)
+            for _, c in ipairs(all) do Y(c) end; return
+        end
     end
 
     -- 全拼适配：候选窗里混有只覆盖前几个音节的前缀词（_end < #input），模型只看每个
@@ -506,12 +535,14 @@ local function inner(translation, env)
     local out = {}
     local function emit(c) out[#out + 1] = c end
     local extra_first = nil   -- 两阶段拼接候选，置于首位
+    local extra_second = nil  -- 统一排序：两阶段拼接没有胜过 Rime 整句时，放在第二位
     local function finish()
         -- 把 out（重排后的这一组）按原位次填回，其余候选原样保留
         local res = {}
         if rp then
             rp.cat = (#out ~= #full_pos) and 1 or 0   -- 1：组内有重复文字，重排结果整体排在最前（回放时按此处理）
-            rp.s2 = extra_first and extra_first.text or nil
+            local x = extra_first or extra_second
+            rp.s2 = x and x.text or nil
         end
         if #out ~= #full_pos then
             for _, c in ipairs(out) do res[#res + 1] = c end
@@ -529,6 +560,11 @@ local function inner(translation, env)
             Y(extra_first)
             for _, c in ipairs(res) do
                 if c.text ~= extra_first.text then Y(c) end
+            end
+        elseif extra_second and res[1] then
+            Y(res[1]); Y(extra_second)
+            for i = 2, #res do
+                if res[i].text ~= extra_second.text then Y(res[i]) end
             end
         else
             for _, c in ipairs(res) do Y(c) end
@@ -550,7 +586,9 @@ local function inner(translation, env)
     local key1 = context .. "\1" .. table.concat(cands, "\2")
     local cache = _G.llm_filter_cache
     local ok, result, scores
-    if cache and cache.key == key1 and cache.result then
+    if not use_model then
+        flags.s1 = "off"
+    elseif cache and cache.key == key1 and cache.result then
         ok, result, scores = true, cache.result, cache.scores
         flags.s1 = "hit"
     else
@@ -572,7 +610,87 @@ local function inner(translation, env)
 
     dbg(string.format("scored: ok=%s result=%s ctx_len=%d cands=%d best_e=%s input_len=%d",
         tostring(ok), type(result), #context, #cands, tostring(best_e), #input))
-    if ok and result then
+    if unified then
+        -- === 统一排序：总分 = 名次先验 + λ·模型分 + 个人习惯（rank_unified.lua）===
+        local n = #cands
+        local has_model = ok and type(result) == "table" and scores ~= nil
+        local mrank = {}
+        if has_model then for i, w in ipairs(result) do mrank[w] = mrank[w] or i end end
+        local feats = replay_cands(all, full_pos, n, mrank, has_model and scores or {}, input, okpp and pp.prev() or nil)
+        local p = cfg.uni
+        local lam = ru.lam(p, math.min(utf8.len(context) or 0, 30), #input, has_model)
+        local sorted = ru.order(feats, p, lam)
+        local base_top = lam > 0 and ru.order(feats, p, 0)[1] or sorted[1]
+        local cand_of = {}
+        for i = 1, n do cand_of[feats[i]] = all[i] end
+        if rp then rp.g, rp.uni, rp.lam, rp.ucfg = feats, 1, lam, p end
+
+        -- 第二阶段：拼出的句子与 Rime 的整句比分（rank_unified.stage2_wins），胜了置顶，否则放第二位。
+        -- Rime 原首位不是整句（是前缀词等）时没有可比的对象，沿用旧做法置顶。
+        local o1 = orig[1]
+        local oke, oe = pcall(function() return o1._end end)
+        local o1_full = oke and oe == #input and not is_emoji_cand(o1) and not is_weird(o1.text)
+        if has_model and lam > 0 and best_e and best_e < #input and context ~= "" and not (o1_full and o1.type ~= "sentence")
+           and cfg.stage2 and env.engine.context:get_option("ai_stage2") and not shrinking and (#input - best_e) >= cfg.stage2_min_rest then
+            local w1 = sorted[1].t
+            local rest = input:sub(best_e + 1)
+            local fc = _G.llm_filter_cache
+            local w2
+            if fc and fc.s2 and fc.s2.w1 == w1 and fc.s2.rest == rest then
+                w2 = fc.s2.w2 or nil
+                flags.s2 = "hit"
+            else
+                flags.s2 = "run"
+                local okc, r1 = pcall(second_stage, env, llm, context, w1, rest)
+                if okc and r1 then w2 = r1 end
+                if fc then fc.s2 = { w1 = w1, rest = rest, w2 = w2 or false } end
+            end
+            if w2 and o1.text ~= w1 .. w2 then
+                local x = w1 .. w2
+                local win, s_n, s_x = true, nil, nil
+                if o1_full and o1.type == "sentence" then
+                    win = false
+                    if utf8.len(o1.text) == utf8.len(x) then
+                        local key = o1.text .. "\1" .. x
+                        if fc and fc.s2c and fc.s2c.key == key then
+                            s_n, s_x = fc.s2c.n, fc.s2c.x
+                        else
+                            local okc, r = pcall(function() return llm.score(context, { o1.text, x }, false) end)
+                            local sc2 = okc and type(r) == "table" and get_scores(llm, { o1.text, x })
+                            if sc2 and is_valid_llm_score(sc2[o1.text]) and is_valid_llm_score(sc2[x]) then
+                                s_n, s_x = sc2[o1.text], sc2[x]
+                                if fc then fc.s2c = { key = key, n = s_n, x = s_x } end
+                            end
+                        end
+                        win = ru.stage2_wins(p, lam, s_n, s_x)
+                    end
+                end
+                local okcand, cand = pcall(function()
+                    local st0 = o1._start
+                    return Candidate("sentence", type(st0) == "number" and st0 or 0, #input, x, cfg.badge2)
+                end)
+                if okcand and cand then
+                    if win then extra_first = cand else extra_second = cand end
+                end
+                if rp then
+                    rp.s2w1, rp.s2win, rp.s2n, rp.s2x = w1, win and 1 or 0, s_n, s_x
+                    rp.s2cmp = (o1_full and o1.type == "sentence") and 1 or 0   -- 1：与 Rime 整句比过分
+                end
+            end
+        end
+
+        for i, f in ipairs(sorted) do
+            local c = cand_of[f]
+            -- ◇ 只在模型改变了首位时标出（与 λ = 0 时的首位不同）
+            if i == 1 and cfg.badge ~= "" and f ~= base_top then
+                local cm = c.comment
+                emit(ShadowCandidate(c, c.type, c.text, (cm and cm ~= "") and (cm .. " " .. cfg.badge) or cfg.badge, true))
+            else
+                emit(c)
+            end
+        end
+        for i = n + 1, #all do emit(all[i]) end
+    elseif ok and result then
         local seen = {}
         local ordered = {}
         for i = 1, #result do
@@ -707,6 +825,7 @@ local function inner(translation, env)
                 if fc then fc.s2 = { w1 = w1, rest = rest, w2 = w2 or false } end
             end
             if w2 then
+                if rp then rp.s2w1 = w1 end   -- 回放：第一阶段首位变了时，第二阶段结果不能沿用
                 local okcand, cand = pcall(function()
                     local st = orig[1]._start
                     return Candidate("sentence", type(st) == "number" and st or 0,
@@ -744,7 +863,8 @@ return function(translation, env)
         init_config(env)
         cfg._inited = true
     end
-    if not env.engine.context:get_option("ai_rerank") then
+    -- 关 AI：旧模式原样透传；统一排序照常排序，只是不用模型（λ = 0）
+    if not env.engine.context:get_option("ai_rerank") and cfg.ranker ~= "unified" then
         dbg("filter called: switch OFF in this session")
         _G.ai_select_info = nil   -- 选词统计：本次没有重排，按原顺序记
         local first_seen = false

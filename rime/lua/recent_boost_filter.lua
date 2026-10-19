@@ -93,6 +93,9 @@ function M.init(env)
     env.scan = config:get_int(ns .. "/scan") or 40
     env.min_count = config:get_int(ns .. "/min_count") or 1
     local max_records = config:get_int(ns .. "/max_records") or 3000
+    -- 统一排序（llm_rerank/ranker: unified）：本过滤器不再改顺序，只给排序点提供“最近用过”与提升前的原名次
+    local okr, ranker = pcall(function() return config:get_string("llm_rerank/ranker") end)
+    env.unified = okr and ranker == "unified"
 
     local use_pairs = config:get_bool(ns .. "/pairs")
     if use_pairs == nil then use_pairs = true end
@@ -151,6 +154,20 @@ function M.func(input, env)
     for cand in input:iter() do
         buf[#buf + 1] = cand
         if #buf >= env.scan then break end
+    end
+
+    -- 给 ai_rerank_filter 的提示：提升之前的原名次、窗口内用过的词（两种排序模式都记，回放数据要用）
+    local hints = { input = code, ro = {}, rec = {} }
+    for i, cand in ipairs(buf) do
+        if not hints.ro[cand.text] then hints.ro[cand.text] = i end
+        local e = ELIGIBLE[cand.type] and env.words[cand.text]
+        if e and e.count >= env.min_count and now - e.last <= env.window then hints.rec[cand.text] = 1 end
+    end
+    _G.rank_hints = hints
+    if env.unified then
+        for _, cand in ipairs(buf) do yield(cand) end
+        for cand in input:iter() do yield(cand) end
+        return
     end
 
     -- 找出窗口内用过的、或与上一个词有个人词对的候选；词对命中的优先，其余按最近时间，取前 max_boost 个
