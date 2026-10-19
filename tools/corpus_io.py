@@ -31,7 +31,7 @@ def lines(path):
                 yield ln
 
 
-CORPUS_COLS = ["id", "ts", "input_len", "ctx", "chosen", "ft", "of", "kind", "dt", "model"]
+CORPUS_COLS = ["id", "ts", "input_len", "ctx", "chosen", "ft", "of", "kind", "dt", "model", "ar"]
 
 
 def read_corpus(paths):
@@ -45,9 +45,13 @@ def read_corpus(paths):
             if f[0] == "revise" and len(f) >= 2:
                 revised.add(f[1])
                 continue
-            if len(f) < len(CORPUS_COLS):
+            if len(f) < len(CORPUS_COLS) - 1:   # 最后一列（锚点抽样率）早期的记录没有
                 continue
             r = dict(zip(CORPUS_COLS, f))
+            try:
+                r["ar"] = float(r["ar"]) if r.get("ar") else None
+            except ValueError:
+                r["ar"] = None
             for k in ("ts", "input_len", "dt"):
                 r[k] = int(r[k]) if r[k].lstrip("-").isdigit() else 0
             recs.append(r)
@@ -72,9 +76,11 @@ def read_replay(paths):
     return recs
 
 
-def weight(kind, anchor_rate):
-    """锚点按抽样率还原：一条锚点代表 1/anchor_rate 次“选了首位”。"""
-    return 1.0 / anchor_rate if kind == "anchor" else 1.0
+def weight(rec, anchor_rate):
+    """锚点按抽样率还原：一条锚点代表 1/抽样率 次“选了首位”。记录自带抽样率（ar）时用它，否则用参数。"""
+    if rec.get("kind") != "anchor":
+        return 1.0
+    return 1.0 / (rec.get("ar") or anchor_rate)
 
 
 def bucket(n, edges):

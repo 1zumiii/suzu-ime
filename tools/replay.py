@@ -196,7 +196,7 @@ def coverage(recs, rate):
     """所选词在不在打分范围内（回答“答案根本不在候选里”的比例）。"""
     w = defaultdict(float)
     for r in recs:
-        rp, wt = r["rp"], corpus_io.weight(r["kind"], rate)
+        rp, wt = r["rp"], corpus_io.weight(r, rate)
         w["total"] += wt
         g = rp.get("g")
         if not g:
@@ -285,7 +285,7 @@ def main():
     for name, over in configs:
         hit_w = tot_w = gain = loss = unknown = 0.0
         for r in recs:
-            wt = corpus_io.weight(r["kind"], a.anchor_rate)
+            wt = corpus_io.weight(r, a.anchor_rate)
             top, known = evaluate(r, over, base_w1[r["id"]])
             if not known:
                 unknown += wt
