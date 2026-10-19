@@ -1,6 +1,6 @@
 # suzu-ime
 
-本仓库是 Rime 输入法候选重排的推理核心及其三端集成。输入法给出上文和同一拼音下的候选词，核心用小模型 [Suzu](https://github.com/1zumiii/Suzu) 给每个候选打分，Lua 脚本据此调整候选顺序。例如上文是“他在公司当”，输入 `jingli` 时“经理”排到“精力”“经历”前面。
+本仓库是 Rime 输入法候选重排的推理核心及其三端集成。输入法给出上文和同一拼音下的候选词，核心用小模型 [Suzu](https://github.com/1zumiii/Suzu) 给每个候选打分，Lua 脚本据此调整候选顺序。
 
 模型权重发布在 Hugging Face（[Suzu-2.1](https://huggingface.co/IzumiThe3rd/Suzu-2.1)），不在本仓库中。雾凇拼音的配置与词库在 [rime-ice-Custom](https://github.com/1zumiii/rime-ice-Custom)，它引用本仓库的发布。
 
