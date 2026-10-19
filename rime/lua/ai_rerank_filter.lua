@@ -17,6 +17,8 @@
 --                           有纠错记忆命中的候选不受门控限制
 --   gate_margin_short       输入只有 1~2 个字母时用的门控值（简拼的候选多，更需要谨慎），默认 0（关闭）
 --   scan_limit              只在前 N 个候选里重排，其余惰性透传，默认 80
+--   fuzzy_penalty           拼音贴合度：靠模糊音（平翘舌、前后鼻音等）凑出来的候选，融合分减去这个值，让拼音精确匹配的候选占优；
+--                           依据候选 comment 里的标准拼音（需 translator/spelling_hints）判断，取不到时不扣分，默认 1.0，0 = 关闭
 --   stage2                  四字两阶段总开关，默认 true；另有方案开关 ai_stage2（方案菜单 / 手机三个点面板里的「单段/两段」）在运行时切换，两者都开才跑第二阶段
 --   stage2_context_chars    第二阶段只用最后 N 个字作为上文，默认 8（现场解码，越短越快）
 --   stage2_min_rest         剩余拼音至少 N 个字母才跑第二阶段，默认 4
@@ -33,6 +35,7 @@ local cfg = {
     gate_margin = 0,
     gate_margin_short = 0,
     scan_limit = 80,
+    fuzzy_penalty = 1.0,
     stage2 = true,              -- 四字两阶段总开关；怀疑它有问题时设为 false
     stage2_context_chars = 8,   -- 第二阶段只用「上文+第一阶段选中词」的最后 N 个字，解码更快
     stage2_min_rest = 4,        -- 剩余拼音至少 N 个字母才跑第二阶段（输入过程中的半截拼音不值得推理）
@@ -74,6 +77,46 @@ local function is_emoji_cand(c)
     return c.type == "simplified" and defer.is_emoji_text(c.text)
 end
 
+local TONE_BASE = {
+    ["ā"] = "a", ["á"] = "a", ["ǎ"] = "a", ["à"] = "a", ["ē"] = "e", ["é"] = "e", ["ě"] = "e", ["è"] = "e",
+    ["ī"] = "i", ["í"] = "i", ["ǐ"] = "i", ["ì"] = "i", ["ō"] = "o", ["ó"] = "o", ["ǒ"] = "o", ["ò"] = "o",
+    ["ū"] = "u", ["ú"] = "u", ["ǔ"] = "u", ["ù"] = "u", ["ǖ"] = "u", ["ǘ"] = "u", ["ǚ"] = "u", ["ǜ"] = "u", ["ü"] = "u",
+}
+-- 拼音贴合度：候选的 comment 里是词典的标准拼音（spelling_hints）。把输入按“每个音节取一段前缀”去对齐标准拼音：
+-- 能对齐 = 精确输入或简拼；对不齐 = 靠模糊音（zh/z、ang/an 等）凑出来的候选。comment 不是纯拼音时返回 false（不扣分）。
+local function is_fuzzy_cand(c, input)
+    if cfg.fuzzy_penalty <= 0 then return false end
+    local cm = c.comment
+    if type(cm) ~= "string" or cm == "" then return false end
+    -- rime_ice 的 comment_format 给拼音加了全角方括号；corrector 纠音时还会写带声调的拼音。统一去掉括号和声调。
+    cm = cm:gsub("［", ""):gsub("］", ""):gsub("[\128-\255]+", function(ch)
+        return TONE_BASE[ch] or "\1"   -- 其他非拼音字符（如标记）用控制字符占位，下面会判为“不是纯拼音”
+    end)
+    cm = cm:lower():gsub("v", "u")
+    if not cm:match("^[a-z' ]+$") then return false end
+    local sylls = {}
+    for w in cm:gmatch("[a-z]+") do sylls[#sylls + 1] = w end
+    if #sylls == 0 then return false end
+    local okst, st = pcall(function() return c._start end)
+    local oken, en = pcall(function() return c._end end)
+    local seg = input
+    if okst and oken and type(st) == "number" and type(en) == "number" and en > st then
+        seg = input:sub(st + 1, en)
+    end
+    seg = seg:lower():gsub("[^a-z]", ""):gsub("v", "u")
+    if seg == "" then return false end
+    local function m(i, pos)
+        if i > #sylls then return pos == #seg + 1 end
+        local sy = sylls[i]
+        for len = 1, #sy do
+            if seg:sub(pos, pos + len - 1) == sy:sub(1, len) and m(i + 1, pos + len) then return true end
+        end
+        return false
+    end
+    return not m(1, 1)
+end
+_G.ai_rerank_is_fuzzy = is_fuzzy_cand   -- 供测试脚本调用
+
 local function is_valid_llm_score(v)
     return is_finite_number(v) and v > -1e9
 end
@@ -107,6 +150,8 @@ local function init_config(env)
     if v ~= nil then cfg.gate_margin_short = math.max(0, v) end
     v = sc:get_int("llm_rerank/max_candidates")
     if v then cfg.max_candidates = v end
+    v = get_config_number(sc, "llm_rerank/fuzzy_penalty")
+    if v ~= nil then cfg.fuzzy_penalty = math.max(0, v) end
     v = sc:get_int("llm_rerank/scan_limit")
     if v then cfg.scan_limit = v end
     local s2on = sc:get_bool("llm_rerank/stage2")
@@ -431,6 +476,7 @@ local function inner(translation, env)
                     local t = s + cfg.freq_beta * math.log(1 + n)
                         + cfg.pair_gamma * math.log(1 + pair_eff(prev_word, c.text))
                         + cfg.corr_gamma * math.log(1 + choice_eff(prev_any, input, c.text))
+                    if cfg.fuzzy_penalty > 0 and is_fuzzy_cand(c, input) then t = t - cfg.fuzzy_penalty end
                     fused_scores[c.text] = t
                     arr[i] = { c = c, t = t, idx = i }
                 else
