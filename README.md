@@ -1,35 +1,128 @@
 # suzu-ime
 
-本仓库是输入法候选 AI 重排的推理核心及其在各平台的集成：给定上文和同一拼音下的候选词，用小模型 [Suzu](https://github.com/1zumiii/Suzu) 打分排序，由 Rime 前端（macOS 鼠须管、Windows 小狼毫、Android 同文输入法）调用。
+本仓库是 Rime 输入法候选重排的推理核心及其三端集成。输入法给出上文和同一拼音下的候选词，核心用小模型 [Suzu](https://github.com/1zumiii/Suzu) 给每个候选打分，Lua 脚本据此调整候选顺序。例如上文是“他在公司当”，输入 `jingli` 时“经理”排到“精力”“经历”前面。
 
 模型权重发布在 Hugging Face（[Suzu-2.1](https://huggingface.co/IzumiThe3rd/Suzu-2.1)），不在本仓库中。雾凇拼音的配置与词库在 [rime-ice-Custom](https://github.com/1zumiii/rime-ice-Custom)，它引用本仓库的发布。
 
-## 状态
+## 平台
 
-推理核心已重构为 `core/`，三端（鼠须管进程内、小狼毫进程内 DLL、同文守护进程）共用同一份代码，只服务 Suzu。旧的移植脚本与构建配置已删除。需求、设计说明与测量报告见 `docs/design/`。主机上的测试全部通过，真机上待验证的项目见设计说明第 6 节。
+三端共用 `core/` 里的同一份推理与调度代码，只服务 Suzu 模型。没有模型文件时不重排，输入不受影响。
+
+| 平台 | 前端 | 运行方式 | 状态 |
+|---|---|---|---|
+| macOS | 鼠须管 | 进程内加载 `rime_llm.so` | 已在 Mac 上安装使用 |
+| Windows | 小狼毫 0.17 | 进程内加载 `rime_llm.dll` | 已在 Windows 11 上部署使用 |
+| Android | 改版同文输入法（Trime） | 常驻守护进程 `rimellmd`，输入法里只有客户端库 | 已在 Zenfone 10（骁龙 8 Gen 2）上安装使用 |
+
+输入法线程上的每次调用都有时限。打分在桌面端最多等 40 ms，手机上最多约 65 ms；时限内没算完就保持原顺序，结果进缓存，下一次按键直接用上。模型只在一个工作线程上运行，没有锁等待。设计取舍见 [docs/design/core-design.md](docs/design/core-design.md)。
+
+## 实测结果
+
+以下数据均为 2026-10-19 测得。延迟来自按键仿真 `tests/keysim.lua`：用模拟的 Rime 环境驱动真实的 Lua 脚本与核心，按 100～300 ms 的间隔输入 100 个词，含快速连按、退格、换行和四字词。“按键最坏”是一次按键在输入法线程上花掉的最长时间。新旧核心使用同一个模型文件（Suzu-2.1 Q8_0）。
+
+### macOS
+
+Apple Silicon Mac，4 线程，新旧核心用同一段仿真脚本：
+
+| 指标 | 旧核心 | 新核心 |
+|---|---|---|
+| 打分中位数 | 6.2 ms | 3.8 ms |
+| 打分 p99 | 12.0 ms | 9.1 ms |
+| 打分最大 | 13.0 ms | 9.5 ms |
+| 第二阶段最大 | 40.3 ms | 11.3 ms |
+| 按键最坏 | 40.4 ms | 11.9 ms |
+| 跳过 | 0 | 0 |
+
+全部测试（含守护进程的破坏性测试）在 Mac 上 25 秒通过。验收要求 macOS 打分 p99 不超过 20 ms，实测 9.1 ms。
+
+### Android
+
+Zenfone 10，守护进程 2 线程。守护进程常驻内存约 61 MB，旧版约 112～116 MB，上限要求为 120 MB。按键仿真经 adb 端口转发连接手机上的守护进程，数字含转发开销：
+
+| 条件 | 打分中位数 | p99 | 最大 | 按键最坏 | 跳过 |
+|---|---|---|---|---|---|
+| 正常速度 | 11.2 ms | 19.3 ms | 21.2 ms | 36.8 ms | 0/180 |
+| 快速输入（间隔减半） | 11.8 ms | 17.1 ms | 18.3 ms | 31.1 ms | 0/180 |
+
+验收要求手机打分 p99 不超过 50 ms、最大不超过 100 ms，跳过率不超过 2%。安装后约 17 分钟的使用中，核心收到 781 个打分请求：619 个拿到结果，2 个跳过（超时 1 个、手动关闭 1 个），159 个上文不足 2 个字，客户端等待最长 26 ms。这段计数含测试流量，只作参考。
+
+`tests/test_daemon.py` 的手机模式 34 项全部通过。破坏性测试（杀进程、冻结、删除模型）只在电脑上做过，没有在手机上做。
+
+旧版状态里约 19% 的“跳过”，大部分是上文不足 2 个字的请求。这类请求核心本来就不打分，上面的 159/781 约为 20%，与之相符。新版把它们单列为 `no_context`，不再计入跳过。
+
+### Windows
+
+Windows 11，MSVC 14.44，4 线程，机器空闲，120 个词，新旧交替各 2 轮：
+
+| 指标 | 旧核心 | 新核心 |
+|---|---|---|
+| 打分中位数 | 6.0 ms | 2.7 ms |
+| 打分 p99 | 7.4～7.6 ms | 4.7 ms |
+| 打分最大 | 10.0 ms | 5.1 ms |
+| 按键最坏 | 12.1～13.9 ms | 9.1～9.7 ms |
+| 跳过 | 0% | 0% |
+
+现有的 `llm_processor.lua`、`llm_filter.lua` 不用修改就能配新 DLL 使用。空闲卸载后，进程私有内存由 45 MB 降到 3 MB。
+
+部署脚本 `windows/deploy_core.ps1` 约 4 秒完成替换，回滚演练 1 秒生效，过程中不弹窗。验证中发现并修复了两个问题：
+
+- 光标上文快照在每次上屏、编辑键或点击之后约 2.5～4 秒内无效，这段时间开始打字时拿不到上文。修复后，打字前等待 1.0、2.6、5.0 秒三种情况都正常重排。
+- Lua 脚本里 4 处用 `os.rename` 覆盖已有文件，Windows 上会失败，导致个人词对文件压缩与日志轮换不生效。现已改为：改名失败时先删除目标文件，再改名。
+
+### 准确率与内存
+
+新旧核心使用同一个模型时，打分逐题一致：Linux 与 Mac 上 1293 题留出集首选一致 1293/1293，分数最大差 0.0000；Windows 上 1325 题首选一致率 100%。首选准确率不变（1293 题上均为 92.42%）。
+
+Linux 主机上，守护进程常驻内存由 118.7 MB 降到 63.4 MB，进程内由 127 MB 降到 67 MB。新旧核心在模拟手机速度（解码拉长 2.5 倍）下的对照、各项优化的分项效果与故障注入结果，见 [docs/design/core-measurements.md](docs/design/core-measurements.md)。
+
+## 安装
+
+| 平台 | 步骤 |
+|---|---|
+| macOS | 构建 `rime_llm.so`，再运行 `macos/install_llm.sh <rime_llm.so> <suzu.gguf> <suzu.vocab.txt>`，重启鼠须管。说明见 [macos/README.md](macos/README.md) |
+| Windows | 运行 `windows\build_core.bat <llama.cpp 目录> <Lua 源码目录>` 构建 `rime_llm.dll`，再运行 `windows\deploy_core.ps1 -Dll <rime_llm.dll>`。回滚用 `windows\deploy_core.ps1 -Rollback`。说明见 [windows/README.md](windows/README.md) |
+| Android | `android/trime/build_apk.sh` 一次构建改版 APK、客户端库与守护进程。安装后把 `suzu.gguf` 与 `suzu.vocab.txt` 放进 Trime 的用户目录，点工具栏的 AI 徽标，经 Shizuku 启动守护进程。说明见 [android/README.md](android/README.md) |
+
+三端都要求用户目录里有 `suzu.gguf` 与 `suzu.vocab.txt`。替换 macOS 上已有的 `rime_llm.so` 时须先删除再复制，原地覆盖会使鼠须管启动时被系统终止。
+
+## 构建与测试
+
+依赖 llama.cpp（标签 b11632）与 Lua 5.4 源码，目录布局与 CMake 选项见 [core/README.md](core/README.md)。在 Linux 或 macOS 上构建并跑全部测试：
+
+```bash
+cmake -G Ninja -S core -B core/build -DSUZU_BUILD_TOOLS=ON
+cmake --build core/build
+tests/run_all.sh core/build <suzu.gguf> <suzu.vocab.txt>
+```
+
+测试内容包括接口与降级、模拟 Rime 环境中的端到端测试、空闲卸载、并发与退出、1293 题留出集逐题对照，以及守护进程的协议与故障注入。4 核 Linux 主机上约 50 秒，6 核以上的机器会并行运行。清单与 Windows 上的运行方法见 [tests/README.md](tests/README.md) 与 [windows/README.md](windows/README.md)。
+
+## 未验证的项目
+
+- 手机息屏后的行为与耗电。
+- 长期真实使用中，真正跳过与 `no_context` 各占多少。依据是 `ai_status.json` 的 `engine` 与 `client` 字段。
+- Windows 上除 Edge 以外的应用（记事本、聊天软件）里的光标上文与重排。
+- Windows 改用 40 ms 与 70 ms 打分时限之后的按键仿真延迟。
+- 手机重启后，守护进程仍须经 adb 或 Shizuku 启动，尚无开机自启的办法。
 
 ## 目录
 
 | 路径 | 内容 |
 |---|---|
-| `core/` | 推理核心：推理层、调度层、Lua 模块、守护进程与客户端，接口与构建见 `core/README.md` |
+| `core/` | 推理核心：推理层、调度层、Lua 模块、守护进程与客户端、Windows 光标上文读取，接口与构建见 `core/README.md` |
 | `rime/lua/` | Rime 的 Lua 过滤器与处理器：重排、个人词对、选词统计与语料归档、最近使用优先 |
-| `android/` | 改版 Trime 补丁（`trime/patches/`）、APK 构建与签名脚本、守护进程的部署脚本 |
-| `macos/` | 安装脚本与鼠须管说明 |
-| `windows/` | 小狼毫的 Lua 补丁（基于上游 rime-llm-rerank 的固定提交） |
-| `tests/` | 模拟 Rime 环境中的端到端测试、按键仿真、留出集对照、守护进程测试、选词统计测试 |
-| `tools/` | 选词统计汇总、守护进程基准等脚本 |
-| `docs/` | 个人化说明、多模型设计草案、设计要求 |
+| `android/` | 改版 Trime 补丁、APK 构建与签名脚本、守护进程的部署脚本 |
+| `macos/` | 鼠须管的安装脚本与说明 |
+| `windows/` | 小狼毫的构建、部署与回滚脚本，以及对上游 Lua 脚本的补丁 |
+| `tests/` | 全部测试与 `run_all.sh`；`tests/windows/` 为 Windows 上的适配层 |
+| `tools/` | 按键仿真的对照测量、选词统计汇总、守护进程基准 |
+| `docs/` | 推理核心的需求、设计说明与测量报告（`docs/design/`），个人化说明，多模型设计草案 |
 
 ## 与其他仓库的关系
 
 - 模型与训练：[Suzu](https://github.com/1zumiii/Suzu)。
-- 配置与词库：[rime-ice-Custom](https://github.com/1zumiii/rime-ice-Custom)，其中的重排 Lua 文件由本仓库的 `rime/lua/` 同步而来。手机端的覆盖配置和主题补丁也在那里（`llm-android/trime/`），改版 Trime 的“从仓库更新”按该路径读取。
-- 上游：推理核心源自 [rime-llm-rerank](https://github.com/zhanghaozhecn/rime-llm-rerank)，Trime 补丁基于 [osfans/trime](https://github.com/osfans/trime)，见 `NOTICE.md`。
-
-## 测试
-
-测试脚本在 `tests/`，`tests/run_all.sh` 在 Linux 或 macOS 上一次跑完，见 `tests/README.md`。多数测试需要自行编译的核心与 Suzu 模型文件，构建步骤见 `core/README.md`。
+- 配置与词库：[rime-ice-Custom](https://github.com/1zumiii/rime-ice-Custom)。其中的重排 Lua 文件由本仓库的 `rime/lua/` 同步而来。手机端的覆盖配置和主题补丁也在那里（`llm-android/trime/`），改版 Trime 的“从仓库更新”按该路径读取。
+- 上游：推理核心源自 [rime-llm-rerank](https://github.com/zhanghaozhecn/rime-llm-rerank)，Windows 的光标上文读取与 Lua 脚本取自该项目；Trime 补丁基于 [osfans/trime](https://github.com/osfans/trime)。署名见 `NOTICE.md`。
 
 ## 许可
 

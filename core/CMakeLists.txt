@@ -43,6 +43,11 @@ option(SUZU_BUILD_TOOLS      "基准工具与测试用的 Lua 解释器" OFF)
 option(SUZU_REPACK           "默认打开 llama.cpp 的 CPU 权重重排" OFF)
 option(SUZU_TEST_HOOKS       "测量用：按环境变量 SUZU_SLOWDOWN 拉长每次解码（模拟低频设备）" OFF)
 
+if(MSVC)
+  # 源文件是 UTF-8（含中文注释）；MSVC 默认按系统代码页读取，会报 C4819
+  add_compile_options(/utf-8)
+endif()
+
 include(cmake/deps.cmake)
 
 # ---------------------------------------------------------------- 推理层
