@@ -6,6 +6,13 @@
 -- 清空个人词对：删除该文件后重新部署即可。
 -- 「前一个词」只在上一次上屏后 GAP 秒内有效；编辑键（退格、方向键等）由 ai_rerank_processor 调 reset() 清掉。
 
+-- os.rename 在 Windows 上目标已存在会失败（C 运行库的行为）；先试，失败再删掉目标重来。
+local function replace_file(src, dst)
+    if os.rename(src, dst) then return true end
+    os.remove(dst)
+    return os.rename(src, dst)
+end
+
 local M = {}
 
 local FILE_NAME = "recent_pairs.tsv"
@@ -84,7 +91,7 @@ function M.init(file_path)
             if out then
                 for i = first, #keep do out:write(string.format("%d\t%s\t%s\n", keep[i][1], keep[i][2], keep[i][3])) end
                 out:close()
-                os.rename(tmp, path)
+                replace_file(tmp, path)
             end
         end
     end
@@ -128,7 +135,7 @@ function M._load_choices()
             if out then
                 for i = first, #keep do local r = keep[i]; out:write(string.format("%d\t%s\t%s\t%s\t%s\n", r[1], r[2], r[3], r[4], r[5])) end
                 out:close()
-                os.rename(tmp, choice_path)
+                replace_file(tmp, choice_path)
             end
         end
     end
