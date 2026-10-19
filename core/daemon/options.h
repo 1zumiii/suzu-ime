@@ -22,6 +22,9 @@ struct Options {
     int orphan_sec = 600;             // 状态目录消失超过这么久就退出；0 = 不检查
     int budget_ms = 45;               // 版本 1 客户端（S 请求）的打分时限：allow_sync = false
     int sync_budget_ms = 80;          //                                   allow_sync = true
+    // 监督进程的节奏（测试时调短；正常使用保持默认）
+    int heartbeat_ms = 3000;          // 心跳间隔；连续 3 次无应答判定工作进程无响应，启动后的宽限期为它的 3 倍多一点
+    int max_backoff_s = 30;           // 重启退避的上限
     // 监督进程传给子进程
     int restarts = 0;
     std::string last_exit = "none";
