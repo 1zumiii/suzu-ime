@@ -548,7 +548,17 @@ local function inner(translation, env)
 
         -- 第二阶段：第一阶段选中 w1 并入上文，对剩余拼音的候选再打分，拼成 w1..w2 作为首选
         -- （每阶段结果缓存；编辑键清缓存时一并清除）。任何一步失败都退回第一阶段结果。
-        if best_e and best_e < #input and ordered[1] and context ~= ""
+        -- 词典里恰好有一个覆盖整串的词（Rime 原首位不是造句）：直接信任它，不再拼接。
+        -- 例：输入 boruoxiang，原首位“薄弱项”是词典词，不应被两阶段拼出的“波若想”抢走首位；
+        -- 原首位是 Rime 的造句（type = sentence）时才需要二阶段纠正。
+        local o1 = orig[1]
+        local native_full_word = false
+        if o1 then
+            local oke, oe = pcall(function() return o1._end end)
+            native_full_word = oke and oe == #input and o1.type ~= "sentence" and not is_emoji_cand(o1)
+        end
+        flags.nfw = native_full_word and "1" or "0"
+        if best_e and best_e < #input and ordered[1] and context ~= "" and not native_full_word
            and cfg.stage2 and env.engine.context:get_option("ai_stage2") and not shrinking and (#input - best_e) >= cfg.stage2_min_rest then
             local w1 = ordered[1].text
             local rest = input:sub(best_e + 1)
