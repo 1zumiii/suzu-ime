@@ -131,17 +131,24 @@ do
   pp._reset_all()
 end
 
--- B3: emoji 候选不参与重排，原位置不动
+-- B3: emoji、英文等不含汉字的候选不参与重排，原位置不动
 do
   hist = { "我最近没有太多" }
   press(mk_env("", hist, true), "m")
   _G.llm_filter_cache = nil
   local cands = { mk("经理", 0, 6), mk("😀", 0, 6, "simplified"), mk("经历", 0, 6), mk("精力", 0, 6),
-                  mk("🙂", 0, 6, "simplified"), mk("敬礼", 0, 6) }
+                  mk("wifi", 0, 6, "user_phrase"), mk("敬礼", 0, 6), mk("🙂", 0, 6, "emoji") }
   local texts = run(mk_env("jingli", hist, true), cands)
-  check("B3. emoji kept at original positions", texts[2] == "😀" and texts[5] == "🙂", table.concat(texts, ","))
+  check("B3. emoji and english kept at original positions", texts[2] == "😀" and texts[5] == "wifi" and texts[7] == "🙂", table.concat(texts, ","))
   check("B3. text candidates still reranked: 精力 first", texts[1] == "精力", table.concat(texts, ","))
-  check("B3. no candidate lost", #texts == 6, tostring(#texts))
+  check("B3. no candidate lost", #texts == 7, tostring(#texts))
+  -- 含汉字的中英混合词仍然参与重排
+  _G.llm_filter_cache = nil
+  local mixed = { mk("经理", 0, 6), mk("A经历", 0, 6), mk("精力", 0, 6), mk("敬礼", 0, 6) }
+  local t2 = run(mk_env("jingli", hist, true), mixed)
+  local seen_mixed = false
+  for i, x in ipairs(t2) do if x == "A经历" then seen_mixed = true end end
+  check("B3. mixed han+latin candidate still takes part", seen_mixed and #t2 == 4 and t2[1] == "精力", table.concat(t2, ","))
 end
 
 -- B4: 拼音贴合度：模糊音凑出来的候选被识别，精确输入、简拼、非拼音注释不扣分
