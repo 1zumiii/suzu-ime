@@ -251,8 +251,22 @@ local function setup_select_stats(env)
     local prev_commit_t = os.time()
     local seq, last_corpus_id, last_corpus_t = 0, nil, 0
     env.engine.context.commit_notifier:connect(function() prev_commit_t = os.time() end)
+    -- 诊断：记录统计功能是否初始化、选词通知是否到达、回调是否出错（只写事件名与错误信息，不含任何输入和候选文字）。
+    local dpath = ud .. "/select_stats_diag.txt"
+    local fired = 0
+    local function diag(msg)
+        local fh = io.open(dpath, "a")
+        if not fh then return end
+        local size = fh:seek("end")
+        fh:write(os.date("%m-%d %H:%M:%S "), msg, "\n")
+        fh:close()
+        if size and size > 20 * 1024 then os.rename(dpath, dpath .. ".old") end
+    end
+    diag(string.format("init stats_on=%s corpus_on=%s", tostring(stats_on), tostring(corpus_on)))
     env.engine.context.select_notifier:connect(function(ctx)
-        pcall(function()
+        fired = fired + 1
+        if fired <= 3 then diag("select_notifier fired #" .. fired) end
+        xpcall(function()
             local cand = ctx:get_selected_candidate()
             if not cand then return end
             local text = cand.text or ""
@@ -295,7 +309,7 @@ local function setup_select_stats(env)
                     last_corpus_id, last_corpus_t = id, now
                 end
             end
-        end)
+        end, function(e) diag("callback error: " .. tostring(e)) end)
     end)
     -- 选词后 3 秒内按退格：给最近一条语料追加“被修改”标记
     revise_hook = function()
