@@ -1,6 +1,6 @@
 # 推理核心重构：测量报告
 
-本文记录新核心与旧核心的对照测量，对应需求文档第 4 节的验收指标。设计取舍见 [core-design.md](core-design.md)。原始数据在 `docs/design/data/`。
+本文记录新核心与旧核心的对照测量，对应重构的验收指标。设计取舍见 [core-design.md](core-design.md)。原始数据在 `docs/design/data/`。
 
 全部数据来自同一台 Linux 云主机（4 个 vCPU，15 GB 内存），没有手机、Mac 与 Windows 机器。手机上的数值须在真机上重测，本文给出的是代理指标。
 

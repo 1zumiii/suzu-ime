@@ -116,7 +116,7 @@ tests/run_all.sh core/build <suzu.gguf> <suzu.vocab.txt>
 | `windows/` | 小狼毫的构建、部署与回滚脚本，以及对上游 Lua 脚本的补丁 |
 | `tests/` | 全部测试与 `run_all.sh`；`tests/windows/` 为 Windows 上的适配层 |
 | `tools/` | 按键仿真的对照测量、选词统计汇总、守护进程基准 |
-| `docs/` | 推理核心的需求、设计说明与测量报告（`docs/design/`），个人化说明，多模型设计草案 |
+| `docs/` | 推理核心的设计说明与测量报告（`docs/design/`），个人化说明，多模型设计草案 |
 
 ## 与其他仓库的关系
 
