@@ -1,4 +1,6 @@
 -- 用模拟的 Rime 环境 + 真实 rime_llm.so + 真实模型，端到端跑 ai_rerank_filter / ai_rerank_processor
+-- 用法：lua filter_test.lua <仓库目录> <用户目录> <suzu.gguf>
+--   用户目录里须有 lua/rime_llm.so、suzu.gguf、suzu.vocab.txt（与桌面端的安装布局一致，处理器按这两个文件名启用 Suzu）
 local repo, ud, model = arg[1], arg[2], arg[3]
 package.path = repo .. "/rime/lua/?.lua;" .. package.path
 
@@ -254,23 +256,36 @@ do
 end
 
 
--- I: 预解码没就绪时不卡、不阻塞：这次保持原顺序，补触发预解码，稍后再重排
+-- I: 预解码没就绪时不卡、不阻塞（Suzu）：上文解码只要几毫秒，核心在时限内现场解码并重排；
+--    时限内算不完就保持原顺序立即返回，算完的结果进缓存，下一次按键直接用上。用墙钟计时（os.clock 会把推理线程的 CPU 也算进来）。
 do
+  local now = _G.ai_rerank_llm.now_ms
   hist = { "我最近没有太多" }
   settle = false
   press(mk_env("", hist, true), "i1")          -- 上文变了，后台预解码刚开始
   _G.llm_filter_cache = nil
   local cands = { mk("经理", 0, 6), mk("经历", 0, 6), mk("精力", 0, 6), mk("敬礼", 0, 6), mk("警力", 0, 6) }
-  local t0 = os.clock()
+  local budget = _G.ai_rerank_llm.budget_ms or 30
+  local t0 = now()
   local texts = run(mk_env("jingli", hist, true), cands)
-  local dt = (os.clock() - t0) * 1000
-  check("I. not prepared yet: order kept (no blocking decode)", table.concat(texts, ",") == "经理,经历,精力,敬礼,警力", table.concat(texts, ","))
-  check("I. skipped call returns fast (<15 ms CPU)", dt < 15, string.format("%.1f ms", dt))
+  local dt = now() - t0
+  check("I. not prepared yet: no candidate lost", #texts == 5, tostring(#texts))
+  check("I. not prepared yet: returns within the time limit", dt < budget + 15, string.format("%.1f ms (limit %d ms)", dt, budget))
+  check("I. not prepared yet: reranked within the limit (精力 first)", texts[1] == "精力", table.concat(texts, ","))
+  -- 时限极短：这次保持原顺序且立即返回；任务在后台算完进缓存，下一次按键重排
+  hist = { "这段时间我实在没有太多" }
+  press(mk_env("", hist, true), "i2")
+  _G.llm_filter_cache = nil
+  _G.ai_rerank_llm.budget_ms = 0.01
+  t0 = now()
+  texts = run(mk_env("jingli", hist, true), cands)
+  dt = now() - t0
+  check("I. tiny limit: order kept", table.concat(texts, ",") == "经理,经历,精力,敬礼,警力", table.concat(texts, ","))
+  check("I. tiny limit: skipped call returns fast (<10 ms wall)", dt < 10, string.format("%.1f ms", dt))
+  _G.ai_rerank_llm.budget_ms = budget
   settle = true
-  os.execute("sleep 0.6")                      -- 等后台预解码结束
-  texts = run(mk_env("jingli", hist, true), cands)   -- 若刚才撞车导致预解码被放弃，这一次会补触发预解码
-  os.execute("sleep 0.6")
-  texts = run(mk_env("jingli", hist, true), cands)   -- 再按一次键：必然已恢复
+  os.execute("sleep 0.3")
+  texts = run(mk_env("jingli", hist, true), cands)   -- 再按一次键：结果已在缓存里
   check("I. self-heals within a keystroke: reranked", texts[1] == "精力", table.concat(texts, ","))
 end
 
@@ -350,8 +365,11 @@ do
   local p = io.popen("ls '" .. ud .. "' 2>/dev/null"); local ls = p:read("*a"); p:close()
   local bad = {}
   for name in ls:gmatch("[^\n]+") do
-    -- recent_choices.tsv 是本测试里直接调用纠错记忆接口（B2）写的，不是重排模块写的
-    if not (name == "lua" or name == "rime_llm_log.txt" or name == "recent_choices.tsv") then bad[#bad + 1] = name end
+    -- recent_choices.tsv 是本测试里直接调用纠错记忆接口（B2）写的，不是重排模块写的；
+    -- suzu.gguf、suzu.vocab.txt 是用户放进来的模型文件（桌面端按这两个文件名自动启用 Suzu）
+    local allowed = { lua = true, ["rime_llm_log.txt"] = true, ["recent_choices.tsv"] = true,
+                      ["suzu.gguf"] = true, ["suzu.vocab.txt"] = true }
+    if not allowed[name] then bad[#bad + 1] = name end
   end
   check("H. only expected files in user dir", #bad == 0, table.concat(bad, ","))
   local f = io.open(ud .. "/rime_llm_log.txt"); local log = f and f:read("*a") or ""; if f then f:close() end

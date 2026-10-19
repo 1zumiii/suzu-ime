@@ -124,13 +124,8 @@ bool Engine::enabled() const {
 
 void Engine::ensure_worker_locked() {
     if (worker_running_) return;
-    static bool atexit_registered = false;
-    if (!atexit_registered) {
-        atexit_registered = true;
-        quiet_llama_log();
-        // 进程退出时先停工作线程、释放模型，再让 ggml 的静态对象析构
-        std::atexit([] { shared_engine().shutdown(); });
-    }
+    static bool log_quieted = false;
+    if (!log_quieted) { log_quieted = true; quiet_llama_log(); }
     stop_ = false;
     worker_running_ = true;
     worker_ = std::thread([this] { worker_main(); });
@@ -395,6 +390,10 @@ void Engine::do_load(const EngineConfig & cfg) {
         log_event("ERROR: load failed: %s", err.c_str());
         return;
     }
+    // 进程退出时先停工作线程、释放模型，再让 ggml 的静态对象析构。atexit 的处理函数按注册的逆序执行，
+    // 所以必须在 ggml 初始化（第一次加载模型）之后注册，否则它会排在 ggml 的析构之后，退出时正在算的解码会崩溃。
+    static std::once_flag exit_hook;
+    if (this == &shared_engine()) std::call_once(exit_hook, [] { std::atexit([] { shared_engine().shutdown(); }); });
     model_ = std::move(m);
     vocab_ = std::make_shared<Vocab>(model_->vocab());
     loaded_gen_ = gen;

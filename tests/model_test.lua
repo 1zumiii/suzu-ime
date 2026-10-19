@@ -1,4 +1,5 @@
 -- 真实模型测试：加载、打分合理性、平均耗时（wall time 用 os.time 秒级 / 多次平均）
+-- 用法：lua model_test.lua <rime_llm.so 所在目录> <suzu.gguf> <日志目录> [线程数]（词表按模型文件名找同名的 .vocab.txt）
 local so_dir, model, log_dir, threads = arg[1], arg[2], arg[3], tonumber(arg[4] or "4")
 package.cpath = so_dir .. "/?.so;" .. package.cpath
 local m = require("rime_llm")
