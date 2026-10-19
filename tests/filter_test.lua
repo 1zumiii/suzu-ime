@@ -201,6 +201,25 @@ do
   check("B4. 前缀词只比较覆盖的那段", fz("zhongguoren", "zhong guo", 0, 8) == false)
 end
 
+-- B4b: comment 为空的候选（用户词典来源）退回 ReverseDb 取单字读音：shang 下的“三”“删”是模糊音，“上”不是
+do
+  local readings = { ["三"] = "san", ["上"] = "shang", ["删"] = "shan", ["长"] = "chang zhang", ["怎"] = "zen", ["么"] = "me", ["回"] = "hui", ["事"] = "shi" }
+  _G.ReverseDb = function() return { lookup = function(_, ch) return readings[ch] end } end
+  _G.ai_rerank_reset_reverse()
+  local f = _G.ai_rerank_is_fuzzy
+  local function fz(input, text, s, e) return f({ text = text, comment = "", _start = s or 0, _end = e or #input }, input) end
+  check("B4b. 空注释：精确读音不扣分", fz("shang", "上") == false)
+  check("B4b. 空注释：sh→s、ang→an 凑出来的被识别", fz("shang", "三") == true)
+  check("B4b. 空注释：ang→an 被识别", fz("shang", "删") == true)
+  check("B4b. 空注释：多音字任一读音对得上就不扣分", fz("zhang", "长") == false and fz("chang", "长") == false)
+  check("B4b. 空注释：简拼不扣分", fz("s", "三") == false)
+  check("B4b. 空注释：多字词逐字对齐", fz("zenmehuishi", "怎么回事") == false and fz("zenmehuisi", "怎么回事") == true)
+  check("B4b. 空注释：查不到读音不扣分", fz("shang", "𦜳") == false)
+  _G.ReverseDb = nil
+  _G.ai_rerank_reset_reverse()
+  check("B4b. 没有 ReverseDb 时不扣分", fz("shang", "三") == false)
+end
+
 -- C: 上文为空 → 不重排（原样）
 do
   hist = {}
