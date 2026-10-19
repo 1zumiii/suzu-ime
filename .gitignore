@@ -14,3 +14,6 @@ select_corpus.tsv*
 select_corpus.part-*
 select_replay.jsonl*
 select_replay.part-*
+input_log.jsonl*
+input_log.part-*
+input_log.parts

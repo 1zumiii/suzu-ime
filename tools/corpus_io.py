@@ -54,16 +54,21 @@ def read_corpus(paths):
     return recs, revised
 
 
+def read_jsonl(path):
+    out = []
+    for ln in lines(path):
+        try:
+            out.append(json.loads(ln))
+        except ValueError:
+            pass   # 写到一半被截断的行
+    return out
+
+
 def read_replay(paths):
     recs = []
     for p in expand(paths, "select_replay"):
-        if "select_replay" not in os.path.basename(p):
-            continue
-        for ln in lines(p):
-            try:
-                recs.append(json.loads(ln))
-            except ValueError:
-                pass   # 写到一半被截断的行
+        if "select_replay" in os.path.basename(p):
+            recs += read_jsonl(p)
     return recs
 
 

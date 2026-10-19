@@ -225,37 +225,8 @@ end
 -- 删除对应的 .enabled 文件即停止记录，删除 tsv 即清空。文件只在本机，不会同步，也不会进入仓库。
 local revise_hook = nil
 
--- 最小的 JSON 编码：只处理本文件写出的数据（字符串、数字、布尔、表；表按是否为连续数组区分）
-local function json_encode(v)
-    local tv = type(v)
-    if tv == "string" then
-        return '"' .. v:gsub('[%c"\\]', function(ch)
-            local map = { ['"'] = '\\"', ['\\'] = '\\\\', ['\n'] = '\\n', ['\r'] = '\\r', ['\t'] = '\\t' }
-            return map[ch] or string.format("\\u%04x", ch:byte())
-        end) .. '"'
-    elseif tv == "number" then
-        if v ~= v or v == math.huge or v == -math.huge then return "null" end
-        if math.type(v) == "integer" then return tostring(v) end
-        return string.format("%.6g", v)
-    elseif tv == "boolean" then
-        return tostring(v)
-    elseif tv == "table" then
-        local n = #v
-        local is_arr = n > 0 or next(v) == nil
-        if is_arr then for k in pairs(v) do if type(k) ~= "number" then is_arr = false; break end end end
-        local parts = {}
-        if is_arr then
-            for i = 1, n do parts[i] = json_encode(v[i]) end
-            return "[" .. table.concat(parts, ",") .. "]"
-        end
-        local keys = {}
-        for k in pairs(v) do keys[#keys + 1] = tostring(k) end
-        table.sort(keys)
-        for _, k in ipairs(keys) do parts[#parts + 1] = json_encode(k) .. ":" .. json_encode(v[k]) end
-        return "{" .. table.concat(parts, ",") .. "}"
-    end
-    return "null"
-end
+local json_encode = require("rerank_json").encode
+local okilog, input_log = pcall(require, "input_log")
 local function last_chars(str, n)
     local len = utf8.len(str)
     if not len or len == 0 then return "" end
@@ -418,6 +389,7 @@ end
 
 local function processor(key, env)
     if key:release() then return 2 end
+    if okilog and env.input_log then input_log.key(env, key) end   -- 输入事件流（默认关闭，与 AI 开关无关）
 
     local ctx = env.engine.context
     -- 开关关闭：不加载模型、不记录
@@ -501,6 +473,7 @@ return setmetatable({
         pcall(load_llm, env); pcall(setup_ctx_reset, env); pcall(setup_choice_memory, env)
         -- 选词统计的初始化出错时记入诊断文件，不再静默失败
         xpcall(setup_select_stats, function(e) diag_line("setup_select_stats error: " .. tostring(e)) end, env)
+        if okilog then xpcall(input_log.attach, function(e) diag_line("input_log error: " .. tostring(e)) end, env) end
     end,
     func = processor,
 }, { __call = function(_, key, env) return processor(key, env) end })   -- 仍可当函数直接调用（测试脚本这样用）
