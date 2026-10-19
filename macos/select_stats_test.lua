@@ -189,6 +189,12 @@ do
   local d2 = read_diag()
   check("diag: 回调出错有记录", d2:find("callback error", 1, true) ~= nil and d2:find("boom-test", 1, true) ~= nil)
   check("diag: 不含输入与候选文字", not d2:find("jingli", 1, true) and not d2:find("精力", 1, true))
+  -- 初始化出错（例如配置读取抛错）：记入诊断文件而不是静默失败
+  local env3 = mk_env("精力", 0, true, "jingli")
+  env3.engine.schema.config.get_double = function() error("config-boom") end
+  mod.init(env3)
+  local d3 = read_diag()
+  check("diag: 初始化出错有记录", d3:find("setup_select_stats error", 1, true) ~= nil and d3:find("config-boom", 1, true) ~= nil)
 end
 print(fails == 0 and "全部通过" or ("失败 " .. fails))
 os.exit(fails == 0 and 0 or 1)
