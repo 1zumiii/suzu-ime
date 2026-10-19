@@ -11,7 +11,7 @@
 set -u
 REPO="$(cd "$(dirname "$0")/.." && pwd)"
 [[ $# -ge 3 ]] || { sed -n 3,9p "$0"; exit 64; }
-abspath() { [[ -e "$1" ]] || { echo "找不到 $1" >&2; exit 2; }; (cd "$(dirname "$1")" && echo "$(pwd)/$(basename "$1")"); }
+abspath() { [[ -e "$1" ]] || { echo "找不到 $1" >&2; exit 2; }; (cd "$(dirname "$1")" && echo "$(pwd -W 2>/dev/null || pwd)/$(basename "$1")"); }   # Git Bash: C:/... so native Windows interpreters can read paths embedded in -e strings
 B="$(abspath "$1")"; MODEL="$(abspath "$2")"; VOCAB="$(abspath "$3")"; shift 3
 [[ -f "$B/rime_llm.so" ]] || { echo "$B 里没有 rime_llm.so：先按 core/README.md 构建"; exit 2; }
 QUICK=0
