@@ -7,3 +7,10 @@ build/
 *.apk
 __pycache__/
 build*/
+
+# 本机的选词与回放数据，不进仓库
+select_stats.tsv*
+select_corpus.tsv*
+select_corpus.part-*
+select_replay.jsonl*
+select_replay.part-*
