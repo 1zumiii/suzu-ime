@@ -57,6 +57,40 @@ static int os_nthreads(lua_State *L) {
     return 1;
 }
 
+
+/* os.mem() -> table with the numbers a resident-memory comparison needs, all in MB:
+ *   private  = commit charge of the process (PrivateUsage)
+ *   ws       = working set (resident pages, like Linux VmRSS)
+ *   ws_priv  = private part of the working set (pages not shared with other processes, like anonymous RSS)
+ *   ws_shared= ws - ws_priv (file-backed and shared pages: the mmap'd model file and system DLLs) */
+static int os_mem(lua_State *L) {
+    PROCESS_MEMORY_COUNTERS_EX pm;
+    pm.cb = sizeof(pm);
+    if (!GetProcessMemoryInfo(GetCurrentProcess(), (PROCESS_MEMORY_COUNTERS *)&pm, sizeof(pm))) { lua_pushnil(L); return 1; }
+    double ws_priv_pages = 0, ws_pages = 0;
+    DWORD n = 1 << 16;
+    PSAPI_WORKING_SET_INFORMATION *info = NULL;
+    for (int tries = 0; tries < 6; ++tries) {
+        free(info);
+        info = (PSAPI_WORKING_SET_INFORMATION *)malloc(sizeof(PSAPI_WORKING_SET_INFORMATION) + n * sizeof(PSAPI_WORKING_SET_BLOCK));
+        if (!info) break;
+        if (QueryWorkingSet(GetCurrentProcess(), info, (DWORD)(sizeof(PSAPI_WORKING_SET_INFORMATION) + n * sizeof(PSAPI_WORKING_SET_BLOCK)))) {
+            for (ULONG_PTR i = 0; i < info->NumberOfEntries; ++i) { ws_pages += 1; if (!info->WorkingSetInfo[i].Shared) ws_priv_pages += 1; }
+            break;
+        }
+        n *= 4;
+    }
+    free(info);
+    const double MB = 1024.0 * 1024.0;
+    lua_createtable(L, 0, 6);
+    lua_pushnumber(L, pm.PrivateUsage / MB);            lua_setfield(L, -2, "private");
+    lua_pushnumber(L, pm.WorkingSetSize / MB);          lua_setfield(L, -2, "ws");
+    lua_pushnumber(L, ws_priv_pages * 4096.0 / MB);     lua_setfield(L, -2, "ws_priv");
+    lua_pushnumber(L, (ws_pages - ws_priv_pages) * 4096.0 / MB); lua_setfield(L, -2, "ws_shared");
+    lua_pushnumber(L, pm.PeakWorkingSetSize / MB);      lua_setfield(L, -2, "ws_peak");
+    return 1;
+}
+
 static int run_init(lua_State *L) {
     const char *init = getenv("LUA_INIT");
     if (!init) return LUA_OK;
@@ -79,6 +113,7 @@ int main(int argc, char **argv) {
     lua_pushcfunction(L, os_nthreads); lua_setfield(L, -2, "nthreads");
     lua_pushcfunction(L, os_sleep);    lua_setfield(L, -2, "sleep");
     lua_pushcfunction(L, os_now_ms);   lua_setfield(L, -2, "now_ms");
+    lua_pushcfunction(L, os_mem);      lua_setfield(L, -2, "mem");
     lua_pop(L, 1);
     lua_createtable(L, argc > first ? argc - first : 0, 2);
     for (int i = first; i < argc; ++i) { lua_pushstring(L, argv[i]); lua_rawseti(L, -2, i - first); }
