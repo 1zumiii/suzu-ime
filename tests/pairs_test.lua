@@ -126,8 +126,11 @@ local arc = require("corpus_archive")
 local big = {}
 for i = 1, 40000 do big[i] = string.format("%d\t词%d", T, i) end
 check("归档写入成功", arc.append(tmp .. "/recent_words.tsv", big))
-local gz = io.popen("ls '" .. tmp .. "' | grep -c 'recent_words.archive-.*\\.tsv\\.gz$'"):read("n")
-check("超过 512 KB 后分卷并压缩成 .gz", gz == 1, tostring(gz))
+-- Windows 上 corpus_archive 设计为保留明文分卷（不调用 gzip），其他平台压缩成 .gz
+local on_windows = package.config:sub(1, 1) == "\\"
+local suffix = on_windows and "\\.tsv$" or "\\.tsv\\.gz$"
+local gz = io.popen("ls '" .. tmp .. "' | grep -c 'recent_words.archive-.*" .. suffix .. "'"):read("n")
+check(on_windows and "超过 512 KB 后分卷（Windows 保留明文）" or "超过 512 KB 后分卷并压缩成 .gz", gz == 1, tostring(gz))
 check("分卷后新的归档从空开始", (count_lines(tmp .. "/recent_words.archive.tsv") or 0) == 0)
 
 
