@@ -13,6 +13,7 @@
 --     seed=N               随机种子（默认 1）
 --     speed=F              节奏倍数：按键间隔乘以 F（默认 1；0.5 = 打字快一倍）
 --     out=PATH             另写一份逐次记录（只含数字与原因码），便于画分布
+--     chaos=SCRIPT         故障注入：每输入 10 个词在后台执行一次「SCRIPT <词序号>」（由脚本决定杀进程、冻结、删模型等）
 --     label=TEXT           结果行的标签
 local repo, so_dir, cases_path, n_words = arg[1], arg[2], arg[3], tonumber(arg[4] or "200")
 local opt = { mode = "inproc", threads = "2", seed = "1", speed = "1", label = "" }
@@ -53,7 +54,8 @@ end
 local key_core_ms = 0          -- 本次按键里花在核心调用上的时间
 local rec = { score = {}, score_s2 = {}, key = {}, prep = {} }
 local cnt = { eligible = 0, ok = 0, skip = 0, reasons = {}, ineligible = 0, s2 = 0, s2_ok = 0, keys = 0 }
-local in_stage2 = false
+cur_word = 0                    -- 当前是第几个词（全局，打分包装里用来统计最后 20 个词的情况）
+local tail = { eligible = 0, ok = 0 }
 local function utf8len(s) return utf8.len(s) or #s end
 
 local orig = { score = m.score, prepare = m.prepare, is_ready = m.is_ready, touch = m.touch }
@@ -85,7 +87,11 @@ rawset(m, "score", function(ctx, cands, allow_sync)
     if utf8len(ctx) >= 2 and #cands >= 2 then
       cnt.eligible = cnt.eligible + 1
       rec.score[#rec.score + 1] = dt
-      if type(r) == "table" then cnt.ok = cnt.ok + 1
+      local in_tail = cur_word > n_words - 20
+      if in_tail then tail.eligible = tail.eligible + 1 end
+      if type(r) == "table" then
+        cnt.ok = cnt.ok + 1
+        if in_tail then tail.ok = tail.ok + 1 end
       else
         cnt.skip = cnt.skip + 1
         local k = tostring(why or "nil")
@@ -182,6 +188,8 @@ local function letter(i) local k = (i * 7) % 26 + 1; return LETTERS:sub(k, k) en
 local function cand_objs(cands, e) local t = {}; for i, w in ipairs(cands) do t[i] = mk(w, 0, e) end; return t end
 
 for w = 1, n_words do
+  cur_word = w
+  if opt.chaos and w % 10 == 0 then os.execute(opt.chaos .. " " .. w .. " >/dev/null 2>&1 &") end
   local case = CASES[rint(1, #CASES)]
   local other = CASES[rint(1, #CASES)]
   local four = rnd() < 0.15
@@ -240,9 +248,9 @@ local reasons = {}
 for k, v in pairs(cnt.reasons) do reasons[#reasons + 1] = k .. "=" .. v end
 table.sort(reasons)
 local function over(t, x) local n = 0; for _, v in ipairs(t) do if v > x then n = n + 1 end end; return n end
-print(string.format("%s eligible=%d ok=%d skip=%d (%.2f%%) reasons[%s] ineligible=%d stage2=%d/%d",
+print(string.format("%s eligible=%d ok=%d skip=%d (%.2f%%) reasons[%s] ineligible=%d stage2=%d/%d last20words_ok=%d/%d",
   opt.label, cnt.eligible, cnt.ok, cnt.skip, cnt.eligible > 0 and 100 * cnt.skip / cnt.eligible or 0,
-  table.concat(reasons, ","), cnt.ineligible, cnt.s2_ok, cnt.s2))
+  table.concat(reasons, ","), cnt.ineligible, cnt.s2_ok, cnt.s2, tail.ok, tail.eligible))
 print(string.format("%s score1 ms: p50=%.1f p90=%.1f p99=%.1f max=%.1f n=%d | stage2 ms: p50=%.1f p99=%.1f max=%.1f n=%d",
   opt.label, pct(rec.score, .5), pct(rec.score, .9), pct(rec.score, .99), pct(rec.score, 1), #rec.score,
   pct(rec.score_s2, .5), pct(rec.score_s2, .99), pct(rec.score_s2, 1), #rec.score_s2))
