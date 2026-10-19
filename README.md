@@ -6,18 +6,18 @@
 
 ## 状态
 
-推理核心正在重构。现有实现（`legacy` 部分）由 `macos/port_to_mac.py` 对上游 rime-llm-rerank 的 C++ 源码打补丁，再用 `macos/CMakeLists.txt` 和 `android/CMakeLists.txt` 构建，三端可用。新核心的落点是 `core/`，设计要求见 `docs/design/`。新核心通过全部测试后，旧的移植脚本会删除。
+推理核心已重构为 `core/`，三端（鼠须管进程内、小狼毫进程内 DLL、同文守护进程）共用同一份代码，只服务 Suzu。旧的移植脚本与构建配置已删除。需求、设计说明与测量报告见 `docs/design/`。主机上的测试全部通过，真机上待验证的项目见设计说明第 6 节。
 
 ## 目录
 
 | 路径 | 内容 |
 |---|---|
-| `core/` | 新推理核心（待实现），接口约定见 `core/README.md` |
+| `core/` | 推理核心：推理层、调度层、Lua 模块、守护进程与客户端，接口与构建见 `core/README.md` |
 | `rime/lua/` | Rime 的 Lua 过滤器与处理器：重排、个人词对、选词统计与语料归档、最近使用优先 |
-| `android/` | 推理守护进程与客户端库、改版 Trime 补丁（`trime/patches/`）、构建与签名脚本 |
-| `macos/` | 现有移植脚本、构建配置、安装脚本 |
-| `windows/` | 小狼毫的补丁（基于上游 rime-llm-rerank 的固定提交） |
-| `tests/` | 在模拟 Rime 环境中的端到端测试、守护进程测试、选词统计测试 |
+| `android/` | 改版 Trime 补丁（`trime/patches/`）、APK 构建与签名脚本、守护进程的部署脚本 |
+| `macos/` | 安装脚本与鼠须管说明 |
+| `windows/` | 小狼毫的 Lua 补丁（基于上游 rime-llm-rerank 的固定提交） |
+| `tests/` | 模拟 Rime 环境中的端到端测试、按键仿真、留出集对照、守护进程测试、选词统计测试 |
 | `tools/` | 选词统计汇总、守护进程基准等脚本 |
 | `docs/` | 个人化说明、多模型设计草案、设计要求 |
 
@@ -29,7 +29,7 @@
 
 ## 测试
 
-测试脚本在 `tests/`，用法写在各文件开头的注释里。多数需要自行编译的 `rime_llm.so` 和 Suzu 模型文件，构建步骤见 `macos/README.md` 与 `android/README.md`。
+测试脚本在 `tests/`，`tests/run_all.sh` 在 Linux 或 macOS 上一次跑完，见 `tests/README.md`。多数测试需要自行编译的核心与 Suzu 模型文件，构建步骤见 `core/README.md`。
 
 ## 许可
 
