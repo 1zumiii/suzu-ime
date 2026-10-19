@@ -46,3 +46,14 @@ for i = 1, N do
 end
 local wall = os.time() - start
 print(string.format("%d scores in ~%ds (about %.1f ms each, wall time at 1 s resolution)", N, wall, wall * 1000 / N))
+
+-- 词表外的字（<unk>）：模型分不可信，须排到末尾；否则单个生僻字的得分会高于任何真实的词
+do
+  local cands = { "上游", "𦜳", "三个月", "𬳵" }
+  m.score("遗留项目", cands)
+  local r = m.score("遗留项目", cands)
+  local sc = m.get_scores()
+  local oov_last = r and r[3] and r[4] and (r[3] == "𦜳" or r[3] == "𬳵") and (r[4] == "𦜳" or r[4] == "𬳵")
+  print((oov_last and "ok" or "FAIL") .. " OOV candidates are ranked last: " .. (r and table.concat(r, ">") or "nil"))
+  print(((sc["𦜳"] or 0) <= -1e9 and "ok" or "FAIL") .. " OOV candidate has an invalid score (<= -1e9)")
+end

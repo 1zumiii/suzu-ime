@@ -13,6 +13,8 @@
 
 namespace suzu {
 
+constexpr double kOovScore = -1e12;   // 低于 Lua 端的有效分下限（-1e9）
+
 namespace {
 
 constexpr double kRetryFailedLoadMs = 30000;   // 同一配置加载失败后，30 秒内不再重试（避免每次按键都去读盘）
@@ -224,6 +226,14 @@ ScoreResult Engine::score(const std::string & context, const std::vector<std::st
     job->cands.assign(cands.begin(), cands.begin() + (long)std::min(cands.size(), (size_t)max_cands));
     for (auto & c : job->cands) job->cand_tokens.push_back(vocab->encode_candidate(c));
     res.cands = job->cands;
+    // 含词表外字（编成 <unk>）的候选：模型分不可信。<unk> 在训练语料里很常见，单个 <unk> 的对数概率远高于
+    // 任何真实的词，生僻字候选会因此排到首位。这类候选记为无效分，由 Lua 排到同组末尾。
+    std::vector<char> oov(job->cand_tokens.size(), 0);
+    for (size_t i = 0; i < oov.size(); i++)
+        for (Token t : job->cand_tokens[i]) if (t == kUnkToken) { oov[i] = 1; break; }
+    auto mark_oov = [&oov](std::vector<double> & sc) {
+        for (size_t i = 0; i < sc.size() && i < oov.size(); i++) if (oov[i]) sc[i] = kOovScore;
+    };
 
     std::unique_lock<std::mutex> lk(mu_);
     if (job->ctx.empty()) { stats_.no_context++; res.status = ScoreStatus::NoContext; return res; }
@@ -232,6 +242,7 @@ ScoreResult Engine::score(const std::string & context, const std::vector<std::st
         stats_.ok++;
         stats_.cache_hits++;
         stats_.wait_ms.add(ms_between(t0, Clock::now()));
+        mark_oov(res.scores);
         res.status = ScoreStatus::Ok;
         res.cache_hit = true;
         return res;
@@ -255,6 +266,7 @@ ScoreResult Engine::score(const std::string & context, const std::vector<std::st
     if (!job->ok) { stats_.skip_error++; res.status = ScoreStatus::Error; return res; }
     stats_.ok++;
     res.scores = job->scores;
+    mark_oov(res.scores);
     res.status = ScoreStatus::Ok;
     return res;
 }
