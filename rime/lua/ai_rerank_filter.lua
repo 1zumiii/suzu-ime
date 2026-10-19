@@ -67,6 +67,13 @@ local function choice_eff(prev, input, w)
     return (ok and v) or 0
 end
 
+-- 回放数据用：不看融合系数是否为 0，取原始计数
+local function pp_raw(fn, ...)
+    if not okpp or not pp[fn] or not (...) then return 0 end
+    local ok, v = pcall(pp[fn], ...)
+    return (ok and type(v) == "number") and v or 0
+end
+
 local function is_finite_number(v)
     return type(v) == "number" and v == v and v > -math.huge and v < math.huge
 end
@@ -164,8 +171,8 @@ local function reverse_syllables(text)
     return #sylls > 0 and sylls or nil
 end
 
-local function is_fuzzy_cand(c, input)
-    if cfg.fuzzy_penalty <= 0 then return false end
+-- 不看 fuzzy_penalty 开关的判断（回放数据也要记录）；融合时用下面的 is_fuzzy_cand
+local function fuzzy_raw(c, input)
     local sylls = comment_syllables(c.comment) or reverse_syllables(c.text or "")
     if not sylls then return false end
     local okst, st = pcall(function() return c._start end)
@@ -186,6 +193,9 @@ local function is_fuzzy_cand(c, input)
         return false
     end
     return not m(1, 1)
+end
+local function is_fuzzy_cand(c, input)
+    return cfg.fuzzy_penalty > 0 and fuzzy_raw(c, input)
 end
 _G.ai_rerank_is_fuzzy = is_fuzzy_cand   -- 供测试脚本调用
 
@@ -355,6 +365,32 @@ local function second_stage(env, llm, context, w1, rest)
     return best, cands2
 end
 
+-- === 回放数据（只在选词统计或训练语料开启时整理，由 ai_rerank_processor 随语料写入本机）===
+-- 记录打分组里每个候选的原始特征，离线就能换一套融合系数重新排序，不需要再跑模型。
+-- group：打分组（Rime 原顺序）；pos：组内各候选在整个候选窗里的位次；n：参与打分的个数；
+-- mrank：模型排序名次（同分时融合排序按它保持顺序）。
+local function replay_cands(group, pos, n, mrank, scores, input, prev_any)
+    local freq_eff = _G.ai_rerank_freq_eff
+    local list = {}
+    for i = 1, n do
+        local c = group[i]
+        local okq, q = pcall(function() return c.quality end)
+        local s = scores[c.text]
+        list[i] = {
+            t = c.text, o = pos[i], ty = c.type,
+            q = (okq and is_finite_number(q)) and q or nil,
+            s = is_valid_llm_score(s) and s or nil,
+            mr = mrank[c.text],
+            fq = freq_eff and freq_eff(c.text) or 0,
+            pr = pp_raw("eff", prev_any, c.text),
+            ch = pp_raw("choice_eff", prev_any, input, c.text),
+            fz = fuzzy_raw(c, input) and 1 or 0,
+            wd = is_weird(c.text) and 1 or 0,
+        }
+    end
+    return list
+end
+
 local function inner(translation, env)
     weird_load()
     if not cfg._inited then
@@ -456,12 +492,27 @@ local function inner(translation, env)
         for _, c in ipairs(orig) do Y(c) end; return
     end
     all = full
+    local rp = flags.rp
+    if rp then
+        rp.gp1, rp.be, rp.n1, rp.n1t = full_pos[1], best_e, orig[1].text, orig[1].type
+        rp.nat = {}
+        for i = 1, math.min(#orig, 20) do
+            local okend, e = pcall(function() return orig[i]._end end)
+            rp.nat[i] = { t = orig[i].text, e = (okend and type(e) == "number") and e or -1, ty = orig[i].type }
+        end
+        rp.cfg = { fb = cfg.freq_beta, pg = cfg.pair_gamma, cg = cfg.corr_gamma, fp = cfg.fuzzy_penalty,
+                   gm = cfg.gate_margin, gms = cfg.gate_margin_short, ew = cfg.expected_length_weight }
+    end
     local out = {}
     local function emit(c) out[#out + 1] = c end
     local extra_first = nil   -- 两阶段拼接候选，置于首位
     local function finish()
         -- 把 out（重排后的这一组）按原位次填回，其余候选原样保留
         local res = {}
+        if rp then
+            rp.cat = (#out ~= #full_pos) and 1 or 0   -- 1：组内有重复文字，重排结果整体排在最前（回放时按此处理）
+            rp.s2 = extra_first and extra_first.text or nil
+        end
         if #out ~= #full_pos then
             for _, c in ipairs(out) do res[#res + 1] = c end
             local isfull = {}
@@ -487,6 +538,7 @@ local function inner(translation, env)
     local ctx_text = ""
     if _G.ai_rerank_context_get then ctx_text = _G.ai_rerank_context_get() end
     local context = (ctx_text or ""):gsub('%s+', '')
+    if rp then rp.c = tail_chars(context, 30) end   -- 模型实际看到的上文（核心只取最后 30 个字）
     local cands = {}
     for i, c in ipairs(all) do
         if i > cfg.max_candidates then break end
@@ -559,6 +611,11 @@ local function inner(translation, env)
                     fused_scores[c.text] = -math.huge
                     arr[i] = { c = c, t = -math.huge, idx = i }
                 end
+            end
+            if rp then
+                local mrank = {}
+                for i, c in ipairs(ordered) do mrank[c.text] = i end
+                rp.g = replay_cands(all, full_pos, #cands, mrank, scores, input, prev_any)
             end
             table.sort(arr, function(a, b)
                 if a.t ~= b.t then return a.t > b.t end
@@ -706,6 +763,7 @@ return function(translation, env)
     local t0 = os.clock()
     local n0 = _G.llm_infer_n or 0
     flags = {}
+    if _G.ai_select_stats_on then flags.rp = {} end   -- 回放数据（见 replay_cands）
 
     local native = {}
     for cand in translation:iter() do
@@ -732,7 +790,8 @@ return function(translation, env)
         _G.ai_select_info = { input = env.engine.context.input or "", o = o, f = fpos, n = #native,
                               s1 = flags.s1 or "-", s2 = flags.s2 or "-",
                               ft = cap[1] and cap[1].text or "", of = native[1] and native[1].text or "",
-                              mg = flags.mg, gated = flags.gated or 0, mtop = flags.mtop or 0 }
+                              mg = flags.mg, gated = flags.gated or 0, mtop = flags.mtop or 0,
+                              rp = ok and flags.rp or nil }
     end
 
     if cfg.debug_latency then

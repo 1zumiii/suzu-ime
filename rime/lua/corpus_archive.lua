@@ -29,10 +29,11 @@ function M.append(path, lines)
     return true
 end
 
--- 把一个文件整体改名成带时间的分卷并尽力压缩（用于训练语料文件，不丢弃）
+-- 把一个文件整体改名成带时间的分卷并尽力压缩（用于训练语料文件，不丢弃）；分卷保留原扩展名
 function M.rotate(path)
-    local base = path:gsub("%.tsv$", "")
-    local rot = base .. ".part-" .. os.date("%Y%m%d-%H%M%S") .. ".tsv"
+    local base, ext = path:match("^(.*)(%.[%w]+)$")
+    if not base then base, ext = path, "" end
+    local rot = base .. ".part-" .. os.date("%Y%m%d-%H%M%S") .. ext
     if os.rename(path, rot) and not is_windows() then
         local q = rot:gsub("'", "'\\''")
         pcall(os.execute, "gzip -f '" .. q .. "' >/dev/null 2>&1")
