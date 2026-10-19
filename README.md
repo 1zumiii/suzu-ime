@@ -20,6 +20,14 @@
 
 以下数据均为 2026-10-19 测得。延迟来自按键仿真 `tests/keysim.lua`：用模拟的 Rime 环境驱动真实的 Lua 脚本与核心，按 100～300 ms 的间隔输入 100 个词，含快速连按、退格、换行和四字词。“按键最坏”是一次按键在输入法线程上花掉的最长时间。新旧核心使用同一个模型文件（Suzu-2.1 Q8_0）。
 
+各平台新核心的汇总如下。常驻内存指加载模型并稳态打分后的进程驻留集（Linux 与 Mac 的 RSS，Windows 的工作集），含被映射的模型文件页（约 44 MB）；Android 为守护进程自己的 RSS。各平台的测量条件见下文。
+
+| 平台 | 打分中位数 | 打分 p99 | 按键最坏 | 常驻内存 |
+|---|---|---|---|---|
+| macOS（进程内，4 线程） | 3.8 ms | 9.1 ms | 11.9 ms | 71.8 MB（旧核心 132 MB） |
+| Windows（进程内，4 线程） | 2.7 ms | 4.7 ms | 9.1～9.7 ms | 69.5 MB（旧核心未测） |
+| Android（守护进程，2 线程） | 11.2 ms | 19.3 ms | 36.8 ms | 约 61 MB（旧核心 112～116 MB） |
+
 ### macOS
 
 Apple Silicon Mac，4 线程，新旧核心用同一段仿真脚本：
@@ -62,7 +70,7 @@ Windows 11，MSVC 14.44，4 线程，机器空闲，120 个词，新旧交替各
 | 按键最坏 | 12.1～13.9 ms | 9.1～9.7 ms |
 | 跳过 | 0% | 0% |
 
-现有的 `llm_processor.lua`、`llm_filter.lua` 不用修改就能配新 DLL 使用。空闲卸载后，进程私有内存由 45 MB 降到 3 MB。
+现有的 `llm_processor.lua`、`llm_filter.lua` 不用修改就能配新 DLL 使用。空闲卸载后，进程私有内存由 45 MB 降到 3 MB，工作集由 69.5 MB 降到 11.0 MB。
 
 部署脚本 `windows/deploy_core.ps1` 约 4 秒完成替换，回滚演练 1 秒生效，过程中不弹窗。验证中发现并修复了两个问题：
 
@@ -73,29 +81,21 @@ Windows 11，MSVC 14.44，4 线程，机器空闲，120 个词，新旧交替各
 
 新旧核心使用同一个模型时，打分逐题一致：Linux 与 Mac 上 1293 题留出集首选一致 1293/1293，分数最大差 0.0000；Windows 上 1325 题首选一致率 100%。首选准确率不变（1293 题上均为 92.42%）。
 
-Linux 主机上，守护进程常驻内存由 118.7 MB 降到 63.4 MB，进程内由 127 MB 降到 67 MB。新旧核心在模拟手机速度（解码拉长 2.5 倍）下的对照、各项优化的分项效果与故障注入结果，见 [docs/design/core-measurements.md](docs/design/core-measurements.md)。
+内存的测量方法：在测试解释器进程里加载 `rime_llm`，模型为 Suzu-2.1 Q8_0（43.9 MB），连续打分 300 次，读进程内存计数。2 线程与 4 线程没有可见差别，稳态不增长。
 
-## 安装
+| 平台 | 口径 | 模型未加载 | 稳态 | 空闲卸载后 |
+|---|---|---|---|---|
+| macOS | RSS | 10.4 MB | 71.8 MB | 未测 |
+| macOS | footprint（脏页） | 2.6 MB | 20 MB | 未测 |
+| macOS，旧核心 | RSS／footprint | 10.3 MB | 132 MB／81 MB | 无此功能 |
+| Windows | 工作集 | 8.5 MB | 69.5 MB | 11.0 MB |
+| Windows | 私有页 | 2.0 MB | 19.9 MB | 3.2 MB |
+| Linux 主机，守护进程 | RSS | 未测 | 63.4 MB（旧核心 118.7 MB） | 无 |
+| Linux 主机，进程内 | RSS | 未测 | 67 MB（旧核心 127 MB） | 11 MB |
 
-| 平台 | 步骤 |
-|---|---|
-| macOS | 构建 `rime_llm.so`，再运行 `macos/install_llm.sh <rime_llm.so> <suzu.gguf> <suzu.vocab.txt>`，重启鼠须管。说明见 [macos/README.md](macos/README.md) |
-| Windows | 运行 `windows\build_core.bat <llama.cpp 目录> <Lua 源码目录>` 构建 `rime_llm.dll`，再运行 `windows\deploy_core.ps1 -Dll <rime_llm.dll>`。回滚用 `windows\deploy_core.ps1 -Rollback`。说明见 [windows/README.md](windows/README.md) |
-| Android | `android/trime/build_apk.sh` 一次构建改版 APK、客户端库与守护进程。安装后把 `suzu.gguf` 与 `suzu.vocab.txt` 放进 Trime 的用户目录，点工具栏的 AI 徽标，经 Shizuku 启动守护进程。说明见 [android/README.md](android/README.md) |
+模型带来的增量在 Mac 与 Windows 上都约为 61 MB 的 RSS 或工作集，其中约 44 MB 是被映射的模型文件页，匿名内存约 18 MB。小狼毫进程本身另有 Rime 与词库，Windows 还会修剪空闲进程的工作集，实际进程的读数不能归因于核心。
 
-三端都要求用户目录里有 `suzu.gguf` 与 `suzu.vocab.txt`。替换 macOS 上已有的 `rime_llm.so` 时须先删除再复制，原地覆盖会使鼠须管启动时被系统终止。
-
-## 构建与测试
-
-依赖 llama.cpp（标签 b11632）与 Lua 5.4 源码，目录布局与 CMake 选项见 [core/README.md](core/README.md)。在 Linux 或 macOS 上构建并跑全部测试：
-
-```bash
-cmake -G Ninja -S core -B core/build -DSUZU_BUILD_TOOLS=ON
-cmake --build core/build
-tests/run_all.sh core/build <suzu.gguf> <suzu.vocab.txt>
-```
-
-测试内容包括接口与降级、模拟 Rime 环境中的端到端测试、空闲卸载、并发与退出、1293 题留出集逐题对照，以及守护进程的协议与故障注入。4 核 Linux 主机上约 50 秒，6 核以上的机器会并行运行。清单与 Windows 上的运行方法见 [tests/README.md](tests/README.md) 与 [windows/README.md](windows/README.md)。
+新旧核心在模拟手机速度（解码拉长 2.5 倍）下的对照、各项优化的分项效果与故障注入结果，见 [docs/design/core-measurements.md](docs/design/core-measurements.md)。
 
 ## 未验证的项目
 
