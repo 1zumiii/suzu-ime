@@ -64,7 +64,7 @@ HEAD = corpus_io.row(["分组", "选词数", "原首位对", "最终首位对", 
 def table(title, recs, key, rate, order=None):
     groups = defaultdict(Acc)
     for r in recs:
-        groups[key(r)].add(classify(r), corpus_io.weight(r["kind"], rate))
+        groups[key(r)].add(classify(r), corpus_io.weight(r, rate))
     print(f"\n## {title}")
     print(HEAD)
     for k in (order or sorted(groups)):
@@ -120,7 +120,7 @@ def rescore(recs, build, model, vocab):
 def main():
     ap = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
     ap.add_argument("paths", nargs="+")
-    ap.add_argument("--anchor-rate", type=float, default=0.1, help="锚点抽样率（llm_rerank/select_anchor_rate，默认 0.1）")
+    ap.add_argument("--anchor-rate", type=float, default=0.1, help="记录里没有抽样率时用的锚点抽样率（llm_rerank/select_anchor_rate，默认 0.1）")
     ap.add_argument("--keep-revised", action="store_true", help="保留选词后 3 秒内退格的记录（默认去掉，这类所选词可能本身是错的）")
     ap.add_argument("--rescore", nargs=3, metavar=("BUILD", "MODEL", "VOCAB"))
     a = ap.parse_args()
