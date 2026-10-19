@@ -25,6 +25,7 @@ tests/run_all.sh <core 的构建目录> <suzu.gguf> <suzu.vocab.txt> [--quick]
 | `idle_test.lua` | 空闲卸载、内存归还、透明重载 | 是 |
 | `concurrency_test.lua` | 卸载与输入交错、加载中输入、模块重新初始化、配置反复切换、退出 | 是 |
 | `pairs_test.lua`、`select_stats_test.lua` | 个人词对、选词统计 | 否 |
+| `input_log_test.lua` | 输入事件流：开关、事件内容、失步判断；`tools/input_log.py` 推导的句子、纠错、词对 | 否 |
 | `replay_test.lua` | 回放数据的记录内容；`tools/replay.py` 用记录里的参数逐条复现最终首位；`tools/corpus_report.py` 可运行且不输出文字 | 是 |
 | `parity/run_cases.lua`、`parity/compare.py` | 1293 题留出集逐题打分与对照 | 是 |
 | `keysim.lua` | 按键仿真：跳过率、等待时间分布；`chaos=` 可做故障注入（配合 `chaos_daemon.sh`） | 是 |

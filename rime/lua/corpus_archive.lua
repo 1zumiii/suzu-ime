@@ -29,15 +29,17 @@ function M.append(path, lines)
     return true
 end
 
--- 把一个文件整体改名成带时间的分卷并尽力压缩（用于训练语料文件，不丢弃）；分卷保留原扩展名
+-- 把一个文件整体改名成带时间的分卷并尽力压缩（用于训练语料文件，不丢弃）；分卷保留原扩展名，返回分卷名
 function M.rotate(path)
     local base, ext = path:match("^(.*)(%.[%w]+)$")
     if not base then base, ext = path, "" end
     local rot = base .. ".part-" .. os.date("%Y%m%d-%H%M%S") .. ext
-    if os.rename(path, rot) and not is_windows() then
+    if not os.rename(path, rot) then return nil end
+    if not is_windows() then
         local q = rot:gsub("'", "'\\''")
         pcall(os.execute, "gzip -f '" .. q .. "' >/dev/null 2>&1")
     end
+    return rot   -- 压缩成功时实际文件名为 rot .. ".gz"
 end
 
 return M
