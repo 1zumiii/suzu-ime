@@ -23,25 +23,28 @@ end
 local function scoreit() return m.score("他在公司当", { "经理", "经历", "精力" }) end
 local function wait_ready(limit)
   local t0 = os.time()
-  while not scoreit() do
+  while true do
+    local r, why = scoreit()
+    if r then break end
+    if why == "no_model" then print("FAIL: model failed to load (see rime_llm_log.txt)"); os.exit(1) end
     os.execute("sleep 0.1"); if os.time() - t0 > (limit or 60) then return false end
   end
   return true
 end
 
 check("default idle_unload_sec is 0 (off)", m.idle_unload_sec == 0, tostring(m.idle_unload_sec))
-m.idle_unload_sec = 3
-check("idle_unload_sec can be set", m.idle_unload_sec == 3, tostring(m.idle_unload_sec))
+m.idle_unload_sec = 1
+check("idle_unload_sec can be set", m.idle_unload_sec == 1, tostring(m.idle_unload_sec))
 
 check("model loads", wait_ready())
 local loaded_mb = fp()
 
--- 连续使用：每秒打一次分，持续 8 秒（> 3 秒空闲时限），不应被卸载
-for i = 1, 8 do scoreit(); os.execute("sleep 1") end
-check("continuous use (every 1 s for 8 s, limit 3 s): NOT unloaded", m.is_ready() == true)
+-- 连续使用：每 0.3 秒打一次分，持续 3 秒（> 1 秒空闲时限），不应被卸载
+for i = 1, 10 do scoreit(); os.execute("sleep 0.3") end
+check("continuous use (every 0.3 s for 3 s, limit 1 s): NOT unloaded", m.is_ready() == true)
 
--- 空闲：6 秒不用 → 应被卸载并还回内存
-os.execute("sleep 6")
+-- 空闲：2.5 秒不用 → 应被卸载并还回内存
+os.execute("sleep 2.5")
 check("idle > limit: unloaded", m.is_ready() == false)
 local idle_mb = fp()
 -- Suzu 的权重是文件映射（干净页）加约 20 MB 的 KV 与计算缓冲区：卸载后应至少还回 20 MB
@@ -56,11 +59,11 @@ check("result correct after reload", ranked and ranked[1] == "经理", ranked an
 
 -- 关闭配置：不再卸载
 m.idle_unload_sec = 0
-os.execute("sleep 6")
+os.execute("sleep 2.5")
 check("idle_unload_sec = 0: never unloads", m.is_ready() == true)
 
 -- 再次开启并立即退出，确认退出路径干净（模型仍加载着）
-m.idle_unload_sec = 3
+m.idle_unload_sec = 1
 print(fails == 0 and "ALL OK" or (fails .. " FAILED"))
 io.stdout:flush()
 if exit_mode == "exit" then os.exit(fails == 0 and 0 or 1) end

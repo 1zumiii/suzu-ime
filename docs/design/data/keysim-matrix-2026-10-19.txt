@@ -1,0 +1,81 @@
+legacy-inproc-x1-r1 eligible=180 ok=180 skip=0 (0.00%) reasons[] ineligible=70 stage2=20/20 last20words_ok=36/36
+legacy-inproc-x1-r1 score1 ms: p50=13.6 p90=17.1 p99=24.2 max=24.6 n=180 | stage2 ms: p50=18.0 p99=31.0 max=31.0 n=20
+legacy-inproc-x1-r1 key ms: p50=0.2 p90=14.3 p99=24.0 max=31.3 n=955 >50ms=0 >100ms=0 | prepare ms p99=0.2 max=0.3
+legacy-daemon-x1-r1 eligible=180 ok=180 skip=0 (0.00%) reasons[] ineligible=70 stage2=20/20 last20words_ok=36/36
+legacy-daemon-x1-r1 score1 ms: p50=13.8 p90=17.9 p99=22.9 max=26.3 n=180 | stage2 ms: p50=17.9 p99=40.1 max=40.1 n=20
+legacy-daemon-x1-r1 key ms: p50=0.4 p90=14.4 p99=23.9 max=40.6 n=956 >50ms=0 >100ms=0 | prepare ms p99=0.7 max=2.1
+new-inproc-x1-r1 eligible=180 ok=180 skip=0 (0.00%) reasons[] ineligible=70 stage2=20/20 last20words_ok=36/36
+new-inproc-x1-r1 score1 ms: p50=7.9 p90=10.7 p99=18.4 max=18.6 n=180 | stage2 ms: p50=0.0 p99=26.1 max=26.1 n=20
+new-inproc-x1-r1 key ms: p50=0.2 p90=8.3 p99=16.4 max=26.4 n=955 >50ms=0 >100ms=0 | prepare ms p99=0.1 max=0.1
+new-daemon-x1-r1 eligible=180 ok=180 skip=0 (0.00%) reasons[] ineligible=70 stage2=20/20 last20words_ok=36/36
+new-daemon-x1-r1 score1 ms: p50=8.0 p90=10.8 p99=14.6 max=15.6 n=180 | stage2 ms: p50=0.4 p99=19.0 max=19.0 n=20
+new-daemon-x1-r1 key ms: p50=0.4 p90=8.6 p99=15.1 max=19.5 n=956 >50ms=0 >100ms=0 | prepare ms p99=0.5 max=0.6
+legacy-inproc-x2.5-r1 eligible=180 ok=180 skip=0 (0.00%) reasons[] ineligible=70 stage2=20/20 last20words_ok=36/36
+legacy-inproc-x2.5-r1 score1 ms: p50=33.5 p90=41.4 p99=58.0 max=102.7 n=180 | stage2 ms: p50=37.5 p99=73.5 max=73.5 n=20
+legacy-inproc-x2.5-r1 key ms: p50=0.2 p90=34.6 p99=57.3 max=102.9 n=955 >50ms=16 >100ms=1 | prepare ms p99=0.1 max=0.1
+legacy-daemon-x2.5-r1 eligible=180 ok=180 skip=0 (0.00%) reasons[] ineligible=70 stage2=20/20 last20words_ok=36/36
+legacy-daemon-x2.5-r1 score1 ms: p50=33.3 p90=43.9 p99=54.3 max=64.8 n=180 | stage2 ms: p50=44.1 p99=76.8 max=76.8 n=20
+legacy-daemon-x2.5-r1 key ms: p50=0.4 p90=35.2 p99=58.9 max=77.1 n=956 >50ms=19 >100ms=0 | prepare ms p99=1.4 max=3.2
+new-inproc-x2.5-r1 eligible=183 ok=174 skip=9 (4.92%) reasons[timeout=9] ineligible=70 stage2=20/20 last20words_ok=35/38
+new-inproc-x2.5-r1 score1 ms: p50=19.3 p90=27.2 p99=30.5 max=31.0 n=183 | stage2 ms: p50=0.0 p99=48.3 max=48.3 n=20
+new-inproc-x2.5-r1 key ms: p50=0.2 p90=20.2 p99=30.8 max=48.7 n=955 >50ms=0 >100ms=0 | prepare ms p99=0.1 max=0.1
+new-daemon-x2.5-r1 eligible=180 ok=180 skip=0 (0.00%) reasons[] ineligible=70 stage2=20/20 last20words_ok=36/36
+new-daemon-x2.5-r1 score1 ms: p50=19.5 p90=27.9 p99=38.5 max=38.6 n=180 | stage2 ms: p50=0.3 p99=60.8 max=60.8 n=20
+new-daemon-x2.5-r1 key ms: p50=0.4 p90=20.3 p99=38.7 max=61.9 n=956 >50ms=1 >100ms=0 | prepare ms p99=2.1 max=3.4
+legacy-inproc-x1-r2 eligible=176 ok=176 skip=0 (0.00%) reasons[] ineligible=89 stage2=29/29 last20words_ok=32/32
+legacy-inproc-x1-r2 score1 ms: p50=13.5 p90=18.0 p99=28.3 max=33.6 n=176 | stage2 ms: p50=14.6 p99=30.4 max=30.4 n=29
+legacy-inproc-x1-r2 key ms: p50=0.2 p90=14.3 p99=22.4 max=34.0 n=939 >50ms=0 >100ms=0 | prepare ms p99=0.1 max=0.1
+legacy-daemon-x1-r2 eligible=176 ok=176 skip=0 (0.00%) reasons[] ineligible=89 stage2=29/29 last20words_ok=32/32
+legacy-daemon-x1-r2 score1 ms: p50=13.5 p90=17.3 p99=26.4 max=27.1 n=176 | stage2 ms: p50=14.5 p99=30.4 max=30.4 n=29
+legacy-daemon-x1-r2 key ms: p50=0.4 p90=14.4 p99=22.7 max=30.6 n=940 >50ms=0 >100ms=0 | prepare ms p99=0.4 max=1.0
+new-inproc-x1-r2 eligible=176 ok=175 skip=1 (0.57%) reasons[timeout=1] ineligible=89 stage2=29/29 last20words_ok=31/32
+new-inproc-x1-r2 score1 ms: p50=8.2 p90=11.8 p99=25.4 max=43.5 n=176 | stage2 ms: p50=0.0 p99=27.8 max=27.8 n=29
+new-inproc-x1-r2 key ms: p50=0.2 p90=8.7 p99=19.0 max=43.7 n=939 >50ms=0 >100ms=0 | prepare ms p99=0.1 max=0.1
+new-daemon-x1-r2 eligible=176 ok=176 skip=0 (0.00%) reasons[] ineligible=89 stage2=29/29 last20words_ok=32/32
+new-daemon-x1-r2 score1 ms: p50=8.4 p90=12.9 p99=22.5 max=29.1 n=176 | stage2 ms: p50=0.3 p99=31.2 max=31.2 n=29
+new-daemon-x1-r2 key ms: p50=0.5 p90=9.0 p99=18.5 max=31.8 n=940 >50ms=0 >100ms=0 | prepare ms p99=0.7 max=2.2
+legacy-inproc-x2.5-r2 eligible=176 ok=176 skip=0 (0.00%) reasons[] ineligible=89 stage2=29/29 last20words_ok=32/32
+legacy-inproc-x2.5-r2 score1 ms: p50=34.1 p90=43.0 p99=63.5 max=68.9 n=176 | stage2 ms: p50=32.9 p99=75.6 max=75.6 n=29
+legacy-inproc-x2.5-r2 key ms: p50=0.2 p90=34.7 p99=57.0 max=75.8 n=939 >50ms=14 >100ms=0 | prepare ms p99=0.1 max=0.3
+legacy-daemon-x2.5-r2 eligible=176 ok=176 skip=0 (0.00%) reasons[] ineligible=89 stage2=29/29 last20words_ok=32/32
+legacy-daemon-x2.5-r2 score1 ms: p50=33.9 p90=45.3 p99=67.5 max=133.7 n=176 | stage2 ms: p50=35.3 p99=76.0 max=76.0 n=29
+legacy-daemon-x2.5-r2 key ms: p50=0.4 p90=35.0 p99=55.1 max=134.3 n=940 >50ms=13 >100ms=1 | prepare ms p99=1.8 max=2.5
+new-inproc-x2.5-r2 eligible=178 ok=172 skip=6 (3.37%) reasons[timeout=6] ineligible=89 stage2=29/29 last20words_ok=31/32
+new-inproc-x2.5-r2 score1 ms: p50=19.2 p90=24.8 p99=30.4 max=31.1 n=178 | stage2 ms: p50=0.0 p99=52.8 max=52.8 n=29
+new-inproc-x2.5-r2 key ms: p50=0.2 p90=19.7 p99=31.2 max=53.0 n=939 >50ms=1 >100ms=0 | prepare ms p99=0.1 max=0.9
+new-daemon-x2.5-r2 eligible=176 ok=174 skip=2 (1.14%) reasons[timeout=2] ineligible=89 stage2=28/29 last20words_ok=31/32
+new-daemon-x2.5-r2 score1 ms: p50=18.8 p90=26.2 p99=45.5 max=45.5 n=176 | stage2 ms: p50=0.3 p99=70.5 max=70.5 n=29
+new-daemon-x2.5-r2 key ms: p50=0.5 p90=19.3 p99=37.1 max=70.8 n=940 >50ms=2 >100ms=0 | prepare ms p99=0.8 max=6.9
+legacy-inproc-x1-r3 eligible=173 ok=173 skip=0 (0.00%) reasons[] ineligible=101 stage2=53/53 last20words_ok=42/42
+legacy-inproc-x1-r3 score1 ms: p50=13.8 p90=17.9 p99=25.1 max=26.7 n=173 | stage2 ms: p50=13.8 p99=31.9 max=31.9 n=53
+legacy-inproc-x1-r3 key ms: p50=0.2 p90=14.8 p99=24.1 max=32.1 n=1000 >50ms=0 >100ms=0 | prepare ms p99=0.1 max=0.1
+legacy-daemon-x1-r3 eligible=173 ok=173 skip=0 (0.00%) reasons[] ineligible=101 stage2=53/53 last20words_ok=42/42
+legacy-daemon-x1-r3 score1 ms: p50=13.3 p90=17.4 p99=28.9 max=34.6 n=173 | stage2 ms: p50=14.2 p99=28.4 max=28.4 n=53
+legacy-daemon-x1-r3 key ms: p50=0.4 p90=14.4 p99=24.3 max=34.9 n=1001 >50ms=0 >100ms=0 | prepare ms p99=0.8 max=2.5
+new-inproc-x1-r3 eligible=173 ok=173 skip=0 (0.00%) reasons[] ineligible=101 stage2=53/53 last20words_ok=42/42
+new-inproc-x1-r3 score1 ms: p50=7.6 p90=10.8 p99=17.7 max=19.7 n=173 | stage2 ms: p50=0.0 p99=23.6 max=23.6 n=53
+new-inproc-x1-r3 key ms: p50=0.2 p90=7.9 p99=17.5 max=23.9 n=1000 >50ms=0 >100ms=0 | prepare ms p99=0.1 max=0.1
+new-daemon-x1-r3 eligible=173 ok=173 skip=0 (0.00%) reasons[] ineligible=101 stage2=53/53 last20words_ok=42/42
+new-daemon-x1-r3 score1 ms: p50=7.9 p90=11.2 p99=19.7 max=21.4 n=173 | stage2 ms: p50=0.3 p99=21.3 max=21.3 n=53
+new-daemon-x1-r3 key ms: p50=0.4 p90=8.3 p99=17.5 max=22.0 n=1001 >50ms=0 >100ms=0 | prepare ms p99=0.9 max=2.3
+legacy-inproc-x2.5-r3 eligible=173 ok=173 skip=0 (0.00%) reasons[] ineligible=101 stage2=53/53 last20words_ok=42/42
+legacy-inproc-x2.5-r3 score1 ms: p50=34.0 p90=42.3 p99=50.3 max=62.2 n=173 | stage2 ms: p50=34.2 p99=83.8 max=83.8 n=53
+legacy-inproc-x2.5-r3 key ms: p50=0.2 p90=35.5 p99=58.4 max=84.2 n=1000 >50ms=21 >100ms=0 | prepare ms p99=0.1 max=0.1
+legacy-daemon-x2.5-r3 eligible=173 ok=173 skip=0 (0.00%) reasons[] ineligible=101 stage2=53/53 last20words_ok=42/42
+legacy-daemon-x2.5-r3 score1 ms: p50=33.7 p90=42.7 p99=88.8 max=115.6 n=173 | stage2 ms: p50=34.3 p99=89.6 max=89.6 n=53
+legacy-daemon-x2.5-r3 key ms: p50=0.4 p90=35.0 p99=66.5 max=116.0 n=1001 >50ms=23 >100ms=1 | prepare ms p99=1.6 max=2.8
+new-inproc-x2.5-r3 eligible=175 ok=169 skip=6 (3.43%) reasons[timeout=6] ineligible=101 stage2=52/53 last20words_ok=42/43
+new-inproc-x2.5-r3 score1 ms: p50=18.6 p90=25.1 p99=30.5 max=30.8 n=175 | stage2 ms: p50=0.0 p99=60.5 max=60.5 n=53
+new-inproc-x2.5-r3 key ms: p50=0.2 p90=19.1 p99=37.6 max=60.8 n=1000 >50ms=2 >100ms=0 | prepare ms p99=0.1 max=0.2
+new-daemon-x2.5-r3 eligible=172 ok=170 skip=2 (1.16%) reasons[timeout=2] ineligible=101 stage2=53/53 last20words_ok=40/41
+new-daemon-x2.5-r3 score1 ms: p50=18.4 p90=25.7 p99=45.4 max=45.8 n=172 | stage2 ms: p50=0.3 p99=59.5 max=59.5 n=53
+new-daemon-x2.5-r3 key ms: p50=0.4 p90=19.0 p99=38.0 max=59.7 n=1001 >50ms=3 >100ms=0 | prepare ms p99=0.7 max=2.5
+new40-inproc-x2.5-r1 eligible=181 ok=180 skip=1 (0.55%) reasons[timeout=1] ineligible=70 stage2=20/20 last20words_ok=36/36
+new40-inproc-x2.5-r1 score1 ms: p50=19.4 p90=28.1 p99=38.2 max=40.2 n=181 | stage2 ms: p50=0.0 p99=57.2 max=57.2 n=20
+new40-inproc-x2.5-r1 key ms: p50=0.2 p90=20.2 p99=38.5 max=57.4 n=955 >50ms=2 >100ms=0 | prepare ms p99=0.1 max=0.1
+new40-inproc-x2.5-r2 eligible=176 ok=174 skip=2 (1.14%) reasons[timeout=2] ineligible=89 stage2=29/29 last20words_ok=31/32
+new40-inproc-x2.5-r2 score1 ms: p50=19.3 p90=25.2 p99=40.3 max=40.3 n=176 | stage2 ms: p50=0.0 p99=50.1 max=50.1 n=29
+new40-inproc-x2.5-r2 key ms: p50=0.2 p90=19.9 p99=33.7 max=50.4 n=939 >50ms=1 >100ms=0 | prepare ms p99=0.1 max=0.1
+new40-inproc-x2.5-r3 eligible=173 ok=172 skip=1 (0.58%) reasons[timeout=1] ineligible=101 stage2=53/53 last20words_ok=42/42
+new40-inproc-x2.5-r3 score1 ms: p50=18.7 p90=24.7 p99=37.9 max=40.4 n=173 | stage2 ms: p50=0.0 p99=57.1 max=57.1 n=53
+new40-inproc-x2.5-r3 key ms: p50=0.2 p90=19.1 p99=41.1 max=59.4 n=1000 >50ms=3 >100ms=0 | prepare ms p99=0.1 max=0.1

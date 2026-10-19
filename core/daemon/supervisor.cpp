@@ -9,6 +9,7 @@
 #include <sys/wait.h>
 #include <unistd.h>
 
+#include <algorithm>
 #include <atomic>
 #include <cstdio>
 #include <cstring>
@@ -27,7 +28,7 @@ namespace {
 std::atomic<bool> g_stop{false};
 void on_term(int) { g_stop.store(true); }
 
-bool ping_child(int port) {
+bool ping_child(int port, int timeout_ms) {
     int fd = socket(AF_INET, SOCK_STREAM | SOCK_CLOEXEC, 0);
     if (fd < 0) return false;
     struct sockaddr_in a;
@@ -38,12 +39,12 @@ bool ping_child(int port) {
     fcntl(fd, F_SETFL, O_NONBLOCK);
     bool ok = false;
     int r = connect(fd, (struct sockaddr *)&a, sizeof a);
-    if ((r == 0 || errno == EINPROGRESS) && ipc::wait_fd(fd, POLLOUT, ipc::mono_ms() + 1000)) {
+    if ((r == 0 || errno == EINPROGRESS) && ipc::wait_fd(fd, POLLOUT, ipc::mono_ms() + timeout_ms)) {
         int err = 0;
         socklen_t el = sizeof err;
         getsockopt(fd, SOL_SOCKET, SO_ERROR, &err, &el);
         std::vector<std::string> rep;
-        ok = err == 0 && ipc::send_frame(fd, {"B"}, 1000) && ipc::recv_frame(fd, rep, 1500, 1500) && !rep.empty() &&
+        ok = err == 0 && ipc::send_frame(fd, {"B"}, timeout_ms) && ipc::recv_frame(fd, rep, timeout_ms, timeout_ms) && !rep.empty() &&
              rep[0] == "PONG";
     }
     close(fd);
@@ -96,7 +97,9 @@ int run_supervisor(Options opt) {
         if (pid == 0) { execv(self, av.data()); _exit(127); }
 
         long long start = ipc::mono_ms();
-        long long next_ping = start + 10000;   // 给工作进程留足启动时间
+        const int beat = opt.heartbeat_ms;
+        const int ping_timeout = std::min(1500, beat);
+        long long next_ping = start + beat * 10 / 3;   // 给工作进程留足启动时间（默认 10 秒）
         int fails = 0, st = 0;
         std::string reason;
         for (;;) {
@@ -111,8 +114,8 @@ int run_supervisor(Options opt) {
             }
             long long now = ipc::mono_ms();
             if (now >= next_ping) {
-                next_ping = now + 3000;
-                fails = ping_child(opt.port) ? 0 : fails + 1;
+                next_ping = now + beat;
+                fails = ping_child(opt.port, ping_timeout) ? 0 : fails + 1;
                 if (fails >= 3) {
                     log_event("worker unresponsive, killing");
                     kill(pid, SIGKILL);
@@ -130,7 +133,7 @@ int run_supervisor(Options opt) {
         long long up_s = (ipc::mono_ms() - start) / 1000;
         opt.restarts++;
         opt.last_exit = reason + " after " + std::to_string(up_s) + "s";
-        backoff = up_s >= 60 ? 1 : (backoff * 2 > 30 ? 30 : backoff * 2);
+        backoff = up_s >= 60 ? 1 : std::min(backoff * 2, opt.max_backoff_s);
         log_event("worker exited: %s; restart in %ds (restarts=%d)", opt.last_exit.c_str(), backoff, opt.restarts);
         write_file_atomic(status_path(opt), build_supervisor_status(opt, "restarting", backoff), 0664);
         if (!sleep_interruptible(backoff * 1000)) break;

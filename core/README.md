@@ -27,7 +27,7 @@
 
 | 函数 | 行为 | 最长耗时 |
 |---|---|---|
-| `score(上文, 候选表, allow_sync)` | 返回按分数降序排列的候选表；不打分时返回 `nil, 原因` | 进程内：`allow_sync == false` 时 `budget_ms`（默认 30 ms），否则 `sync_budget_ms`（默认 60 ms）。客户端：各加 20 ms，默认 65 ms 与 90 ms |
+| `score(上文, 候选表, allow_sync)` | 返回按分数降序排列的候选表；不打分时返回 `nil, 原因` | 进程内：`allow_sync == false` 时 `budget_ms`（默认 40 ms），否则 `sync_budget_ms`（默认 70 ms）。客户端：各加 20 ms，默认 65 ms 与 90 ms |
 | `get_scores()` | 最近一次成功打分的“候选 → 分数”表，分数为各字对数概率之和 | 立即返回 |
 | `prepare(上文)` | 请求预解码，不阻塞。返回 `true` 表示已排上；模型未就绪时触发加载并返回 `false` | 进程内立即返回；客户端 50 ms |
 | `is_ready()` | 模型是否就绪 | 进程内立即返回；客户端 50 ms，结果缓存 300 ms |
@@ -93,7 +93,7 @@ CMake 选项：
 | 选项 | 默认 | 作用 |
 |---|---|---|
 | `SUZU_BUILD_LUA_MODULE` | ON | 进程内模块 `rime_llm.so`（Windows 为 `rime_llm.dll`） |
-| `SUZU_BUILD_DAEMON` | Unix 上 ON | 守护进程 `rimellmd` 与客户端 `client/librime_llm.so` |
+| `SUZU_BUILD_DAEMON` | Linux 与 Android 上 ON | 守护进程 `rimellmd` 与客户端 `client/librime_llm.so` |
 | `SUZU_BUILD_TOOLS` | OFF | `suzu_bench` 与测试用的 Lua 解释器 `lua54` |
 | `SUZU_LUA_HOST_LIB` | 空 | Android：Trime 的 `librime_jni.so`，客户端从它解析 `lua_*` |
 | `SUZU_REPACK` | OFF | 默认打开 CPU 权重重排 |
@@ -112,7 +112,7 @@ tests/run_all.sh core/build <suzu.gguf> <suzu.vocab.txt>
 依赖 Xcode 命令行工具、CMake 与 Ninja。产物为 arm64 的 Mach-O bundle，`lua_*` 符号在运行时由鼠须管的 `librime-lua.dylib` 提供：
 
 ```bash
-cmake -G Ninja -S core -B core/build -DSUZU_BUILD_DAEMON=OFF
+cmake -G Ninja -S core -B core/build
 cmake --build core/build --target rime_llm
 macos/install_llm.sh core/build/rime_llm.so <suzu.gguf> <suzu.vocab.txt>
 ```
