@@ -1,19 +1,24 @@
 #!/bin/bash
-# 把 AI 重排需要的二进制和模型放进 Squirrel 用户目录。Lua 与配置由仓库根目录的 ./install.sh 安装。
-# 用法：macos/install_llm.sh [rime_llm.so 路径] [模型路径]
+# 把 AI 重排需要的推理核心与 Suzu 模型放进鼠须管用户目录。Lua 与配置由配置仓库的 install.sh 安装。
+# 用法：macos/install_llm.sh [rime_llm.so 路径] [suzu.gguf 路径] [suzu.vocab.txt 路径]
+#   rime_llm.so 由 core/ 构建（见 core/README.md），默认取 core/build/rime_llm.so
 set -euo pipefail
 
+REPO="$(cd "$(dirname "$0")/.." && pwd)"
 DEST="${RIME_DIR:-$HOME/Library/Rime}"
-SO="${1:-$HOME/Documents/rime-llm-mac-port/build/rime_llm.so}"
-MODEL="${2:-$HOME/Documents/rime-llm-mac-port/models/Qwen3.5-0.8B-Q4_K_M.gguf}"
-# Qwen3.5-0.8B-Q4_K_M.gguf（ModelScope unsloth/Qwen3.5-0.8B-GGUF）；与 Windows 侧使用的文件哈希一致
-EXPECT_SHA="bd258782e35f7f458f8aced1adc053e6e92e89bc735ba3be89d38a06121dc517"
+SO="${1:-$REPO/core/build/rime_llm.so}"
+MODEL="${2:-$HOME/Documents/rime-llm-mac-port/models/suzu.gguf}"
+VOCAB="${3:-${MODEL%.gguf}.vocab.txt}"
 
-[[ -f "$SO" ]] || { echo "找不到 $SO，请先按 macos/README.md 构建"; exit 1; }
+[[ -f "$SO" ]] || { echo "找不到 $SO，请先按 core/README.md 构建"; exit 1; }
 [[ -f "$MODEL" ]] || { echo "找不到模型 $MODEL"; exit 1; }
+[[ -f "$VOCAB" ]] || { echo "找不到词表 $VOCAB"; exit 1; }
 
 # 只放行 Mach-O arm64 的 Lua 模块
 file "$SO" | grep -q "Mach-O 64-bit bundle arm64" || { echo "$SO 不是 arm64 的 Mach-O bundle"; exit 1; }
+# 词表行数必须等于模型的词表大小（核心加载时也会检查，这里提前给出明确的提示）
+lines=$(wc -l < "$VOCAB" | tr -d ' ')
+[[ "$lines" -ge 8 ]] || { echo "$VOCAB 行数过少（$lines）"; exit 1; }
 
 mkdir -p "$DEST/lua"
 # 重要：不要原地覆盖已存在的 .so！macOS 会缓存旧文件的代码签名，覆盖后加载会被内核以
@@ -27,13 +32,10 @@ codesign --force --sign - "$DEST/lua/rime_llm.so" 2>/dev/null
 codesign -v "$DEST/lua/rime_llm.so"
 echo "已安装 $DEST/lua/rime_llm.so"
 
-TARGET="$DEST/$(basename "$MODEL")"
-if [[ -f "$TARGET" ]]; then
-  echo "模型已存在：$TARGET（跳过）"
-else
-  ACTUAL="$(shasum -a 256 "$MODEL" | awk '{print $1}')"
-  [[ "$ACTUAL" == "$EXPECT_SHA" ]] || { echo "模型 SHA-256 不匹配：$ACTUAL"; exit 1; }
-  cp "$MODEL" "$TARGET"
-  echo "已复制模型到 $TARGET"
-fi
+# 处理器在用户目录里看到 suzu.gguf 与 suzu.vocab.txt 就启用 Suzu；模型文件同样先删后拷
+for pair in "$MODEL:suzu.gguf" "$VOCAB:suzu.vocab.txt"; do
+  src="${pair%%:*}"; dst="$DEST/${pair##*:}"
+  if [[ -f "$dst" ]] && cmp -s "$src" "$dst"; then echo "已是最新：$dst"; continue; fi
+  rm -f "$dst"; cp "$src" "$dst"; echo "已复制 $dst"
+done
 echo "完成。重启输入法后生效；AI 重排默认开启，Control+Shift+5 可在当前输入框临时开关。"
