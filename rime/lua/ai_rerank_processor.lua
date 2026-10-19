@@ -6,6 +6,13 @@
 -- 配置（llm_rerank 节点）：idle_unload_minutes 空闲多少分钟后卸载模型，默认 20，0 = 不卸载。
 -- 在 engine/processors 增加 - lua_processor@*ai_rerank_processor（放在最前面）
 
+-- os.rename 在 Windows 上目标已存在会失败（C 运行库的行为）；先试，失败再删掉目标重来。
+local function replace_file(src, dst)
+    if os.rename(src, dst) then return true end
+    os.remove(dst)
+    return os.rename(src, dst)
+end
+
 local history = {}       -- 当前会话上屏词序列（base 之后）
 local prev_hist = {}
 local commit_base = 0    -- 上文基座：只认 commit_history 中 base 之后的新词（librime-lua 无法清 commit_history）
@@ -60,7 +67,7 @@ local function diag_line(msg)
     local size = fh:seek("end")
     fh:write(os.date("%m-%d %H:%M:%S "), msg, "\n")
     fh:close()
-    if size and size > 20 * 1024 then os.rename(path, path .. ".old") end
+    if size and size > 20 * 1024 then replace_file(path, path .. ".old") end
 end
 
 -- 上文：只用本会话上屏的词。去空白（与 filter 保持一致，保证预解码命中）
@@ -256,7 +263,7 @@ local function setup_select_stats(env)
                 local ok, arc = pcall(require, "corpus_archive")
                 if ok then arc.rotate(path) end            -- 训练语料不丢弃：分卷并压缩
             else
-                os.rename(path, path .. ".old")
+                replace_file(path, path .. ".old")
             end
         end
     end
