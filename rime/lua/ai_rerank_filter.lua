@@ -116,21 +116,56 @@ local TONE_BASE = {
     ["ī"] = "i", ["í"] = "i", ["ǐ"] = "i", ["ì"] = "i", ["ō"] = "o", ["ó"] = "o", ["ǒ"] = "o", ["ò"] = "o",
     ["ū"] = "u", ["ú"] = "u", ["ǔ"] = "u", ["ù"] = "u", ["ǖ"] = "u", ["ǘ"] = "u", ["ǚ"] = "u", ["ǜ"] = "u", ["ü"] = "u",
 }
--- 拼音贴合度：候选的 comment 里是词典的标准拼音（spelling_hints）。把输入按“每个音节取一段前缀”去对齐标准拼音：
--- 能对齐 = 精确输入或简拼；对不齐 = 靠模糊音（zh/z、ang/an 等）凑出来的候选。comment 不是纯拼音时返回 false（不扣分）。
-local function is_fuzzy_cand(c, input)
-    if cfg.fuzzy_penalty <= 0 then return false end
-    local cm = c.comment
-    if type(cm) ~= "string" or cm == "" then return false end
+-- 拼音贴合度：把输入按“每个音节取一段前缀”去对齐候选的标准拼音：能对齐 = 精确输入或简拼；
+-- 对不齐 = 靠模糊音（zh/z、ang/an 等）凑出来的候选。
+-- 标准拼音优先取候选的 comment（rime_ice 的 spelling_hints）。来自用户词典的候选（type=user_phrase）comment 为空，
+-- 这时退回 ReverseDb（build/rime_ice.reverse.bin，只收单字）：逐字取读音，多音字的各读音都算，任一组合能对齐就不扣分。
+-- 取不到读音时返回 false（不扣分）。
+local reverse = { db = nil, tried = false }
+local function reverse_readings(ch)
+    if not reverse.tried then
+        reverse.tried = true
+        local ok, db = pcall(function() return ReverseDb("build/rime_ice.reverse.bin") end)
+        if ok and db then reverse.db = db end
+    end
+    if not reverse.db then return nil end
+    local ok, v = pcall(function() return reverse.db:lookup(ch) end)
+    if not ok or type(v) ~= "string" or v == "" then return nil end
+    local list = {}
+    for r in v:lower():gsub("v", "u"):gmatch("[a-z]+") do list[#list + 1] = r end
+    return #list > 0 and list or nil
+end
+
+_G.ai_rerank_reset_reverse = function() reverse.tried = false; reverse.db = nil end   -- 供测试脚本调用
+
+local function comment_syllables(cm)
+    if type(cm) ~= "string" or cm == "" then return nil end
     -- rime_ice 的 comment_format 给拼音加了全角方括号；corrector 纠音时还会写带声调的拼音。统一去掉括号和声调。
     cm = cm:gsub("［", ""):gsub("］", ""):gsub("[\128-\255]+", function(ch)
         return TONE_BASE[ch] or "\1"   -- 其他非拼音字符（如标记）用控制字符占位，下面会判为“不是纯拼音”
     end)
     cm = cm:lower():gsub("v", "u")
-    if not cm:match("^[a-z' ]+$") then return false end
+    if not cm:match("^[a-z' ]+$") then return nil end
     local sylls = {}
-    for w in cm:gmatch("[a-z]+") do sylls[#sylls + 1] = w end
-    if #sylls == 0 then return false end
+    for w in cm:gmatch("[a-z]+") do sylls[#sylls + 1] = { w } end
+    return #sylls > 0 and sylls or nil
+end
+
+local function reverse_syllables(text)
+    local sylls = {}
+    for ch in text:gmatch("[\1-\127\194-\244][\128-\191]*") do
+        if #sylls >= 12 then return nil end
+        local rd = reverse_readings(ch)
+        if not rd then return nil end
+        sylls[#sylls + 1] = rd
+    end
+    return #sylls > 0 and sylls or nil
+end
+
+local function is_fuzzy_cand(c, input)
+    if cfg.fuzzy_penalty <= 0 then return false end
+    local sylls = comment_syllables(c.comment) or reverse_syllables(c.text or "")
+    if not sylls then return false end
     local okst, st = pcall(function() return c._start end)
     local oken, en = pcall(function() return c._end end)
     local seg = input
@@ -141,9 +176,10 @@ local function is_fuzzy_cand(c, input)
     if seg == "" then return false end
     local function m(i, pos)
         if i > #sylls then return pos == #seg + 1 end
-        local sy = sylls[i]
-        for len = 1, #sy do
-            if seg:sub(pos, pos + len - 1) == sy:sub(1, len) and m(i + 1, pos + len) then return true end
+        for _, sy in ipairs(sylls[i]) do
+            for len = 1, #sy do
+                if seg:sub(pos, pos + len - 1) == sy:sub(1, len) and m(i + 1, pos + len) then return true end
+            end
         end
         return false
     end
