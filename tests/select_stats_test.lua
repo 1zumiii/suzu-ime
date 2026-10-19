@@ -116,7 +116,7 @@ fire3()
 local cl = corpus_lines()
 check("难例写入一行", #cl == 1, tostring(#cl))
 local cf = fields(cl[1] or "")
-check("语料 10 列", #cf == 10, tostring(#cf))
+check("语料 11 列（末列为锚点抽样率）", #cf == 11, tostring(#cf))
 check("难例：所选、最终首位、原顺序首位、类型", cf[5] == "精力" and cf[6] == "经理" and cf[7] == "经理" and cf[8] == "hard", table.concat(cf, "|"))
 check("时间戳只到分钟", tonumber(cf[2]) % 60 == 0)
 -- 选了首位且锚点率为 0：不记
