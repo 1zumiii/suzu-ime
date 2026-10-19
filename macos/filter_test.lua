@@ -151,6 +151,29 @@ do
   check("B3. mixed han+latin candidate still takes part", seen_mixed and #t2 == 4 and t2[1] == "精力", table.concat(t2, ","))
 end
 
+-- B5: 怪词：标记后排到同一组候选的最后，取消标记后恢复
+do
+  hist = { "我最近没有太多" }
+  press(mk_env("", hist, true), "w")
+  local path = ud .. "/weird_words.tsv"
+  local function write_weird(lines) local f = io.open(path, "w"); f:write(lines); f:close(); _G.ai_rerank_weird_reload() end
+  local function cands5() return { mk("经理", 0, 6), mk("经历", 0, 6), mk("精力", 0, 6), mk("敬礼", 0, 6), mk("警力", 0, 6) } end
+  _G.llm_filter_cache = nil
+  local base = run(mk_env("jingli", hist, true), cands5())
+  check("B5. 未标记：精力排第一", base[1] == "精力", table.concat(base, ","))
+  write_weird("精力\t1700000000\n")
+  _G.llm_filter_cache = nil
+  local marked = run(mk_env("jingli", hist, true), cands5())
+  check("B5. 标记后怪词排到最后", marked[#marked] == "精力" and marked[1] ~= "精力", table.concat(marked, ","))
+  check("B5. 标记后候选不丢失", #marked == 5, tostring(#marked))
+  write_weird("")
+  _G.llm_filter_cache = nil
+  local restored = run(mk_env("jingli", hist, true), cands5())
+  check("B5. 取消标记后恢复", restored[1] == "精力", table.concat(restored, ","))
+  os.remove(path)
+  _G.ai_rerank_weird_reload()
+end
+
 -- B4: 拼音贴合度：模糊音凑出来的候选被识别，精确输入、简拼、非拼音注释不扣分
 do
   local f = _G.ai_rerank_is_fuzzy

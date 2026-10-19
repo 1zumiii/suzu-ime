@@ -20,14 +20,20 @@ STRIP="$NDK/toolchains/llvm/prebuilt/darwin-x86_64/bin/llvm-strip"
 # 1. 源码：固定提交 + 补丁（已打过就跳过）
 [[ -d "$SRC/.git" ]] || git clone https://github.com/osfans/trime.git "$SRC"
 git -C "$SRC" fetch -q --all 2>/dev/null || true
+# 全部补丁都已应用就跳过；否则回到固定提交，按文件名顺序重新应用全部补丁
+need=0
 for p in "$REPO"/llm-android/trime/patches/*.patch; do
-  if git -C "$SRC" apply --check "$p" 2>/dev/null; then
-    git -C "$SRC" checkout -q "$BASE"; git -C "$SRC" submodule update --init --recursive --depth 1 -q
-    git -C "$SRC" apply "$p"; echo "已应用 $(basename "$p")"
-  else
-    git -C "$SRC" apply --check -R "$p" 2>/dev/null && echo "$(basename "$p") 已经应用过" || { echo "补丁 $p 无法应用（源码有别的改动？）"; exit 1; }
-  fi
+  git -C "$SRC" apply --check -R "$p" 2>/dev/null || need=1
 done
+if [[ $need -eq 1 ]]; then
+  git -C "$SRC" checkout -q -f "$BASE"; git -C "$SRC" submodule update --init --recursive --depth 1 -q
+  for p in "$REPO"/llm-android/trime/patches/*.patch; do
+    git -C "$SRC" apply "$p" || { echo "补丁 $p 无法应用（源码有别的改动？）"; exit 1; }
+    echo "已应用 $(basename "$p")"
+  done
+else
+  echo "补丁都已应用过"
+fi
 printf 'sdk.dir=%s\ncmake.dir=%s\n' "$HOME/Library/Android/sdk" "$CMAKE_DIR" > "$SRC/local.properties"
 
 # 2. 客户端库与守护进程（交叉编译，客户端链接到 Trime 自己的 librime_jni.so 以解析 lua_*）

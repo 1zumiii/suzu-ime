@@ -87,6 +87,30 @@ local function is_emoji_cand(c)   -- 沿用旧名：现在表示“不含汉字�
     return not has_han(c.text)
 end
 
+-- 怪词：用户在手机上长按候选选择“标记为怪词”后，词写入用户目录的 weird_words.tsv（每行一个词，后面可带制表符和时间戳）。
+-- 重排时怪词的融合分记为最低，排到同一组候选的最后，不会被 AI 推到前面；取消标记即恢复。文件很小，每 3 秒最多重读一次。
+local weird = { set = {}, ts = 0 }
+local function weird_load()
+    local now = os.time()
+    if now - weird.ts < 3 then return end
+    weird.ts = now
+    local okud, ud = pcall(function() return rime_api.get_user_data_dir() end)
+    if not okud or not ud or ud == "" then return end
+    local fh = io.open(ud .. "/weird_words.tsv", "r")
+    local set = {}
+    if fh then
+        for line in fh:lines() do
+            local w = line:match("^([^\t\r\n]+)")
+            if w and w ~= "" then set[w] = true end
+        end
+        fh:close()
+    end
+    weird.set = set
+end
+local function is_weird(text) return weird.set[text] == true end
+_G.ai_rerank_weird_reload = function() weird.ts = 0; weird_load() end   -- 供测试脚本调用
+
+
 local TONE_BASE = {
     ["ā"] = "a", ["á"] = "a", ["ǎ"] = "a", ["à"] = "a", ["ē"] = "e", ["é"] = "e", ["ě"] = "e", ["è"] = "e",
     ["ī"] = "i", ["í"] = "i", ["ǐ"] = "i", ["ì"] = "i", ["ō"] = "o", ["ó"] = "o", ["ǒ"] = "o", ["ò"] = "o",
@@ -264,7 +288,7 @@ local function second_stage(env, llm, context, w1, rest)
             local e = cand._end
             if type(e) == "number" and e >= #rest then
                 local txt = cand.text
-                if txt and txt ~= "" and not seen[txt] then
+                if txt and txt ~= "" and not seen[txt] and not is_weird(txt) then
                     seen[txt] = true
                     cands2[#cands2 + 1] = txt
                     if #cands2 >= cfg.max_candidates then break end
@@ -294,6 +318,7 @@ local function second_stage(env, llm, context, w1, rest)
 end
 
 local function inner(translation, env)
+    weird_load()
     if not cfg._inited then
         init_config(env)
         cfg._inited = true
@@ -481,7 +506,10 @@ local function inner(translation, env)
             local arr = {}
             for i, c in ipairs(ordered) do
                 local s = scores[c.text]
-                if is_valid_llm_score(s) then
+                if is_weird(c.text) then
+                    fused_scores[c.text] = -math.huge
+                    arr[i] = { c = c, t = -math.huge, idx = i }
+                elseif is_valid_llm_score(s) then
                     local n = freq_eff and freq_eff(c.text) or 0
                     local t = s + cfg.freq_beta * math.log(1 + n)
                         + cfg.pair_gamma * math.log(1 + pair_eff(prev_word, c.text))
@@ -565,7 +593,7 @@ local function inner(translation, env)
         local native_full_word = false
         if o1 then
             local oke, oe = pcall(function() return o1._end end)
-            native_full_word = oke and oe == #input and o1.type ~= "sentence" and not is_emoji_cand(o1)
+            native_full_word = oke and oe == #input and o1.type ~= "sentence" and not is_emoji_cand(o1) and not is_weird(o1.text)
         end
         flags.nfw = native_full_word and "1" or "0"
         if best_e and best_e < #input and ordered[1] and context ~= "" and not native_full_word
