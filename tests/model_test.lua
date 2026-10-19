@@ -23,8 +23,9 @@ local cases = {
 -- 等模型加载（score 首次调用触发懒加载，加载期间返回 nil）
 local t0 = os.time()
 while true do
-  local s = m.score(cases[1][1], cases[1][2])
+  local s, why = m.score(cases[1][1], cases[1][2])
   if s then break end
+  if why == "no_model" then print("FAIL: model failed to load (see rime_llm_log.txt)"); os.exit(1) end
   if os.time() - t0 > 60 then print("FAIL: model not ready in 60s"); os.exit(1) end
   os.execute("sleep 0.5")
 end

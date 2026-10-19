@@ -68,7 +68,7 @@ local processor = require("ai_rerank_processor")
 local settle = true
 local function press(env, repr)
   local r = processor({ release = function() return false end, repr = function() return repr end }, env)
-  if settle then os.execute("sleep 0.45") end   -- 等后台预解码完成
+  if settle then os.execute("sleep 0.1") end   -- 等后台预解码完成（Suzu 解码一段上文只要几毫秒）
   return r
 end
 
@@ -81,9 +81,15 @@ check("context built from commit_history", _G.ai_rerank_context_get() == "他在
 
 -- 等模型就绪（prepare/score 懒加载）
 local llm = _G.ai_rerank_llm
+-- 功能检查用宽松的时限，机器忙（例如与其他测试并行）时也不会因为超时而“没重排”；
+-- 时限本身由 I 组单独检查（I 组临时改回真实的默认值）
+local REAL_BUDGET = llm.budget_ms or 40
+llm.budget_ms = 2000
+llm.sync_budget_ms = 2000
 local t0 = os.time()
 while not llm.is_ready() do
-  llm.score("你好", { "世界", "是借" })
+  local _, why = llm.score("你好", { "世界", "是借" })
+  if why == "no_model" then print("FAIL: model failed to load (see rime_llm_log.txt)"); os.exit(1) end
   os.execute("sleep 0.3")
   if os.time() - t0 > 60 then print("FAIL model never ready"); os.exit(1) end
 end
@@ -265,7 +271,8 @@ do
   press(mk_env("", hist, true), "i1")          -- 上文变了，后台预解码刚开始
   _G.llm_filter_cache = nil
   local cands = { mk("经理", 0, 6), mk("经历", 0, 6), mk("精力", 0, 6), mk("敬礼", 0, 6), mk("警力", 0, 6) }
-  local budget = _G.ai_rerank_llm.budget_ms or 30
+  local budget = REAL_BUDGET
+  _G.ai_rerank_llm.budget_ms = budget
   local t0 = now()
   local texts = run(mk_env("jingli", hist, true), cands)
   local dt = now() - t0
@@ -287,7 +294,7 @@ do
   local reranked_in_time = package.config:sub(1, 1) == "\\" and texts[1] == "精力" and #texts == 5
   check("I. tiny limit: order kept" .. (package.config:sub(1, 1) == "\\" and " (or reranked within the 1 ms timer floor on Windows)" or ""), kept or reranked_in_time, table.concat(texts, ","))
   check("I. tiny limit: skipped call returns fast (<10 ms wall)", dt < 10, string.format("%.1f ms", dt))
-  _G.ai_rerank_llm.budget_ms = budget
+  _G.ai_rerank_llm.budget_ms = 2000
   settle = true
   os.execute("sleep 0.3")
   texts = run(mk_env("jingli", hist, true), cands)   -- 再按一次键：结果已在缓存里
@@ -334,15 +341,19 @@ end
 do
   hist = { "我最近没有太多" }
   _G.llm_filter_cache = nil
-  _G.ai_rerank_llm.idle_unload_sec = 2
+  _G.ai_rerank_llm.idle_unload_sec = 1
   _G.ai_rerank_llm.score("你好", { "世界", "是借" })     -- 刷新“最近使用”时间
-  os.execute("sleep 4.5")
+  os.execute("sleep 2.2")
   check("K. model unloaded after idle", _G.ai_rerank_llm.is_ready() == false)
   local cands = { mk("经理", 0, 6), mk("经历", 0, 6), mk("精力", 0, 6), mk("敬礼", 0, 6), mk("警力", 0, 6) }
   local texts = run(mk_env("jingli", hist, true), cands)
   check("K. while unloaded: order kept, no blocking", table.concat(texts, ",") == "经理,经历,精力,敬礼,警力", table.concat(texts, ","))
   -- 接下来每次按键处理器都会触发加载 → 加载完成后补预解码；模拟几次按键
   for i = 1, 6 do press(mk_env("", hist, true), "k" .. i) end
+  -- 等到重新加载完成（不用固定时长：机器忙时加载会慢一些），再按一次键补上预解码
+  local t_wait = os.time()
+  while not _G.ai_rerank_llm.is_ready() and os.time() - t_wait < 10 do press(mk_env("", hist, true), "kw") end
+  press(mk_env("", hist, true), "k7")
   texts = run(mk_env("jingli", hist, true), cands)
   check("K. after reload + prepare: reranking resumes", texts[1] == "精力", table.concat(texts, ","))
   _G.ai_rerank_llm.idle_unload_sec = 0

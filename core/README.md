@@ -93,7 +93,7 @@ CMake 选项：
 | 选项 | 默认 | 作用 |
 |---|---|---|
 | `SUZU_BUILD_LUA_MODULE` | ON | 进程内模块 `rime_llm.so`（Windows 为 `rime_llm.dll`） |
-| `SUZU_BUILD_DAEMON` | Unix 上 ON | 守护进程 `rimellmd` 与客户端 `client/librime_llm.so` |
+| `SUZU_BUILD_DAEMON` | Linux 与 Android 上 ON | 守护进程 `rimellmd` 与客户端 `client/librime_llm.so` |
 | `SUZU_BUILD_TOOLS` | OFF | `suzu_bench` 与测试用的 Lua 解释器 `lua54` |
 | `SUZU_LUA_HOST_LIB` | 空 | Android：Trime 的 `librime_jni.so`，客户端从它解析 `lua_*` |
 | `SUZU_REPACK` | OFF | 默认打开 CPU 权重重排 |
@@ -112,7 +112,7 @@ tests/run_all.sh core/build <suzu.gguf> <suzu.vocab.txt>
 依赖 Xcode 命令行工具、CMake 与 Ninja。产物为 arm64 的 Mach-O bundle，`lua_*` 符号在运行时由鼠须管的 `librime-lua.dylib` 提供：
 
 ```bash
-cmake -G Ninja -S core -B core/build -DSUZU_BUILD_DAEMON=OFF
+cmake -G Ninja -S core -B core/build
 cmake --build core/build --target rime_llm
 macos/install_llm.sh core/build/rime_llm.so <suzu.gguf> <suzu.vocab.txt>
 ```

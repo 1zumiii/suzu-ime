@@ -10,8 +10,10 @@ m.student_vocab = vocab
 m.n_threads = threads
 m.sync_budget_ms = 0   -- 新核心：一直等到算完（旧核心没有这个属性，赋值无效果）
 local t0 = os.time()
-while not m.score("他在公司当", { "经理", "经历", "精力" }, true) do
-  if os.time() - t0 > 60 then print("not ready"); os.exit(1) end
+while true do
+  local r, why = m.score("他在公司当", { "经理", "经历", "精力" }, true)
+  if r then break end
+  if why == "no_model" or os.time() - t0 > 60 then print("not ready: " .. tostring(why)); os.exit(1) end
   os.execute("sleep 0.2")
 end
 local out = assert(io.open(outp, "w"))
