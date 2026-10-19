@@ -1,3 +1,6 @@
+#ifdef __APPLE__
+#include <mach-o/dyld.h>
+#endif
 #include "daemon/supervisor.h"
 
 #include <arpa/inet.h>
@@ -80,10 +83,15 @@ int run_supervisor(Options opt) {
     sigaction(SIGINT, &sa, nullptr);
     mkdir(opt.log_dir.c_str(), 0775);
     log_set_dir(opt.log_dir);
-    char self[512];
+    char self[1024];
+#ifdef __APPLE__
+    uint32_t size = sizeof self;
+    if (_NSGetExecutablePath(self, &size) != 0) { fprintf(stderr, "_NSGetExecutablePath failed\n"); return 1; }
+#else
     ssize_t n = readlink("/proc/self/exe", self, sizeof self - 1);
     if (n <= 0) { fprintf(stderr, "readlink /proc/self/exe failed\n"); return 1; }
     self[n] = 0;
+#endif
     int backoff = 1;
     log_event("supervisor up");
     while (!g_stop.load()) {
