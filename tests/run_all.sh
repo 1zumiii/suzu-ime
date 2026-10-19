@@ -7,7 +7,8 @@
 set -u
 REPO="$(cd "$(dirname "$0")/.." && pwd)"
 B="$(cd "$1" && pwd)"; MODEL="$2"; VOCAB="$3"; QUICK="${4:-}"
-LUA="$B/lua54"; [[ -x "$LUA" ]] || LUA="$(command -v lua)"
+LUA="$B/lua54"; [[ -x "$LUA" ]] || LUA="$(command -v lua5.4 || command -v lua)"
+[[ -x "$LUA" ]] || { echo "找不到 Lua 5.4 解释器：用 -DSUZU_BUILD_TOOLS=ON 构建 lua54，或把 lua 放进 PATH"; exit 2; }
 T="$(mktemp -d "${TMPDIR:-/tmp}/suzu_tests.XXXX")"
 fails=0
 run() {   # run <名称> <命令…>：输出只留失败行与结论

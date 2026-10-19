@@ -27,7 +27,7 @@
 
 | 函数 | 行为 | 最长耗时 |
 |---|---|---|
-| `score(上文, 候选表, allow_sync)` | 返回按分数降序排列的候选表；不打分时返回 `nil, 原因` | 进程内：`allow_sync == false` 时 `budget_ms`（默认 30 ms），否则 `sync_budget_ms`（默认 60 ms）。客户端：各加 20 ms，默认 65 ms 与 90 ms |
+| `score(上文, 候选表, allow_sync)` | 返回按分数降序排列的候选表；不打分时返回 `nil, 原因` | 进程内：`allow_sync == false` 时 `budget_ms`（默认 40 ms），否则 `sync_budget_ms`（默认 70 ms）。客户端：各加 20 ms，默认 65 ms 与 90 ms |
 | `get_scores()` | 最近一次成功打分的“候选 → 分数”表，分数为各字对数概率之和 | 立即返回 |
 | `prepare(上文)` | 请求预解码，不阻塞。返回 `true` 表示已排上；模型未就绪时触发加载并返回 `false` | 进程内立即返回；客户端 50 ms |
 | `is_ready()` | 模型是否就绪 | 进程内立即返回；客户端 50 ms，结果缓存 300 ms |
