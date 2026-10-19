@@ -1,0 +1,287 @@
+diff --git a/app/src/main/AndroidManifest.xml b/app/src/main/AndroidManifest.xml
+index 816ce3a3..f8675e4d 100644
+--- a/app/src/main/AndroidManifest.xml
++++ b/app/src/main/AndroidManifest.xml
+@@ -90,6 +90,13 @@ SPDX-License-Identifier: GPL-3.0-or-later
+             android:launchMode="singleTask"
+             android:windowSoftInputMode="adjustResize" />
+ 
++        <activity
++            android:name=".update.ModuleStatusActivity"
++            android:exported="false"
++            android:label="模块状态"
++            android:launchMode="singleTask"
++            android:theme="@style/Theme.DialogTheme" />
++
+         <activity
+             android:name=".update.ConfigUpdateActivity"
+             android:exported="false"
+diff --git a/app/src/main/java/com/osfans/trime/ime/switches/SwitchOptionEntry.kt b/app/src/main/java/com/osfans/trime/ime/switches/SwitchOptionEntry.kt
+index 0a00456c..58dad2ba 100644
+--- a/app/src/main/java/com/osfans/trime/ime/switches/SwitchOptionEntry.kt
++++ b/app/src/main/java/com/osfans/trime/ime/switches/SwitchOptionEntry.kt
+@@ -19,6 +19,7 @@ sealed class SwitchOptionEntry(
+             SchemaList,
+             UpdateConfig,
+             RepoUpdate,
++            ModuleStatus,
+             Keyboard,
+             ThemeList,
+         }
+diff --git a/app/src/main/java/com/osfans/trime/ime/switches/SwitchOptionWindow.kt b/app/src/main/java/com/osfans/trime/ime/switches/SwitchOptionWindow.kt
+index 96d110ed..fd9d9875 100644
+--- a/app/src/main/java/com/osfans/trime/ime/switches/SwitchOptionWindow.kt
++++ b/app/src/main/java/com/osfans/trime/ime/switches/SwitchOptionWindow.kt
+@@ -67,6 +67,11 @@ class SwitchOptionWindow(di: DI) :
+                 R.drawable.ic_baseline_cloud_download_24,
+                 SwitchOptionEntry.Static.Type.RepoUpdate,
+             ),
++            SwitchOptionEntry.Static(
++                "模块状态",
++                R.drawable.ic_baseline_list_alt_24,
++                SwitchOptionEntry.Static.Type.ModuleStatus,
++            ),
+             SwitchOptionEntry.Static(
+                 context.getString(R.string.virtual_keyboard),
+                 R.drawable.ic_baseline_keyboard_24,
+@@ -130,6 +135,11 @@ class SwitchOptionWindow(di: DI) :
+                                 .addFlags(android.content.Intent.FLAG_ACTIVITY_NEW_TASK),
+                         )
+ 
++                        SwitchOptionEntry.Static.Type.ModuleStatus -> context.startActivity(
++                            android.content.Intent(context, com.osfans.trime.update.ModuleStatusActivity::class.java)
++                                .addFlags(android.content.Intent.FLAG_ACTIVITY_NEW_TASK),
++                        )
++
+                         SwitchOptionEntry.Static.Type.Keyboard -> AppUtils.launchMainToKeyboard(context)
+ 
+                         SwitchOptionEntry.Static.Type.ThemeList -> showDialog { r ->
+diff --git a/app/src/main/java/com/osfans/trime/update/ModuleStatusActivity.kt b/app/src/main/java/com/osfans/trime/update/ModuleStatusActivity.kt
+new file mode 100644
+index 00000000..aeed6d63
+--- /dev/null
++++ b/app/src/main/java/com/osfans/trime/update/ModuleStatusActivity.kt
+@@ -0,0 +1,223 @@
++/*
++ * SPDX-FileCopyrightText: 2026 1zumiii
++ * SPDX-License-Identifier: GPL-3.0-or-later
++ */
++
++package com.osfans.trime.update
++
++import android.app.Activity
++import android.graphics.Color
++import android.graphics.Typeface
++import android.graphics.drawable.GradientDrawable
++import android.os.Bundle
++import android.os.Handler
++import android.os.Looper
++import android.view.Gravity
++import android.view.ViewGroup
++import android.view.Window
++import android.widget.LinearLayout
++import android.widget.ScrollView
++import android.widget.TextView
++import com.osfans.trime.data.base.DataManager
++import com.osfans.trime.ime.bar.ui.AiDaemonLauncher
++import org.json.JSONObject
++import java.io.File
++
++/**
++ * 「模块状态」界面：只读，列出 AI 重排、统一排序、各类记录与配置的当前状态。数据来自用户目录里的文件，
++ * 不改任何设置；打开期间每 2 秒刷新一次。圆点：绿 = 正常或已开启，黄 = 过渡状态，灰 = 关闭，红 = 异常。
++ */
++class ModuleStatusActivity : Activity() {
++    private val ui = Handler(Looper.getMainLooper())
++    private lateinit var body: LinearLayout
++
++    private val tick = object : Runnable {
++        override fun run() {
++            render()
++            ui.postDelayed(this, 2000)
++        }
++    }
++
++    private fun dp(v: Int) = (v * resources.displayMetrics.density).toInt()
++
++    private fun round(color: Int, radiusDp: Int) = GradientDrawable().apply {
++        setColor(color)
++        cornerRadius = dp(radiusDp).toFloat()
++    }
++
++    override fun onCreate(savedInstanceState: Bundle?) {
++        requestWindowFeature(Window.FEATURE_NO_TITLE)
++        super.onCreate(savedInstanceState)
++        window.setBackgroundDrawable(round(PANEL, 24))
++        window.setLayout((resources.displayMetrics.widthPixels * 0.92).toInt(), ViewGroup.LayoutParams.WRAP_CONTENT)
++        body = LinearLayout(this).apply {
++            orientation = LinearLayout.VERTICAL
++            setPadding(dp(22), dp(20), dp(22), dp(20))
++        }
++        setContentView(ScrollView(this).apply { addView(body) })
++    }
++
++    override fun onResume() {
++        super.onResume()
++        ui.post(tick)
++    }
++
++    override fun onPause() {
++        ui.removeCallbacks(tick)
++        super.onPause()
++    }
++
++    private fun title(text: String) = TextView(this).apply {
++        this.text = text
++        textSize = 20f
++        setTextColor(Color.WHITE)
++        typeface = Typeface.DEFAULT_BOLD
++    }
++
++    private fun section(text: String) = TextView(this).apply {
++        this.text = text
++        textSize = 13f
++        setTextColor(GRAY)
++        setPadding(0, dp(16), 0, dp(4))
++    }
++
++    private fun row(color: Int, name: String, value: String) = LinearLayout(this).apply {
++        orientation = LinearLayout.HORIZONTAL
++        gravity = Gravity.CENTER_VERTICAL
++        background = round(TILE, 12)
++        setPadding(dp(14), dp(10), dp(14), dp(10))
++        addView(
++            TextView(context).apply {
++                text = "●"
++                textSize = 14f
++                setTextColor(color)
++                setPadding(0, 0, dp(10), 0)
++            },
++        )
++        addView(
++            TextView(context).apply {
++                text = name
++                textSize = 14f
++                setTextColor(Color.WHITE)
++            },
++            LinearLayout.LayoutParams(0, -2, 1f),
++        )
++        addView(
++            TextView(context).apply {
++                text = value
++                textSize = 13f
++                setTextColor(GRAY)
++                gravity = Gravity.END
++            },
++            LinearLayout.LayoutParams(-2, -2),
++        )
++    }
++
++    private fun add(v: android.view.View) {
++        body.addView(v, LinearLayout.LayoutParams(-1, -2).apply { topMargin = dp(6) })
++    }
++
++    private fun lines(f: File): Int =
++        try {
++            if (!f.exists()) {
++                0
++            } else {
++                var n = 0
++                f.bufferedReader().use { r -> while (r.readLine() != null) n++ }
++                n
++            }
++        } catch (e: Exception) {
++            0
++        }
++
++    private fun toggle(name: String, flag: String, data: String?) {
++        val dir = DataManager.userDataDir
++        val on = dir.resolve(flag).exists()
++        val rows = data?.let { lines(dir.resolve(it)) }
++        add(row(if (on) GREEN else GRAY, name, (if (on) "已开启" else "关闭") + (rows?.let { "，$it 行" } ?: "")))
++    }
++
++    private fun render() {
++        body.removeAllViews()
++        add(title("模块状态"))
++        val dir = DataManager.userDataDir
++
++        add(section("AI 重排"))
++        val j =
++            try {
++                JSONObject(dir.resolve("ai_status.json").readText())
++            } catch (e: Exception) {
++                null
++            }
++        val age = if (j != null) System.currentTimeMillis() / 1000 - j.optLong("ts", 0) else Long.MAX_VALUE
++        if (j == null || age > 30) {
++            add(row(RED, "推理守护进程", if (j == null) "没有状态文件" else "无响应（${age} 秒前）"))
++        } else {
++            val loaded = j.optBoolean("model_loaded")
++            val enabled = j.optBoolean("enabled", true)
++            val color = if (!enabled) GRAY else if (loaded) GREEN else YELLOW
++            val value = if (!enabled) "已关闭" else if (loaded) "模型在线" else "模型未加载"
++            add(row(color, "推理守护进程", value))
++            val up = j.optLong("uptime_s")
++            add(row(GREEN, "运行时间 / 内存", "${up / 3600} 时 ${up % 3600 / 60} 分 / ${j.optLong("rss_kb") / 1024} MB"))
++            val e = j.optJSONObject("engine")
++            val c = j.optJSONObject("client")
++            if (e != null) {
++                val ok = e.optInt("ok")
++                val skipped = e.optInt("skipped")
++                val total = ok + skipped
++                val rate = if (total > 0) "%.1f%%".format(skipped * 100.0 / total) else "-"
++                add(row(if (total > 0 && skipped * 100.0 / total > 5) YELLOW else GREEN, "打分 / 跳过", "$ok / $skipped（$rate）"))
++                add(row(GREEN, "无上文（不计入跳过）", "${e.optInt("no_context")}"))
++                val w = e.optJSONObject("wait_ms")
++                if (w != null) {
++                    val p99 = w.optDouble("p99")
++                    add(row(if (p99 > 50) YELLOW else GREEN, "等待 p50 / p99", "%.0f / %.0f ms".format(w.optDouble("p50"), p99)))
++                }
++            }
++            if (c != null) {
++                val over = c.optInt("wait_over_50ms")
++                add(row(if (over > 0) YELLOW else GREEN, "客户端等待超过 50 ms", "$over 次"))
++            }
++        }
++        val sz = when (AiDaemonLauncher.availability()) {
++            AiDaemonLauncher.Availability.READY -> GREEN to "已授权"
++            AiDaemonLauncher.Availability.NEEDS_PERMISSION -> YELLOW to "运行中，待授权"
++            AiDaemonLauncher.Availability.SHIZUKU_NOT_RUNNING -> GRAY to "未运行"
++        }
++        add(row(sz.first, "Shizuku（拉起守护进程）", sz.second))
++
++        add(section("排序"))
++        val schema = dir.resolve("build/rime_ice.schema.yaml")
++        val ranker =
++            try {
++                Regex("""ranker:\s*(\w+)""").find(schema.readText())?.groupValues?.get(1) ?: "legacy"
++            } catch (e: Exception) {
++                "未知"
++            }
++        add(row(if (ranker == "unified") GREEN else GRAY, "排序方式", if (ranker == "unified") "统一排序" else ranker))
++        val gram = dir.resolve("wanxiang-lts-zh-hans.gram")
++        add(row(if (gram.exists()) GREEN else GRAY, "语法模型", if (gram.exists()) "${gram.length() / 1048576} MB" else "没有"))
++        val weird = lines(dir.resolve("weird_words.tsv"))
++        add(row(GRAY, "已标记的怪词", "$weird 个"))
++
++        add(section("记录（只在本机）"))
++        toggle("输入事件流", "input_log.enabled", "input_log.jsonl")
++        toggle("选词语料", "select_corpus.enabled", "select_corpus.tsv")
++        toggle("选词统计", "select_stats.enabled", "select_stats.tsv")
++        add(row(GRAY, "最近使用词 / 词对", "${lines(dir.resolve("recent_words.tsv"))} / ${lines(dir.resolve("recent_pairs.tsv"))}"))
++
++        add(section("配置"))
++        val v = ConfigUpdater.version.ifEmpty { "未通过仓库更新过" }
++        add(row(GRAY, "配置版本", v))
++    }
++
++    private companion object {
++        val PANEL = Color.rgb(0x3A, 0x3A, 0x3A)
++        val TILE = Color.rgb(0x1A, 0x1A, 0x1A)
++        val GRAY = Color.rgb(0xA8, 0xA8, 0xA8)
++        val GREEN = Color.rgb(0x4C, 0xAF, 0x50)
++        val YELLOW = Color.rgb(0xFF, 0xC1, 0x07)
++        val RED = Color.rgb(0xF4, 0x43, 0x36)
++    }
++}
