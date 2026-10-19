@@ -1,0 +1,40 @@
+== threads=2 --no-share --no-unified --no-pool
+round 1: score wall p50=15.15 p90=21.92 p99=28.57 max=62.12 ms | ctx p50=4.98 | cand p50=10.18 p99=18.54 | cand_tokens/case=3.74 decodes/case=1.95
+round 2: score wall p50=15.78 p90=22.56 p99=30.27 max=36.42 ms | ctx p50=5.08 | cand p50=10.62 p99=18.37 | cand_tokens/case=3.74 decodes/case=1.95
+round 3: score wall p50=14.72 p90=20.99 p99=27.74 max=115.01 ms | ctx p50=4.77 | cand p50=9.77 p99=17.15 | cand_tokens/case=3.74 decodes/case=1.95
+== threads=2 --no-unified
+round 1: score wall p50=12.08 p90=18.04 p99=25.16 max=28.93 ms | ctx p50=4.43 | cand p50=7.40 p99=14.20 | cand_tokens/case=2.95 decodes/case=1.95
+round 2: score wall p50=12.72 p90=18.41 p99=25.15 max=33.97 ms | ctx p50=4.78 | cand p50=7.64 p99=14.90 | cand_tokens/case=2.95 decodes/case=1.95
+round 3: score wall p50=12.62 p90=18.79 p99=24.84 max=93.60 ms | ctx p50=4.78 | cand p50=7.52 p99=15.34 | cand_tokens/case=2.95 decodes/case=1.95
+== threads=2 --no-share
+round 1: score wall p50=9.36 p90=14.48 p99=21.17 max=32.26 ms | ctx p50=4.63 | cand p50=4.83 p99=8.93 | cand_tokens/case=3.74 decodes/case=1.95
+round 2: score wall p50=10.60 p90=16.29 p99=23.05 max=97.36 ms | ctx p50=5.40 | cand p50=5.24 p99=10.66 | cand_tokens/case=3.74 decodes/case=1.95
+round 3: score wall p50=9.96 p90=15.24 p99=21.43 max=33.10 ms | ctx p50=4.92 | cand p50=4.98 p99=10.27 | cand_tokens/case=3.74 decodes/case=1.95
+== threads=2 --no-pool
+round 1: score wall p50=8.78 p90=13.38 p99=18.69 max=32.46 ms | ctx p50=4.82 | cand p50=3.75 p99=7.88 | cand_tokens/case=2.95 decodes/case=1.95
+round 2: score wall p50=8.42 p90=13.22 p99=18.09 max=40.19 ms | ctx p50=4.59 | cand p50=3.64 p99=7.68 | cand_tokens/case=2.95 decodes/case=1.95
+round 3: score wall p50=8.88 p90=14.03 p99=20.79 max=27.45 ms | ctx p50=4.86 | cand p50=3.88 p99=8.21 | cand_tokens/case=2.95 decodes/case=1.95
+== threads=2 
+round 1: score wall p50=7.84 p90=12.08 p99=16.61 max=22.55 ms | ctx p50=4.28 | cand p50=3.31 p99=6.94 | cand_tokens/case=2.95 decodes/case=1.95
+round 2: score wall p50=7.98 p90=12.54 p99=19.05 max=32.91 ms | ctx p50=4.37 | cand p50=3.36 p99=7.99 | cand_tokens/case=2.95 decodes/case=1.95
+round 3: score wall p50=8.47 p90=13.48 p99=19.04 max=34.26 ms | ctx p50=4.52 | cand p50=3.62 p99=8.04 | cand_tokens/case=2.95 decodes/case=1.95
+== threads=4 --no-share --no-unified --no-pool
+round 1: score wall p50=11.44 p90=16.63 p99=44.37 max=76.53 ms | ctx p50=3.35 | cand p50=7.88 p99=33.31 | cand_tokens/case=3.74 decodes/case=1.95
+round 2: score wall p50=11.22 p90=15.95 p99=37.71 max=67.61 ms | ctx p50=3.22 | cand p50=7.82 p99=18.83 | cand_tokens/case=3.74 decodes/case=1.95
+round 3: score wall p50=11.02 p90=15.57 p99=52.27 max=79.38 ms | ctx p50=3.24 | cand p50=7.69 p99=46.27 | cand_tokens/case=3.74 decodes/case=1.95
+== threads=4 --no-unified
+round 1: score wall p50=8.95 p90=12.96 p99=17.49 max=33.86 ms | ctx p50=3.00 | cand p50=5.71 p99=12.20 | cand_tokens/case=2.95 decodes/case=1.95
+round 2: score wall p50=8.98 p90=13.38 p99=18.96 max=31.62 ms | ctx p50=3.10 | cand p50=5.61 p99=12.78 | cand_tokens/case=2.95 decodes/case=1.95
+round 3: score wall p50=8.92 p90=13.44 p99=19.36 max=35.69 ms | ctx p50=2.96 | cand p50=5.66 p99=12.37 | cand_tokens/case=2.95 decodes/case=1.95
+== threads=4 --no-share
+round 1: score wall p50=6.00 p90=9.20 p99=13.61 max=17.61 ms | ctx p50=2.97 | cand p50=3.04 p99=7.00 | cand_tokens/case=3.74 decodes/case=1.95
+round 2: score wall p50=6.27 p90=10.12 p99=15.34 max=29.64 ms | ctx p50=3.08 | cand p50=3.13 p99=8.30 | cand_tokens/case=3.74 decodes/case=1.95
+round 3: score wall p50=6.36 p90=9.45 p99=13.99 max=31.41 ms | ctx p50=3.07 | cand p50=3.13 p99=8.49 | cand_tokens/case=3.74 decodes/case=1.95
+== threads=4 --no-pool
+round 1: score wall p50=5.81 p90=8.84 p99=15.92 max=67.75 ms | ctx p50=3.11 | cand p50=2.55 p99=6.58 | cand_tokens/case=2.95 decodes/case=1.95
+round 2: score wall p50=5.96 p90=9.34 p99=15.94 max=56.63 ms | ctx p50=3.19 | cand p50=2.58 p99=6.57 | cand_tokens/case=2.95 decodes/case=1.95
+round 3: score wall p50=5.60 p90=8.89 p99=18.03 max=61.87 ms | ctx p50=2.97 | cand p50=2.47 p99=7.37 | cand_tokens/case=2.95 decodes/case=1.95
+== threads=4 
+round 1: score wall p50=5.25 p90=8.26 p99=12.59 max=20.38 ms | ctx p50=2.85 | cand p50=2.30 p99=6.08 | cand_tokens/case=2.95 decodes/case=1.95
+round 2: score wall p50=5.25 p90=8.15 p99=12.30 max=51.20 ms | ctx p50=2.84 | cand p50=2.33 p99=5.63 | cand_tokens/case=2.95 decodes/case=1.95
+round 3: score wall p50=5.32 p90=8.77 p99=17.27 max=31.51 ms | ctx p50=2.87 | cand p50=2.35 p99=6.72 | cand_tokens/case=2.95 decodes/case=1.95

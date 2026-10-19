@@ -59,7 +59,11 @@ class Host:
         shutil.copy(vocab, self.vocab)
         self.proc = subprocess.Popen(
             [binp, "--supervise", "--model", self.model, "--student-vocab", self.vocab, "--rime-dir", self.rime,
-             "--log-dir", self.dir, "--port", str(self.port), "--threads", "2", "--idle-sec", "0", "--n-seq-max", "10"],
+             "--log-dir", self.dir, "--port", str(self.port), "--threads", "2", "--idle-sec", "0", "--n-seq-max", "10",
+             # 监督进程的节奏调短：心跳 0.5 秒、重启退避不超过 1 秒（手机上用默认的 3 秒与 30 秒）
+             "--heartbeat-ms", "500", "--max-backoff-s", "1",
+             # 版本 1 请求（S）的时限放宽：功能检查不因机器忙而超时；时限本身用 Q 请求单独检查
+             "--budget-ms", "500", "--sync-budget-ms", "500"],
             stdout=open(os.path.join(self.dir, "daemon.out"), "w"), stderr=subprocess.STDOUT)
         for _ in range(100):
             if os.path.exists(os.path.join(self.rime, "llm_token")):
@@ -197,7 +201,7 @@ try:
     r = rpc(s, ["S", "0", "他在公司当"] + cands)
     check("score returns a ranking", r[0] == "R" and len(r) == 1 + 2 * len(cands), str(r[:5]))
     check("ranking is sensible (经理 first)", r[0] == "R" and r[1] == "经理", " > ".join(r[1::2]))
-    r = rpc(s, ["Q", "45", "我最近没有太多"] + cands)
+    r = rpc(s, ["Q", "500", "我最近没有太多"] + cands)
     check("version-2 request Q works (精力 first)", r[0] == "R" and r[1] == "精力", " > ".join(r[1::2]))
     lat = []
     for i in range(30):
@@ -206,7 +210,7 @@ try:
     lat.sort()
     print(f"     round-trip latency (prepared context): p50={lat[15]:.1f} ms max={lat[-1]:.1f} ms")
     # Suzu：上文没预解码时在时限内现场解码，而不是跳过（旧核心为 Qwen 设计的“未预解码即跳过”不再适用）
-    r, dt = timed_rpc(s, ["S", "0", "一个没有预解码过的上文"] + cands)
+    r, dt = timed_rpc(s, ["Q", "45", "一个没有预解码过的上文"] + cands)
     check("unprepared context is scored within the budget", r[0] == "R" and dt < 45 + 30, f"{r[0]} {dt:.0f} ms")
     r, dt = timed_rpc(s, ["Q", "1", "又一个没有预解码过的很长很长的上文内容"] + cands)
     check("budget is enforced: 1 ms budget -> timeout answered fast", r[:2] == ["N", "timeout"] and dt < 30, f"{r} {dt:.0f} ms")
@@ -227,8 +231,9 @@ try:
     check("status: no_context is not counted as skipped", st["no_context"] >= 1 and st["skipped"] == st["engine"]["skipped"], f'{st["no_context"]} {st["skipped"]}')
     check("client counters accepted", rpc(s, ["K", "10", "9", "1", "0", "0", "30", "0", "0"]) == ["OK"] and status()["client"]["score_calls"] == 10)
     print("     status:", json.dumps(status(), ensure_ascii=False)[:400], "…")
-    time.sleep(5.5)
-    check("status file is fresh", abs(env.now() - env.status_file()["ts"]) < 7)
+    rpc(s, ["C", "enabled", "1"])          # 切换开关后的 15 秒内，状态文件每 0.3 秒刷新一次
+    time.sleep(0.8)
+    check("status file is fresh", abs(env.now() - env.status_file()["ts"]) < 3)
     s.close()
 
     # ---- 并发：多个连接同时打分
@@ -266,7 +271,7 @@ try:
         env.kill(worker_pid, "STOP")
         t0 = time.time(); st = None
         while time.time() - t0 < 45:
-            time.sleep(1)
+            time.sleep(0.3)
             try:
                 c = socket.create_connection(("127.0.0.1", PORT), timeout=2)
                 c.settimeout(2)
@@ -305,7 +310,7 @@ try:
             # 同一配置加载失败后 30 秒内不重试；重启工作进程即可立刻恢复
             env.kill(str(status()["pid"]), "KILL")
             s.close()
-            time.sleep(2.5)
+            time.sleep(1.2)
             for _ in range(60):
                 try:
                     s = connect(); break

@@ -24,8 +24,8 @@ using suzu::ScoreStatus;
 namespace sl = suzu::lua;
 
 // 时限：第一阶段（allow_sync = false）与第二阶段（现场解码另一段上文）分开设
-double g_budget_ms = 30;
-double g_sync_budget_ms = 60;
+double g_budget_ms = 40;
+double g_sync_budget_ms = 70;
 int g_open_count = 0;           // 打开的模块表个数；最后一个被回收时停止工作线程并释放模型
 
 // 旧接口里只做记录、对 Suzu 不起作用的属性
