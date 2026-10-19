@@ -69,12 +69,22 @@ local function is_finite_number(v)
     return type(v) == "number" and v == v and v > -math.huge and v < math.huge
 end
 
--- emoji 候选（simplifier 生成，文字里没有字母、数字、汉字、假名、谚文）不参与重排。
--- 识别方式与 emoji_defer_filter 相同，直接复用它的判断；模块缺失时视为没有 emoji。
-local okdefer, defer = pcall(require, "emoji_defer_filter")
-local function is_emoji_cand(c)
-    if not (okdefer and type(defer) == "table" and defer.is_emoji_text) then return false end
-    return c.type == "simplified" and defer.is_emoji_text(c.text)
+-- 非中文候选（emoji、英文单词、符号等，文字里没有任何汉字）不参与重排：模型只懂汉字，对它们的打分没有意义，
+-- 还会把它们挤到前面。这些候选不占打分名额，原位置不动。含汉字的中英混合词（如 “iPhone手机”）照常参与。
+local function has_han(text)
+    if type(text) ~= "string" then return false end
+    local ok, res = pcall(function()
+        for _, cp in utf8.codes(text) do
+            if (cp >= 0x3400 and cp <= 0x9FFF) or (cp >= 0xF900 and cp <= 0xFAFF) or (cp >= 0x20000 and cp <= 0x2FFFF) then
+                return true
+            end
+        end
+        return false
+    end)
+    return ok and res
+end
+local function is_emoji_cand(c)   -- 沿用旧名：现在表示“不含汉字的候选”
+    return not has_han(c.text)
 end
 
 local TONE_BASE = {
