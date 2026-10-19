@@ -144,6 +144,25 @@ do
   check("B3. no candidate lost", #texts == 6, tostring(#texts))
 end
 
+-- B4: 拼音贴合度：模糊音凑出来的候选被识别，精确输入、简拼、非拼音注释不扣分
+do
+  local f = _G.ai_rerank_is_fuzzy
+  local function fz(input, comment, s, e) return f({ comment = comment, _start = s or 0, _end = e or #input }, input) end
+  check("B4. 精确输入不是模糊", fz("zhongguo", "zhong guo") == false)
+  check("B4. zh→z 模糊被识别", fz("zhongguo", "zong guo") == true)
+  check("B4. c→ch 模糊被识别", fz("buxiangci", "bu xiang chi") == true)
+  check("B4. 精确 ci 不是模糊", fz("buxiangci", "bu xiang ci") == false)
+  check("B4. ang→an 模糊被识别", fz("buxiangci", "bu xian ci") == true)
+  check("B4. 简拼不是模糊", fz("zg", "zhong guo") == false)
+  check("B4. 简拼加全拼混合不是模糊", fz("zhonggu", "zhong guo") == false)
+  check("B4. 非拼音注释不扣分", fz("zhongguo", "◇") == false)
+  check("B4. 空注释不扣分", fz("zhongguo", "") == false)
+  check("B4. 带全角方括号的真实注释格式", fz("buxiangci", "［bu xiang chi］") == true and fz("buxiangci", "［bu xiang ci］") == false)
+  check("B4. 带声调的注释", fz("zhongguo", "zhōng guó") == false and fz("zhongguo", "zōng guó") == true)
+  check("B4. ü 与 v、u 等价", fz("nvren", "nǚ rén") == false)
+  check("B4. 前缀词只比较覆盖的那段", fz("zhongguoren", "zhong guo", 0, 8) == false)
+end
+
 -- C: 上文为空 → 不重排（原样）
 do
   hist = {}
