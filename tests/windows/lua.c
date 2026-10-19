@@ -1,6 +1,6 @@
 /* Minimal stand-in for the stock lua.c interpreter (the upstream tarball is not on this machine and
  * downloading it was not authorised). What the suzu-ime tests rely on:
- *   lua54 script.lua [args...]   runs the script with the global table arg (arg[0] = script, arg[1..] = args),
+ *   lua54 [-e chunk] script.lua [args...]   (-e runs a chunk first) runs the script with the global table arg (arg[0] = script, arg[1..] = args),
  *                                standard libs open, C modules loadable through package.cpath.
  *   LUA_INIT                     like the stock interpreter: "@file" runs that file, anything else is run as a chunk, before the script.
  * Windows-only additions in the os table, used by tests/windows/prelude.lua to replace the /proc and footprint probes:
@@ -65,7 +65,11 @@ static int run_init(lua_State *L) {
 }
 
 int main(int argc, char **argv) {
-    if (argc < 2) { fprintf(stderr, "usage: %s script.lua [args...]\n", argv[0]); return 2; }
+    /* usage: lua54 [-e "chunk"] [script.lua [args...]]   (-e runs a chunk first, like the stock interpreter) */
+    const char *chunk = NULL;
+    int first = 1;
+    if (argc >= 3 && argv[1][0] == '-' && argv[1][1] == 'e' && argv[1][2] == '\0') { chunk = argv[2]; first = 3; }
+    if (!chunk && argc < 2) { fprintf(stderr, "usage: %s [-e chunk] script.lua [args...]\n", argv[0]); return 2; }
     lua_State *L = luaL_newstate();
     if (!L) { fprintf(stderr, "cannot create state\n"); return 1; }
     luaL_openlibs(L);
@@ -76,18 +80,26 @@ int main(int argc, char **argv) {
     lua_pushcfunction(L, os_sleep);    lua_setfield(L, -2, "sleep");
     lua_pushcfunction(L, os_now_ms);   lua_setfield(L, -2, "now_ms");
     lua_pop(L, 1);
-    lua_createtable(L, argc - 2, 2);
-    for (int i = 1; i < argc; ++i) { lua_pushstring(L, argv[i]); lua_rawseti(L, -2, i - 1); }
+    lua_createtable(L, argc > first ? argc - first : 0, 2);
+    for (int i = first; i < argc; ++i) { lua_pushstring(L, argv[i]); lua_rawseti(L, -2, i - first); }
     lua_setglobal(L, "arg");
     if (run_init(L) != LUA_OK) { fprintf(stderr, "LUA_INIT: %s\n", lua_tostring(L, -1)); lua_close(L); return 1; }
     int base = lua_gettop(L);
     lua_pushcfunction(L, msgh);
-    int rc = luaL_loadfile(L, argv[1]);
-    if (rc == LUA_OK) {
-        for (int i = 2; i < argc; ++i) lua_pushstring(L, argv[i]);
-        rc = lua_pcall(L, argc - 2, LUA_MULTRET, base + 1);
+    int rc = LUA_OK;
+    if (chunk) {
+        rc = luaL_loadstring(L, chunk);
+        if (rc == LUA_OK) rc = lua_pcall(L, 0, 0, base + 1);
+        if (rc != LUA_OK) { fprintf(stderr, "%s\n", lua_tostring(L, -1)); lua_close(L); return 1; }
     }
-    if (rc != LUA_OK) { fprintf(stderr, "%s\n", lua_tostring(L, -1)); lua_close(L); return 1; }
+    if (first < argc) {
+        rc = luaL_loadfile(L, argv[first]);
+        if (rc == LUA_OK) {
+            for (int i = first + 1; i < argc; ++i) lua_pushstring(L, argv[i]);
+            rc = lua_pcall(L, argc - first - 1, LUA_MULTRET, base + 1);
+        }
+        if (rc != LUA_OK) { fprintf(stderr, "%s\n", lua_tostring(L, -1)); lua_close(L); return 1; }
+    }
     lua_close(L);
     return 0;
 }
