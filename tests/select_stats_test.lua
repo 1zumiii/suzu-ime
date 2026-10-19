@@ -1,7 +1,7 @@
 -- 选词统计的单元测试：用模拟环境检查只写纯数字、开关文件生效、位次与去重正确。
--- 用法：lua llm-mac/select_stats_test.lua <仓库目录> <临时目录>
+-- 用法：lua macos/select_stats_test.lua <仓库目录> <临时目录>
 local repo, tmp = arg[1], arg[2]
-package.path = repo .. "/lua/?.lua;" .. package.path
+package.path = repo .. "/rime/lua/?.lua;" .. package.path
 local fails = 0
 local function check(name, cond, extra)
   print((cond and "PASS " or "FAIL ") .. name .. (extra and ("  [" .. extra .. "]") or ""))

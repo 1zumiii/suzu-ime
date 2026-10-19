@@ -14,7 +14,7 @@ git clone --depth 1 --branch b11632 https://github.com/ggml-org/llama.cpp.git ll
 # Lua 5.4.6 头文件（Squirrel 内嵌 5.4.6）：https://www.lua.org/ftp/lua-5.4.6.tar.gz
 #   sha256 7d5ea1b9cb6aa0b59ca3dde1c6adcb57ef83a1ba8e5432c0ecd06bf439b3ad88 ，解压到 deps/lua-5.4.6
 python3 -I scripts/port_to_mac.py rerank/cpp/rime_llm.cpp rime_llm_mac.cpp
-cp llm-mac/CMakeLists.txt .
+cp macos/CMakeLists.txt .
 cmake -G Ninja -S . -B build && cmake --build build --target rime_llm
 ```
 
@@ -124,7 +124,7 @@ cmake -G Ninja -S . -B build_metal -DRIME_LLM_METAL=ON && cmake --build build_me
 
 ```bash
 ./install.sh                     # 配置与 Lua（先备份，再安装）
-llm-mac/install_llm.sh           # rime_llm.so 与模型（校验模型 SHA-256 后复制）
+macos/install_llm.sh           # rime_llm.so 与模型（校验模型 SHA-256 后复制）
 # 重启输入法后生效；AI 默认开启，Control+Shift+5 在当前输入框临时开/关
 ```
 

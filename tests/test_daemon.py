@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """rimellmd 端到端测试（手机上跑着守护进程，经 adb forward 从 Mac 访问）。
-用法：python3 -I llm-android/daemon/test_daemon.py [--chaos]
+用法：python3 -I android/daemon/test_daemon.py [--chaos]
   默认：协议、认证、非法输入、打分正确性、延迟
   --chaos：再做破坏性测试（kill -9 工作进程、SIGSTOP 冻结工作进程），验证监督进程自动恢复。"""
 import json, os, socket, struct, subprocess, sys, time

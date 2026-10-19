@@ -1,6 +1,6 @@
 #!/bin/bash
 # 把 AI 重排需要的二进制和模型放进 Squirrel 用户目录。Lua 与配置由仓库根目录的 ./install.sh 安装。
-# 用法：llm-mac/install_llm.sh [rime_llm.so 路径] [模型路径]
+# 用法：macos/install_llm.sh [rime_llm.so 路径] [模型路径]
 set -euo pipefail
 
 DEST="${RIME_DIR:-$HOME/Library/Rime}"
@@ -9,7 +9,7 @@ MODEL="${2:-$HOME/Documents/rime-llm-mac-port/models/Qwen3.5-0.8B-Q4_K_M.gguf}"
 # Qwen3.5-0.8B-Q4_K_M.gguf（ModelScope unsloth/Qwen3.5-0.8B-GGUF）；与 Windows 侧使用的文件哈希一致
 EXPECT_SHA="bd258782e35f7f458f8aced1adc053e6e92e89bc735ba3be89d38a06121dc517"
 
-[[ -f "$SO" ]] || { echo "找不到 $SO，请先按 llm-mac/README.md 构建"; exit 1; }
+[[ -f "$SO" ]] || { echo "找不到 $SO，请先按 macos/README.md 构建"; exit 1; }
 [[ -f "$MODEL" ]] || { echo "找不到模型 $MODEL"; exit 1; }
 
 # 只放行 Mach-O arm64 的 Lua 模块
