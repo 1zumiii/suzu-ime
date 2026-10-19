@@ -189,6 +189,23 @@ do
   check("D. original sentence kept", table.concat(texts, ","):find("经历过来", 1, true) ~= nil)
 end
 
+-- D2: 原首位是覆盖整串的词典词时，不拼接二阶段候选（boruoxiang → 薄弱项，不能被“波若想”抢走）
+do
+  hist = { "你先给隔壁来个针对" }
+  press(mk_env("", hist, true), "n")
+  _G.llm_filter_cache = nil
+  tail_cands["xiang"] = { mk("想", 0, 5), mk("项", 0, 5), mk("向", 0, 5) }
+  local cands = {
+    mk("薄弱项", 0, 10, "user_phrase"),
+    mk("波若", 0, 5), mk("薄弱", 0, 5), mk("博若", 0, 5), mk("伯若", 0, 5),
+  }
+  local texts, ys = run(mk_env("boruoxiang", hist, true), cands)
+  local has_s2 = false
+  for _, y in ipairs(ys) do if y.comment == "◈" then has_s2 = true end end
+  check("D2. native full-cover word: no two-stage candidate", not has_s2, table.concat(texts, ","))
+  check("D2. native full-cover word stays first", texts[1] == "薄弱项", table.concat(texts, ","))
+end
+
 -- E: scan_limit 之后的候选惰性透传、顺序不变
 do
   hist = { "他在公司当" }
