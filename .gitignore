@@ -6,3 +6,4 @@ build/
 *.gguf
 *.apk
 __pycache__/
+build*/
