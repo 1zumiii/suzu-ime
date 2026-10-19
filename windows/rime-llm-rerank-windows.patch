@@ -23,6 +23,7 @@
 - 选词统计与训练语料记录：移植自 ai_rerank_processor.lua，需在用户目录放 select_stats.enabled、
   select_corpus.enabled 才记录，文件只在本机。
 - 排查开关：llm_rerank/debug_latency（只记数字与原因码），llm_rerank/debug_text（另记候选词，不记上文）。
+- 无汉字候选（emoji、英文单词、符号）不参与重排，保持原位置，含汉字的中英混合词照常参与（与 Mac 同规则，has_han，2026-10-19 加入）。
 
 diff --git a/cpp/rime_llm.cpp b/cpp/rime_llm.cpp
 index bb0536b..98cd786 100644
@@ -314,7 +315,7 @@ index bb0536b..98cd786 100644
      return 0;
  }
 diff --git a/user/llm_filter.lua b/user/llm_filter.lua
-index b8be8c2..a67cec8 100644
+index b8be8c2..5dfe732 100644
 --- a/user/llm_filter.lua
 +++ b/user/llm_filter.lua
 @@ -19,10 +19,40 @@ local cfg = {
@@ -412,7 +413,7 @@ index b8be8c2..a67cec8 100644
      v = sc:get_int("llm_rerank/max_tokens")
      if v then cfg.max_tokens = v end
      v = sc:get_int("llm_rerank/max_candidates")
-@@ -115,10 +173,171 @@ local function init_config(env)
+@@ -115,10 +173,182 @@ local function init_config(env)
      -- min_tokens 不再从 schema 读取（2026-09-30 用户配置面移除；固定 C++ 默认 1）
      local dbg = sc:get_bool("llm_rerank/debug_fusion")
      if dbg ~= nil then cfg.debug_fusion = dbg end
@@ -536,6 +537,17 @@ index b8be8c2..a67cec8 100644
 +        or (cp >= 0x2300 and cp <= 0x23FF)     -- ⌚ ⏰ 等
 +end
 +
++-- [round4] 不含汉字的候选 (emoji、英文单词、符号) 不参与重排，保持原位置；含汉字的中英混合词照常参与
++local function has_han(t)
++    if not t then return false end
++    for _, cp in utf8.codes(t, true) do
++        if (cp >= 0x3400 and cp <= 0x4DBF) or (cp >= 0x4E00 and cp <= 0x9FFF) or (cp >= 0xF900 and cp <= 0xFAFF) then return true end
++    end
++    return false
++end
++local function skip_rerank(t) return is_emoji_text(t) or not has_han(t) end
++
++
 +-- 候选注释里的“推理标记”（一个字符，按上文来源区分）：
 +--   ❖ = 从应用里读到的光标前文本 (UIA)    ◈ = Word/WPS 文档模型 (COM)    ◇ = 仅上屏历史兜底
 +-- 来源/模型标记（2026-10-19 与 Mac、安卓统一）：◇ = AI 按上文重排后的首选，◈ = 两阶段拼出来的首选；
@@ -585,7 +597,7 @@ index b8be8c2..a67cec8 100644
      -- 每次调用都从 schema 读取 enabled，确保重新部署后立即生效
      local sc = env.engine.schema.config
      local enabled = sc:get_bool("llm_rerank/enabled") or false
-@@ -131,9 +350,22 @@ return function(translation, env)
+@@ -131,9 +361,22 @@ return function(translation, env)
  
      local all = {}
      for cand in translation:iter() do table.insert(all, cand) end
@@ -609,7 +621,7 @@ index b8be8c2..a67cec8 100644
  
      -- 候选窗快照: (input, 前 max_candidates 个候选) 供 llm_processor 上屏时
      -- 关联真实候选窗写入训练语料 (与 LLM 打分范围一致)。所有路径统一记录,
-@@ -148,7 +380,7 @@ return function(translation, env)
+@@ -148,7 +391,7 @@ return function(translation, env)
  
      -- enabled false → 原样透传，不推理
      if not enabled then
@@ -618,7 +630,7 @@ index b8be8c2..a67cec8 100644
      end
  
      -- Lazy load DLL on first use (enabled 变化时重载, 重新部署立即生效)
-@@ -157,7 +389,7 @@ return function(translation, env)
+@@ -157,7 +400,7 @@ return function(translation, env)
      end
  
      if not llm then
@@ -627,7 +639,7 @@ index b8be8c2..a67cec8 100644
      end
  
      -- 触发条件：编码串是否匹配 code_pattern（2026-09-30 取代 min/max_code_len 区间）
-@@ -165,7 +397,101 @@ return function(translation, env)
+@@ -165,7 +408,101 @@ return function(translation, env)
      -- （与源码版 boost::regex 同一套 ECMAScript 语法）；DLL 不提供该函数时
      -- 回退 Lua 模式——两种写法对 .{4} / .{4,} / .{3,4} / [abcde]{4} 等价。
      if not match_code_pattern(input) then
@@ -647,7 +659,7 @@ index b8be8c2..a67cec8 100644
 +    local groups, best_e = {}, nil
 +    for i, c in ipairs(orig) do
 +        local okend, e = pcall(function() return c._end end)
-+        if okend and type(e) == "number" and not is_emoji_text(c.text) then
++        if okend and type(e) == "number" and not skip_rerank(c.text) then
 +            has_end = true
 +            local g = groups[e]
 +            if not g then g = {}; groups[e] = g end
@@ -660,7 +672,7 @@ index b8be8c2..a67cec8 100644
 +    local top_full_len = nil
 +    for _, c in ipairs(orig) do
 +        local okend, e = pcall(function() return c._end end)
-+        if okend and e == #input and not is_emoji_text(c.text) then top_full_len = utf8.len(c.text or ""); break end
++        if okend and e == #input and not skip_rerank(c.text) then top_full_len = utf8.len(c.text or ""); break end
 +    end
 +    local two_stage_ok = top_full_len ~= nil and top_full_len <= cfg.two_stage_max_chars
 +        and env.engine.context:get_option("ai_stage2")   -- 方案开关 ai_stage2（单段/两段），默认开
@@ -730,7 +742,7 @@ index b8be8c2..a67cec8 100644
      end
  
      local ctx_text, ctx_src = "", "rime"
-@@ -176,6 +502,7 @@ return function(translation, env)
+@@ -176,6 +513,7 @@ return function(translation, env)
      -- 不需过滤尾部 ASCII: Rime 编码显示在候选窗, 不写入编辑器,
      -- 外挂读到的光标前文本不会包含编码字母 (微软拼音式 inline composition 才会)
      local context = (ctx_text or ""):gsub('%s+', '')
@@ -738,7 +750,7 @@ index b8be8c2..a67cec8 100644
      local cands = {}
      for i, c in ipairs(all) do
          if i > cfg.max_candidates then break end
-@@ -193,8 +520,10 @@ return function(translation, env)
+@@ -193,8 +531,10 @@ return function(translation, env)
          dbg_cache = "HIT"
      else
          local t0 = os.clock()
@@ -749,7 +761,7 @@ index b8be8c2..a67cec8 100644
          if ok and type(result) == "table" then
              scores = get_scores(cands)
              _G.llm_filter_cache = {
-@@ -208,7 +537,8 @@ return function(translation, env)
+@@ -208,7 +548,8 @@ return function(translation, env)
              log_dir = os.getenv("TEMP") or "C:\\Windows\\Temp"
          end
          local epath = log_dir .. "\\rime_llm_events.txt"
@@ -759,7 +771,7 @@ index b8be8c2..a67cec8 100644
          -- 日志轮转 (2026-09-04): >5MB 改名 .old (单文件轮转), 防无限增长
          if ef then
              local esz = ef:seek("end")
-@@ -261,6 +591,26 @@ return function(translation, env)
+@@ -261,6 +602,26 @@ return function(translation, env)
          end
      end
  
@@ -786,7 +798,7 @@ index b8be8c2..a67cec8 100644
      if ok and result then
          local seen = {}
          local ordered = {}
-@@ -289,15 +639,20 @@ return function(translation, env)
+@@ -289,15 +650,20 @@ return function(translation, env)
          local fused_scores = nil
          if #ordered > 1 and scores then
              local freq_eff = _G.user_freq_eff
@@ -809,7 +821,7 @@ index b8be8c2..a67cec8 100644
                      if dbg then
                          dbg[c.text] = { ce = s, eff = n,
                                          fb = cfg.freq_beta * math.log(1 + n),
-@@ -317,6 +672,43 @@ return function(translation, env)
+@@ -317,6 +683,43 @@ return function(translation, env)
                  return a.idx < b.idx  -- 同分保持 LLM 评分序
              end)
              for i = 1, #arr do ordered[i] = arr[i].c end
@@ -853,7 +865,7 @@ index b8be8c2..a67cec8 100644
          end
          -- 预期词长加权 (expected_length_weight): 两码一字方案 L 码对应 floor(L/2) 字
          if cfg.expected_length_weight > 0 and #ordered > 1 and fused_scores then
-@@ -406,25 +798,157 @@ return function(translation, env)
+@@ -406,25 +809,157 @@ return function(translation, env)
                  end
              end)
          end
@@ -931,7 +943,7 @@ index b8be8c2..a67cec8 100644
      else
 -        for _, c in ipairs(all) do yield(c) end
 +        for _, c in ipairs(all) do emit(c) end
-     end
++    end
 +    finish()
 +end
 +
@@ -976,7 +988,7 @@ index b8be8c2..a67cec8 100644
 +    capture = nil
 +    if not ok and cfg.debug_latency then
 +        append_line("llm_errors.txt", os.date("%H:%M:%S") .. " " .. tostring(err))
-+    end
+     end
 +    if not ok or #cap == 0 then cap = native end
 +
 +    -- [round3] emoji 候选后移: 前 page 个非 emoji 候选保持原位, emoji 紧接其后
