@@ -18,7 +18,9 @@
 --   gate_margin_short       输入只有 1~2 个字母时用的门控值（简拼的候选多，更需要谨慎），默认 0（关闭）
 --   scan_limit              只在前 N 个候选里重排，其余惰性透传，默认 80
 --   fuzzy_penalty           拼音贴合度：靠模糊音（平翘舌、前后鼻音等）凑出来的候选，融合分减去这个值，让拼音精确匹配的候选占优；
---                           依据候选 comment 里的标准拼音（需 translator/spelling_hints）判断，取不到时不扣分，默认 1.0，0 = 关闭
+--                           依据候选 comment 里的标准拼音（需 translator/spelling_hints）判断；comment 为空时（用户词典来源）
+--                           退回 ReverseDb 取单字读音；都取不到时不扣分。默认 3.0（实测：只输首音节时模糊音候选占首位
+--                           由 5.5% 降到 2.4%，首音节全拼加声母时 4.0% 降到 1.5%，首选准确率 68.7% 升到 70.2%），0 = 关闭
 --   stage2                  四字两阶段总开关，默认 true；另有方案开关 ai_stage2（方案菜单 / 手机三个点面板里的「单段/两段」）在运行时切换，两者都开才跑第二阶段
 --   stage2_context_chars    第二阶段只用最后 N 个字作为上文，默认 8（现场解码，越短越快）
 --   stage2_min_rest         剩余拼音至少 N 个字母才跑第二阶段，默认 4
@@ -35,7 +37,7 @@ local cfg = {
     gate_margin = 0,
     gate_margin_short = 0,
     scan_limit = 80,
-    fuzzy_penalty = 1.0,
+    fuzzy_penalty = 3.0,
     stage2 = true,              -- 四字两阶段总开关；怀疑它有问题时设为 false
     stage2_context_chars = 8,   -- 第二阶段只用「上文+第一阶段选中词」的最后 N 个字，解码更快
     stage2_min_rest = 4,        -- 剩余拼音至少 N 个字母才跑第二阶段（输入过程中的半截拼音不值得推理）
