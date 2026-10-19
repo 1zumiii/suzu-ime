@@ -88,6 +88,8 @@ key("Control+v")
 key("BackSpace", "jin")
 -- 句子 4：一次上屏由两次选词组成
 select("jingli", "精力"); select("guolai", "过来"); commit("精力过来"); commit("。", "punct")
+-- 英文、数字的上屏只记一次失步，不记内容；英文候选的选词不记
+select("iphone", "iPhone"); commit("iPhone"); commit("12345", "raw")
 
 -- ---------- 事件 ----------
 local evs, raw = {}, {}
@@ -98,11 +100,12 @@ end
 local n = {}
 for _, e in ipairs(evs) do n[e.k] = (n[e.k] or 0) + 1 end
 check("会话开始前的历史不记录", not table.concat(raw, "\n"):find("旧"))
-check("事件计数", n.start == 1 and n.sel == 9 and n.cmt == 11 and n.del == 7 and n.cut == 3,
+check("英文、数字不记内容", not table.concat(raw, "\n"):find("iPhone") and not table.concat(raw, "\n"):find("12345"))
+check("事件计数", n.start == 1 and n.sel == 9 and n.cmt == 11 and n.del == 7 and n.cut == 4,
   string.format("start=%s sel=%s cmt=%s del=%s cut=%s", n.start, n.sel, n.cmt, n.del, n.cut))
 local whys = {}
 for _, e in ipairs(evs) do if e.k == "cut" then whys[#whys + 1] = e.why end end
-check("失步原因：nav、ascii（只记一次）、mod", table.concat(whys, ",") == "nav,ascii,mod", table.concat(whys, ","))
+check("失步原因：nav、ascii（只记一次）、mod、ascii（英文与数字上屏合记一次）", table.concat(whys, ",") == "nav,ascii,mod,ascii", table.concat(whys, ","))
 
 -- ---------- 重放 ----------
 local outdir = ud .. "/derived"
