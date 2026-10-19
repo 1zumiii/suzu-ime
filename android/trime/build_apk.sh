@@ -1,9 +1,9 @@
 #!/bin/bash
 # 从源码编出带 AI 重排的 Trime APK（arm64-v8a）：
-#   上游 Trime（固定提交）+ patches/*.patch + 客户端库 librime_llm.so + 守护进程 librimellmd.so → Gradle → 签名
+#   上游 Trime（固定提交）+ patches/*.patch + 客户端库 librime_llm.so + 守护进程 librimellmd.so（均由 core/ 构建）→ Gradle → 签名
 # 用法：android/trime/build_apk.sh [输出.apk]
 # 前提：JDK 17（brew install openjdk@17）、Android SDK（Gradle 会自动装 NDK 28 / 平台）、NDK r27d（交叉编译推理部分）、
-#       CMake 3.31.6 的官方预编译包、llama.cpp 与转换后的 rime_llm_mac.cpp（见 macos/README.md）、签名密钥（见 sign_apk.sh）。
+#       CMake 3.31.6 的官方预编译包、llama.cpp 与 Lua 源码（见 core/README.md）、签名密钥（见 sign_apk.sh）。
 # 路径都可以用环境变量覆盖，默认放在 ~/Documents/rime-android-port/。
 set -euo pipefail
 
@@ -36,14 +36,16 @@ else
 fi
 printf 'sdk.dir=%s\ncmake.dir=%s\n' "$HOME/Library/Android/sdk" "$CMAKE_DIR" > "$SRC/local.properties"
 
-# 2. 客户端库与守护进程（交叉编译，客户端链接到 Trime 自己的 librime_jni.so 以解析 lua_*）
+# 2. 客户端库与守护进程（由 core/ 交叉编译，客户端链接到 Trime 自己的 librime_jni.so 以解析 lua_*）
 JNI_HOST="$W/trime-built/lib/arm64-v8a/librime_jni.so"
 [[ -f "$JNI_HOST" ]] || { echo "缺少 $JNI_HOST：先用未打补丁的构建解出 librime_jni.so（见 README）"; exit 1; }
-cmake -S "$REPO/android" -B "$W/build_host" -G Ninja -DCMAKE_TOOLCHAIN_FILE="$NDK/build/cmake/android.toolchain.cmake" \
-  -DANDROID_ABI=arm64-v8a -DANDROID_PLATFORM=android-30 -DCMAKE_BUILD_TYPE=Release -DRIME_LLM_HOST_LIB="$JNI_HOST" >/dev/null
+DEPS="${DEPS:-$HOME/Documents/rime-llm-mac-port}"     # llama.cpp 与 Lua 源码所在目录（布局见 core/README.md）
+cmake -S "$REPO/core" -B "$W/build_host" -G Ninja -DCMAKE_TOOLCHAIN_FILE="$NDK/build/cmake/android.toolchain.cmake" \
+  -DANDROID_ABI=arm64-v8a -DANDROID_PLATFORM=android-30 -DCMAKE_BUILD_TYPE=Release \
+  -DSUZU_DEPS_ROOT="$DEPS" -DSUZU_BUILD_DAEMON=ON -DSUZU_BUILD_LUA_MODULE=OFF -DSUZU_LUA_HOST_LIB="$JNI_HOST" >/dev/null
 cmake --build "$W/build_host" --target rimellmd rime_llm_client -j8
 JL="$SRC/app/src/main/jniLibs/arm64-v8a"; mkdir -p "$JL"
-"$STRIP" --strip-unneeded -o "$JL/librime_llm.so" "$W/build_host/librime_llm.so"
+"$STRIP" --strip-unneeded -o "$JL/librime_llm.so" "$W/build_host/client/librime_llm.so"
 "$STRIP" --strip-unneeded -o "$JL/librimellmd.so" "$W/build_host/rimellmd"
 
 # 3. Gradle（只编 arm64；未签名）

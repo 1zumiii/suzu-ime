@@ -43,7 +43,7 @@ set(SUZU_LUA_HOST_LIB "" CACHE FILEPATH "导出 lua_* 的宿主库（例如 Trim
 function(suzu_link_lua_host target)
   if(WIN32)
     target_sources(${target} PRIVATE ${SUZU_LUA_CORE_SRC})
-    target_compile_definitions(${target} PRIVATE LUA_BUILD_AS_DLL LUA_USE_WINDOWS)
+    target_compile_definitions(${target} PRIVATE LUA_USE_WINDOWS)
     if(MSVC)
       target_compile_options(${target} PRIVATE /utf-8)
     endif()

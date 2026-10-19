@@ -1,12 +1,12 @@
 #!/bin/bash
 # 在手机上部署、启动、停止 AI 重排守护进程 rimellmd（shell 身份，经 adb；重启手机后需要重新 start）。
 # 用法：android/daemon/rimellmctl.sh <deploy|start|stop|restart|status|log> [选项]
-#   deploy   推送二进制和模型到 /data/local/tmp/rimellm/（模型大小一致则跳过）
+#   deploy   推送二进制、Suzu 模型与词表到 /data/local/tmp/rimellm/（大小一致则跳过）
 #   start    （必要时先 deploy）以「监督进程 + 工作进程」方式启动；已在运行则不重复启动
 #   stop     停止（先终止监督进程，它会带走工作进程）
 #   status   进程、状态文件、最近日志
 #   log      最近 40 行日志
-# 环境变量：ADB、BIN（rimellmd 路径，默认 ~/Documents/rime-android-port/build_host/rimellmd）、MODEL（gguf 路径）、
+# 环境变量：ADB、BIN（rimellmd 路径，默认 ~/Documents/rime-android-port/build_host/rimellmd）、MODEL（suzu.gguf 路径）、VOCAB（suzu.vocab.txt 路径，默认与模型同目录）、
 #          THREADS（默认 2：实测 4 线程会因预解码和打分同时忙等而出现数秒卡顿，2~3 线程没有）、IDLE_SEC（空闲自动卸载秒数，默认 0 = 不自动卸载，靠手动启停）、SCREEN_OFF_SEC（熄屏后单独的时限，默认 0 = 不单独设）
 set -euo pipefail
 
@@ -15,13 +15,13 @@ PKG=com.osfans.trime
 RIME_DIR=/sdcard/Android/data/$PKG/files/rime
 DIR=/data/local/tmp/rimellm
 BIN="${BIN:-$HOME/Documents/rime-android-port/build_host/rimellmd}"
-MODEL="${MODEL:-$HOME/Documents/rime-llm-mac-port/models/Qwen3.5-0.8B-Q4_K_M.gguf}"
+MODEL="${MODEL:-$HOME/Documents/rime-llm-mac-port/models/suzu.gguf}"
+VOCAB="${VOCAB:-${MODEL%.gguf}.vocab.txt}"
 THREADS="${THREADS:-2}"
 IDLE_SEC="${IDLE_SEC:-0}"
 SCREEN_OFF_SEC="${SCREEN_OFF_SEC:-0}"
 PORT="${PORT:-17920}"
-N_CTX="${N_CTX:-96}"         # 引擎默认 128；96 够 6 个并发序列（实测堆内存 374→234 MB，延迟不变）
-N_SEQ_MAX="${N_SEQ_MAX:-6}"  # 引擎默认 12；= 1（模板）+ 最多 5 个候选
+N_SEQ_MAX="${N_SEQ_MAX:-10}" # 候选上限 = N_SEQ_MAX - 1（与改版 Trime 的启动参数一致）
 
 sh_() { "$ADB" shell "$@" | tr -d '\r'; }
 pids() { sh_ "pidof rimellmd" || true; }
@@ -34,9 +34,11 @@ cmd_deploy() {
   local tmp; tmp=$(mktemp); llvm_strip "$BIN" "$tmp" 2>/dev/null || cp "$BIN" "$tmp"
   "$ADB" push "$tmp" $DIR/rimellmd | tail -1; rm -f "$tmp"
   sh_ "chmod 755 $DIR/rimellmd"
-  local want have
-  want=$(stat -f%z "$MODEL"); have=$(sh_ "stat -c %s $DIR/model.gguf 2>/dev/null || echo 0")
-  if [[ "$want" == "$have" ]]; then echo "模型已在手机上（大小一致），跳过"; else "$ADB" push "$MODEL" $DIR/model.gguf | tail -1; fi
+  local f want have
+  for f in "$MODEL:suzu.gguf" "$VOCAB:suzu.vocab.txt"; do
+    want=$(wc -c < "${f%%:*}" | tr -d ' '); have=$(sh_ "stat -c %s $DIR/${f##*:} 2>/dev/null || echo 0")
+    if [[ "$want" == "$have" ]]; then echo "${f##*:} 已在手机上（大小一致），跳过"; else "$ADB" push "${f%%:*}" "$DIR/${f##*:}" | tail -1; fi
+  done
 }
 
 llvm_strip() {
@@ -46,13 +48,13 @@ llvm_strip() {
 
 cmd_start() {
   if [[ -n "$(pids)" ]]; then echo "已在运行：$(pids)"; return 0; fi
-  sh_ "test -x $DIR/rimellmd && test -f $DIR/model.gguf" 2>/dev/null || cmd_deploy
+  sh_ "test -x $DIR/rimellmd && test -f $DIR/suzu.gguf && test -f $DIR/suzu.vocab.txt" 2>/dev/null || cmd_deploy
   sh_ "test -d $RIME_DIR" || { echo "$RIME_DIR 不存在：先打开 Trime 走完首次引导"; exit 1; }
   # 日志轮转：超过 1 MB 就留一份旧的
   sh_ "[ \$(stat -c %s $DIR/daemon.log 2>/dev/null || echo 0) -gt 1048576 ] && mv $DIR/daemon.log $DIR/daemon.log.1 || true"
   # 整个启动命令放在子 shell 里并重定向全部输出，否则 adb shell 会一直等后台进程释放管道
-  "$ADB" shell "( cd $DIR && setsid nohup ./rimellmd --supervise --model $DIR/model.gguf --rime-dir $RIME_DIR \
-      --log-dir $DIR --port $PORT --threads $THREADS --idle-sec $IDLE_SEC --screen-off-sec $SCREEN_OFF_SEC --n-ctx $N_CTX --n-seq-max $N_SEQ_MAX \
+  "$ADB" shell "( cd $DIR && setsid nohup ./rimellmd --supervise --model $DIR/suzu.gguf --student-vocab $DIR/suzu.vocab.txt --rime-dir $RIME_DIR \
+      --log-dir $DIR --port $PORT --threads $THREADS --idle-sec $IDLE_SEC --screen-off-sec $SCREEN_OFF_SEC --n-seq-max $N_SEQ_MAX \
       >> $DIR/daemon.log 2>&1 < /dev/null & ) > /dev/null 2>&1 < /dev/null" || true
   for _ in $(seq 1 20); do sleep 0.5; sh_ "test -f $RIME_DIR/llm_token" && [[ -n "$(pids)" ]] && break; done
   [[ -n "$(pids)" ]] && echo "已启动：$(pids | tr '\n' ' ')" || { echo "启动失败，见 log"; cmd_log; exit 1; }
