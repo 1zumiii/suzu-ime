@@ -16,7 +16,8 @@ local function check(name, cond, extra)
 end
 -- 本进程的内存（MB）：macOS 用 footprint，Linux 用 /proc 的 RSS
 local function fp()
-  local f = io.popen("footprint -p $PPID 2>/dev/null | sed -n 's/.*Footprint: \\([0-9]*\\) MB.*/\\1/p'; " ..
+  -- footprint 的单位随大小变化（KB、MB、GB），卸载模型后常常只有几百 KB，统一换算成 MB
+  local f = io.popen("footprint -p $PPID 2>/dev/null | awk '/Footprint:/ {v=$(NF-5); u=$(NF-4); if (u==\"KB\") v/=1024; else if (u==\"GB\") v*=1024; print int(v+0.5)}'; " ..
                      "awk '/VmRSS/ {print int($2/1024)}' /proc/$PPID/status 2>/dev/null")
   local v = tonumber((f:read("*a") or ""):match("%d+")); f:close(); return v
 end
@@ -44,8 +45,8 @@ check("continuous use (every 1 s for 8 s, limit 3 s): NOT unloaded", m.is_ready(
 os.execute("sleep 6")
 check("idle > limit: unloaded", m.is_ready() == false)
 local idle_mb = fp()
--- Suzu 的权重是文件映射（干净页）加约 20 MB 的 KV 与计算缓冲区：卸载后应至少还回 20 MB
-check("memory returned after idle unload", idle_mb and loaded_mb and idle_mb < loaded_mb - 20,
+-- Suzu 的权重是文件映射（干净页）加约 20 MB 的 KV 与计算缓冲区：卸载后应明显还回（Linux 的 RSS 含文件映射，约 60 MB；macOS 的 footprint 不含，约 12 MB）
+check("memory returned after idle unload", idle_mb and loaded_mb and idle_mb < loaded_mb - 5,
       string.format("%s MB -> %s MB", tostring(loaded_mb), tostring(idle_mb)))
 
 -- 再用：自动加载回来，结果正确

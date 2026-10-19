@@ -232,7 +232,8 @@ int run_worker(const Options & opt) {
     w.token = make_token();
     write_file_atomic(token_path(opt), w.token, 0660);
 
-    int lfd = socket(AF_INET, SOCK_STREAM | SOCK_CLOEXEC, 0);
+    int lfd = socket(AF_INET, SOCK_STREAM, 0);   // SOCK_CLOEXEC 与 accept4 在 macOS 上没有，统一用 fcntl 设置
+    if (lfd >= 0) fcntl(lfd, F_SETFD, FD_CLOEXEC);
     int one = 1;
     setsockopt(lfd, SOL_SOCKET, SO_REUSEADDR, &one, sizeof one);
     struct sockaddr_in a;
@@ -251,7 +252,8 @@ int run_worker(const Options & opt) {
     std::thread([&w] { w.status_loop(); }).detach();
     while (!g_stop.load()) {
         if (!ipc::wait_fd(lfd, POLLIN, ipc::mono_ms() + 500)) continue;   // 超时：回去检查 g_stop
-        int fd = accept4(lfd, nullptr, nullptr, SOCK_CLOEXEC);
+        int fd = accept(lfd, nullptr, nullptr);
+        if (fd >= 0) fcntl(fd, F_SETFD, FD_CLOEXEC);
         if (fd < 0) { if (errno == EMFILE || errno == ENFILE) usleep(200 * 1000); continue; }
         if (w.st.clients.load() >= kMaxClients) { close(fd); continue; }
         w.st.clients++;
