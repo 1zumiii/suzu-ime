@@ -84,16 +84,16 @@ elseif case == "loading" then
     worst = math.max(worst, now() - a)
     calls = calls + 1
   end
-  m.prepare("我最近没有太多")
+  m.prepare("他长期缺乏锻炼，没有")
   check("many calls while loading", calls > 20, tostring(calls))
   check("calls while loading return fast (<10 ms)", worst < 10, string.format("%.1f ms", worst))
   check("model becomes ready", wait_ready(m))
   local f = io.open(log_dir .. "/rime_llm_log.txt"); local log = f:read("*a"); f:close()
   local _, loads = log:gsub("loading model:", "")
   check("model created exactly once", loads == 1, tostring(loads))
-  check("prepare(latest) is accepted once loaded", m.prepare("我最近没有太多") == true)
+  check("prepare(latest) is accepted once loaded", m.prepare("他长期缺乏锻炼，没有") == true)
   os.execute("sleep 0.3")
-  local r, why = m.score("我最近没有太多", { "经理", "经历", "精力", "敬礼", "警力" }, false)
+  local r, why = m.score("他长期缺乏锻炼，没有", { "经理", "经历", "精力", "敬礼", "警力" }, false)
   check("scoring with the latest context works (prepared)", type(r) == "table" and r[1] == "精力", r and table.concat(r, ">") or ("nil/" .. tostring(why)))
   finish()
 
