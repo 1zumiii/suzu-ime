@@ -14,7 +14,8 @@
 --     speed=F              节奏倍数：按键间隔乘以 F（默认 1；0.5 = 打字快一倍）
 --     out=PATH             另写一份逐次记录（只含数字与原因码），便于画分布
 --     chaos=SCRIPT         故障注入：每输入 10 个词在后台执行一次「SCRIPT <词序号>」（由脚本决定杀进程、冻结、删模型等）
---     ranker=… max_candidates=N code_pattern=… gate_margin=F gate_margin_short=F   覆盖对应的 llm_rerank 配置
+--     ranker=… max_candidates=N code_pattern=… gate_margin=F gate_margin_short=F generate=1 gen_k=N gen_beam=N …   覆盖对应的 llm_rerank 配置
+--     cn_dicts=DIR         词典目录（含 base.dict.yaml 与 ext.dict.yaml），候选生成用；进程内模式须给
 --     label=TEXT           结果行的标签
 local repo, so_dir, cases_path, n_words = arg[1], arg[2], arg[3], tonumber(arg[4] or "200")
 local opt = { mode = "inproc", threads = "2", seed = "1", speed = "1", label = "" }
@@ -45,6 +46,7 @@ local function rint(a, b) return a + math.floor(rnd() * (b - a + 1)) end
 -- ---------- 推理核心：加载并在调用处计时 ----------
 local m = require("rime_llm")
 if os.getenv("KEYSIM_PORT") and m.set_enabled then m.port = tonumber(os.getenv("KEYSIM_PORT")) end
+if m.set_enabled then m.set_enabled(true) end   -- 守护进程重启后默认关闭，由客户端打开
 local now = m.now_ms
 assert(now, "module has no now_ms")
 local function sleep_ms(ms)
@@ -110,6 +112,7 @@ package.loaded["rime_llm"] = m
 local ud = os.getenv("KEYSIM_UD") or ("/tmp/keysim_ud_" .. tostring(os.time()))
 if opt.mode == "daemon" then ud = assert(opt.rime_dir, "daemon mode needs rime_dir=") end
 os.execute("mkdir -p '" .. ud .. "/lua'")
+if opt.cn_dicts then os.execute("ln -sfn '" .. opt.cn_dicts .. "' '" .. ud .. "/cn_dicts'") end   -- 候选生成读用户目录里的词典
 local yielded
 function yield(c) yielded[#yielded + 1] = c end
 rime_api = { get_user_data_dir = function() return ud end }
@@ -125,9 +128,11 @@ Component = { Translator = function() return { query = function(_, rest) return 
 
 local conf = { ["llm_rerank/max_candidates"] = 5 }
 -- 配置项：ranker=legacy|unified、max_candidates=N、code_pattern=…、gate_margin=F、gate_margin_short=F（按手机的配置对照时用）
-for _, k in ipairs({ "ranker", "max_candidates", "code_pattern", "gate_margin", "gate_margin_short" }) do
+for _, k in ipairs({ "ranker", "max_candidates", "code_pattern", "gate_margin", "gate_margin_short", "gen_k", "gen_beam",
+                     "max_candidates_short", "short_input_len" }) do
   if opt[k] then conf["llm_rerank/" .. k] = tonumber(opt[k]) or opt[k] end
 end
+if opt.generate then conf["llm_rerank/generate"] = (opt.generate == "1" or opt.generate == "true") end
 if opt.mode == "inproc" then
   conf["llm_rerank/student_model"] = assert(opt.model, "inproc mode needs model=")
   conf["llm_rerank/student_vocab"] = assert(opt.vocab, "inproc mode needs vocab=")
