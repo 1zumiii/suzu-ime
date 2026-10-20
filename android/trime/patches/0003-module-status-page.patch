@@ -61,7 +61,7 @@ new file mode 100644
 index 00000000..aeed6d63
 --- /dev/null
 +++ b/app/src/main/java/com/osfans/trime/update/ModuleStatusActivity.kt
-@@ -0,0 +1,223 @@
+@@ -0,0 +1,230 @@
 +/*
 + * SPDX-FileCopyrightText: 2026 1zumiii
 + * SPDX-License-Identifier: GPL-3.0-or-later
@@ -255,11 +255,18 @@ index 00000000..aeed6d63
 +        val schema = dir.resolve("build/rime_ice.schema.yaml")
 +        val ranker =
 +            try {
-+                Regex("""ranker:\s*(\w+)""").find(schema.readText())?.groupValues?.get(1) ?: "legacy"
++                // 方案里没写 ranker 时用代码里的默认值：统一排序
++                Regex("""ranker:\s*(\w+)""").find(schema.readText())?.groupValues?.get(1) ?: "unified"
 +            } catch (e: Exception) {
 +                "未知"
 +            }
-+        add(row(if (ranker == "unified") GREEN else GRAY, "排序方式", if (ranker == "unified") "统一排序" else ranker))
++        add(row(if (ranker == "unified") GREEN else GRAY, "排序方式", if (ranker == "unified") "统一排序" else "旧排序（$ranker）"))
++        val gen = j?.optJSONObject("engine")?.optJSONObject("gen")
++        if (gen == null) {
++            add(row(GRAY, "候选生成", "核心未支持或守护进程离线"))
++        } else {
++            add(row(GREEN, "候选生成", "成功 ${gen.optInt("ok")} 次，超时 ${gen.optInt("timeout")} 次"))
++        }
 +        val gram = dir.resolve("wanxiang-lts-zh-hans.gram")
 +        add(row(if (gram.exists()) GREEN else GRAY, "语法模型", if (gram.exists()) "${gram.length() / 1048576} MB" else "没有"))
 +        val weird = lines(dir.resolve("weird_words.tsv"))
