@@ -112,9 +112,9 @@ do
   check("A. disabled: passthrough unchanged", table.concat(texts, ",") == "经理,经历,精力", table.concat(texts, ","))
 end
 
--- B: 两音节同音词，上文 "我最近没有太多" → 精力 应排第一
+-- B: 两音节同音词，上文 "他长期缺乏锻炼，没有" → 精力 应排第一
 do
-  hist = { "我最近没有太多" }
+  hist = { "他长期缺乏锻炼，没有" }
   press(mk_env("", hist, true), "b")   -- 同步新上文
   local cands = { mk("经理", 0, 6), mk("经历", 0, 6), mk("精力", 0, 6), mk("敬礼", 0, 6), mk("警力", 0, 6) }
   local texts, ys = run(mk_env("jingli", hist, true), cands)
@@ -142,7 +142,7 @@ end
 
 -- B3: emoji、英文等不含汉字的候选不参与重排，原位置不动
 do
-  hist = { "我最近没有太多" }
+  hist = { "他长期缺乏锻炼，没有" }
   press(mk_env("", hist, true), "m")
   _G.llm_filter_cache = nil
   local cands = { mk("经理", 0, 6), mk("😀", 0, 6, "simplified"), mk("经历", 0, 6), mk("精力", 0, 6),
@@ -162,7 +162,7 @@ end
 
 -- B5: 怪词：标记后排到同一组候选的最后，取消标记后恢复
 do
-  hist = { "我最近没有太多" }
+  hist = { "他长期缺乏锻炼，没有" }
   press(mk_env("", hist, true), "w")
   local path = ud .. "/weird_words.tsv"
   local function write_weird(lines) local f = io.open(path, "w"); f:write(lines); f:close(); _G.ai_rerank_weird_reload() end
@@ -286,7 +286,7 @@ end
 --    时限内算不完就保持原顺序立即返回，算完的结果进缓存，下一次按键直接用上。用墙钟计时（os.clock 会把推理线程的 CPU 也算进来）。
 do
   local now = _G.ai_rerank_llm.now_ms
-  hist = { "我最近没有太多" }
+  hist = { "他长期缺乏锻炼，没有" }
   settle = false
   press(mk_env("", hist, true), "i1")          -- 上文变了，后台预解码刚开始
   _G.llm_filter_cache = nil
@@ -300,7 +300,7 @@ do
   check("I. not prepared yet: returns within the time limit", dt < budget + 15, string.format("%.1f ms (limit %d ms)", dt, budget))
   check("I. not prepared yet: reranked within the limit (精力 first)", texts[1] == "精力", table.concat(texts, ","))
   -- 时限极短：这次保持原顺序且立即返回；任务在后台算完进缓存，下一次按键重排
-  hist = { "这段时间我实在没有太多" }
+  hist = { "长期缺乏锻炼，所以没有" }
   press(mk_env("", hist, true), "i2")
   _G.llm_filter_cache = nil
   _G.ai_rerank_llm.budget_ms = 0.01
@@ -359,7 +359,7 @@ end
 
 -- K: 模型被空闲卸载之后，正常打字能自动恢复重排（处理器触发重新加载与预解码）
 do
-  hist = { "我最近没有太多" }
+  hist = { "他长期缺乏锻炼，没有" }
   _G.llm_filter_cache = nil
   _G.ai_rerank_llm.idle_unload_sec = 1
   _G.ai_rerank_llm.score("你好", { "世界", "是借" })     -- 刷新“最近使用”时间
