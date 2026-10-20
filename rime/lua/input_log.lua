@@ -73,6 +73,11 @@ local function prune(index_path, days)
 end
 
 local function write(st, ev)
+    -- 密码框、数字框等：改版 Trime 把运行时选项 ai_no_log 置 true，这期间不记任何事件
+    if st.ctx then
+        local ok, off = pcall(function() return st.ctx:get_option("ai_no_log") end)
+        if ok and off then return end
+    end
     st.q = st.q + 1
     ev.v, ev.t, ev.q, ev.s = 1, os.time(), st.q, st.sid
     local f = io.open(st.path, "a")
@@ -151,6 +156,7 @@ function M.attach(env)
     }
     pcall(prune, st.index, days)
     env.input_log = st
+    st.ctx = env.engine.context
     _G.ai_select_stats_on = true   -- 过滤器据此整理候选与各项分数（sel 事件的 c 字段）
     local ctx = env.engine.context
     pcall(flush_commits, st, ctx, true)   -- 建立快照：会话开始前的历史不会被当成新上屏
@@ -172,6 +178,12 @@ function M.attach(env)
         end)
     end)
     ctx.commit_notifier:connect(function(c) pcall(flush_commits, st, c) end)
+end
+
+-- 点击或拖动光标（改版 Trime 置 ai_ctx_reset，由 ai_rerank_processor 清上文后调用）：记一次失步
+function M.note_reset(env)
+    local st = env.input_log
+    if st then write(st, { k = "cut", why = "click" }) end
 end
 
 -- 每次按键调用（按键抬起不调用）。先记下此前的上屏，再判断这个键是否删除或失步。

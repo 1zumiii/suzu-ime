@@ -1,0 +1,27 @@
+diff --git a/app/src/main/java/com/osfans/trime/ime/core/TrimeInputMethodService.kt b/app/src/main/java/com/osfans/trime/ime/core/TrimeInputMethodService.kt
+index 068e7e31..b573c88f 100644
+--- a/app/src/main/java/com/osfans/trime/ime/core/TrimeInputMethodService.kt
++++ b/app/src/main/java/com/osfans/trime/ime/core/TrimeInputMethodService.kt
+@@ -585,7 +585,22 @@ open class TrimeInputMethodService : LifecycleInputMethodService() {
+         composingText = ""
+         Timber.d("onStartInput: restarting=$restarting")
+         val isNullType = attribute.inputType and InputType.TYPE_MASK_CLASS == InputType.TYPE_NULL
++        // 密码框、数字框、电话框：通知 Lua 不记录输入事件、选词统计与语料（运行时选项 ai_no_log）
++        val inputClass = attribute.inputType and InputType.TYPE_MASK_CLASS
++        val inputVariation = attribute.inputType and InputType.TYPE_MASK_VARIATION
++        val noLog =
++            inputClass == InputType.TYPE_CLASS_NUMBER ||
++                inputClass == InputType.TYPE_CLASS_PHONE ||
++                (
++                    inputClass == InputType.TYPE_CLASS_TEXT &&
++                        (
++                            inputVariation == InputType.TYPE_TEXT_VARIATION_PASSWORD ||
++                                inputVariation == InputType.TYPE_TEXT_VARIATION_VISIBLE_PASSWORD ||
++                                inputVariation == InputType.TYPE_TEXT_VARIATION_WEB_PASSWORD
++                        )
++                )
+         postRimeJob {
++            setRuntimeOption("ai_no_log", noLog)
+             if (restarting) {
+                 // when input restarts in the same editor, clear previous composition
+                 clearComposition()

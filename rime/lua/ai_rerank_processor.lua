@@ -192,6 +192,8 @@ local function setup_ctx_reset(env)
             local ch = c.commit_history
             if ch then commit_base = #ch:to_table() end
             _G.llm_filter_cache = nil
+            local il = package.loaded["input_log"]   -- 输入事件流：记一次失步（setup 顺序在 input_log 之前，不能直接引用）
+            if il and env.input_log then pcall(il.note_reset, env) end
         end
     end)
 end
@@ -205,6 +207,7 @@ local function setup_choice_memory(env)
     pcall(pp.init)
     env.engine.context.select_notifier:connect(function(ctx)
         pcall(function()
+            if ctx:get_option("ai_no_log") then return end   -- 密码框、数字框等不记
             local s = select_info.resolve(ctx, "choice")
             if not s or not s.whole or not s.input:match("^[a-z]+$") then return end   -- 只选了前半截：不记
             -- 整段上屏时上屏已先发生，pp.prev() 已是刚上屏的词，要用过滤器在上屏前记下的“前一个词”
@@ -295,6 +298,7 @@ local function setup_select_stats(env)
         fired = fired + 1
         if fired <= 3 then diag("select_notifier fired #" .. fired) end
         xpcall(function()
+            if ctx:get_option("ai_no_log") then return end   -- 密码框、数字框等不记
             local s = select_info.resolve(ctx, "stats")   -- 整段上屏时由过滤器信息补全
             if not s then return end
             local text, input = s.text, s.input
