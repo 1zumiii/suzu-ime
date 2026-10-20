@@ -31,6 +31,7 @@ bool Lexicon::load(const std::vector<std::string> & dict_files, const Vocab & vo
     min_chars_ = std::max(1, min_chars);
     max_chars_ = std::min(3, std::max(min_chars_, max_chars));
     entries_.clear();
+    freq_.clear();
     syllables_.clear();
     syllable_id_.clear();
     buckets_.clear();
@@ -97,8 +98,39 @@ bool Lexicon::load(const std::vector<std::string> & dict_files, const Vocab & vo
                          [this](uint32_t a, uint32_t b) { return entries_[a].weight > entries_[b].weight; });
         kv.second.shrink_to_fit();
     }
+    freq_.reserve(entries_.size());
+    for (const Entry & e : entries_) freq_.push_back({hash_tokens(e.tok, e.n), e.weight});
+    std::sort(freq_.begin(), freq_.end(), [](const FreqEntry & a, const FreqEntry & b) {
+        return a.key != b.key ? a.key < b.key : a.weight > b.weight;
+    });
+    freq_.erase(std::unique(freq_.begin(), freq_.end(),
+                            [](const FreqEntry & a, const FreqEntry & b) { return a.key == b.key; }),
+                freq_.end());
+    freq_.shrink_to_fit();
     entries_.shrink_to_fit();   // 逐条追加时数组按倍数扩容，收缩到实际大小（手机上内存紧）
     return true;
+}
+
+uint64_t Lexicon::hash_tokens(const uint16_t * t, size_t n) {
+    uint64_t h = 1469598103934665603ull;
+    for (size_t i = 0; i < n; i++) {
+        h = (h ^ t[i]) * 1099511628211ull;
+        h = (h ^ 0x9e) * 1099511628211ull;
+    }
+    return h;
+}
+
+int Lexicon::word_weight(const TokenSeq & toks) const {
+    if ((int)toks.size() < min_chars_ || (int)toks.size() > max_chars_) return -1;
+    uint16_t t[3];
+    for (size_t i = 0; i < toks.size(); i++) {
+        if (toks[i] > 0xFFFF) return -1;
+        t[i] = (uint16_t)toks[i];
+    }
+    uint64_t k = hash_tokens(t, toks.size());
+    auto it = std::lower_bound(freq_.begin(), freq_.end(), k,
+                               [](const FreqEntry & a, uint64_t key) { return a.key < key; });
+    return (it != freq_.end() && it->key == k) ? it->weight : -1;
 }
 
 TokenSeq Lexicon::tokens(uint32_t e) const {

@@ -2,9 +2,10 @@
 -- 设计见私有文档 ime/2026-10-20-input-event-log-and-unified-ranking.md 第 3 节。由 ai_rerank_filter 在
 -- llm_rerank/ranker: unified 时调用；tools/replay.py 用同样的公式离线重算，两边须同步修改。
 --
---   总分 = −alpha·ln(r) + λ·(s − s_max) + U − 模糊音扣分
+--   总分 = −alpha·ln(r) + beta·ln(1+dw) + λ·(s − s_max) + U − 模糊音扣分
 --   r      候选在打分组内的 Rime 原名次（最近使用提升之前），1 起
 --   s      模型分；λ 为 0 时不参与。模型在用而某候选无效分（如含词表外字）时，总分为 −∞
+--   dw     词在词典里的权重（词频），核心的 word_freq 给出；单字、四字以上等不在索引里的取 dw_unknown
 --   U      fb·ln(1+会话词频) + pg·ln(1+词对) + cg·ln(1+纠错记忆) + mu·最近用过
 --   λ      上文不足 2 个字或不用模型时为 0；随上文字数线性增长，lam_ctx_full 个字时达到 lam_max；
 --          输入只有 1～2 个字母时再乘 lam_short
@@ -12,7 +13,7 @@
 local M = {}
 
 M.defaults = {
-    alpha = 1.0, mu = 0.6, fb = 0, pg = 1.5, cg = 3.0, fp = 3.0,
+    alpha = 1.0, beta = 0, dw_unknown = 3000, mu = 0.6, fb = 0, pg = 1.5, cg = 3.0, fp = 3.0,
     lam_max = 1.0, lam_ctx_full = 4, lam_short = 0.5,
 }
 
@@ -37,6 +38,7 @@ end
 function M.score(f, p, lam, smax)
     if f.wd == 1 then return -math.huge end
     local t = -p.alpha * math.log(f.r)
+    if p.beta ~= 0 then t = t + p.beta * math.log(1 + (f.dw or p.dw_unknown)) end
     if lam > 0 then
         if not f.s then return -math.huge end
         t = t + lam * (f.s - smax)

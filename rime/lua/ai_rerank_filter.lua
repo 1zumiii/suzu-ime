@@ -384,6 +384,13 @@ end
 -- 记录打分组里每个候选的原始特征，离线就能换一套融合系数重新排序，不需要再跑模型。
 -- group：打分组（Rime 原顺序）；pos：组内各候选在整个候选窗里的位次；n：参与打分的个数；
 -- mrank：模型排序名次（同分时融合排序按它保持顺序）。
+local function word_dw(w)
+    local l = _G.ai_rerank_llm
+    if not (l and l.word_freq) then return nil end
+    local ok, v = pcall(l.word_freq, w)
+    return ok and v or nil
+end
+
 local function replay_cands(group, pos, n, mrank, scores, input, prev_any)
     local freq_eff = _G.ai_rerank_freq_eff
     -- r：组内的 Rime 原名次。最近使用提升会先改顺序，这里按它记下的提升前位次还原（没有提示时按当前顺序）
@@ -410,6 +417,7 @@ local function replay_cands(group, pos, n, mrank, scores, input, prev_any)
             s = is_valid_llm_score(s) and s or nil,
             mr = mrank[c.text],
             fq = freq_eff and freq_eff(c.text) or 0,
+            dw = word_dw(c.text),
             pr = pp_raw("eff", prev_any, c.text),
             ch = pp_raw("choice_eff", prev_any, input, c.text),
             fz = fuzzy_raw(c, input) and 1 or 0,
@@ -457,7 +465,7 @@ local function add_generated(feats, cand_of, all, n, has_model, best_e, input, c
             end
             if cand then
                 f = { t = g.w, s = g.s, ty = cand.type, r = i or math.max(g.r, n + 1), gen = 1, gr = g.r,
-                      inr = i and 1 or 0, fq = freq_eff and freq_eff(g.w) or 0, pr = pp_raw("eff", prev_any, g.w),
+                      inr = i and 1 or 0, dw = word_dw(g.w), fq = freq_eff and freq_eff(g.w) or 0, pr = pp_raw("eff", prev_any, g.w),
                       ch = pp_raw("choice_eff", prev_any, input, g.w), fz = 0, wd = 0, rec = rec[g.w] or 0 }
                 feats[#feats + 1] = f
                 cand_of[f] = cand

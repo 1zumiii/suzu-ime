@@ -62,7 +62,7 @@ def stage1(g, inp, p):
     return order
 
 
-U_DEFAULTS = {"alpha": 1.0, "mu": 0.6, "fb": 0, "pg": 1.5, "cg": 3.0, "fp": 3.0,
+U_DEFAULTS = {"alpha": 1.0, "beta": 0, "dw_unknown": 3000, "mu": 0.6, "fb": 0, "pg": 1.5, "cg": 3.0, "fp": 3.0,
               "lam_max": 1.0, "lam_ctx_full": 4, "lam_short": 0.5}
 
 
@@ -77,6 +77,9 @@ def u_score(e, p, lam, smax):
     if e.get("wd") == 1:
         return NEG
     t = -p["alpha"] * math.log(e["r"])
+    if p["beta"]:
+        dw = e.get("dw")
+        t += p["beta"] * math.log1p(p["dw_unknown"] if dw is None else dw)
     if lam > 0:
         if e.get("s") is None:
             return NEG

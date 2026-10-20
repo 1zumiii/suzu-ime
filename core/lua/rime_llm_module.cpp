@@ -70,6 +70,16 @@ int l_generate(lua_State * L) {
     return sl::push_generated(L, r.words, r.scores, r.ranks, r.matched);
 }
 
+// word_freq(词)：词典权重（词频先验），不在索引里或词典未就绪时返回 nil
+int l_word_freq(lua_State * L) {
+    size_t n = 0;
+    const char * w = luaL_checklstring(L, 1, &n);
+    int v = engine().word_weight(std::string(w, n));
+    if (v < 0) { lua_pushnil(L); return 1; }
+    lua_pushinteger(L, v);
+    return 1;
+}
+
 int l_get_scores(lua_State * L) { sl::push_last_scores(L); return 1; }
 
 int l_prepare(lua_State * L) {
@@ -182,7 +192,7 @@ SUZU_EXPORT int luaopen_rime_llm(lua_State * L) {
     g_open_count++;
     lua_newtable(L);
     static const sl::Fn fns[] = {
-        {"score", l_score}, {"generate", l_generate}, {"get_scores", l_get_scores}, {"prepare", l_prepare}, {"is_ready", l_is_ready},
+        {"score", l_score}, {"generate", l_generate}, {"get_scores", l_get_scores}, {"word_freq", l_word_freq}, {"prepare", l_prepare}, {"is_ready", l_is_ready},
         {"status", l_status}, {"touch", l_touch}, {"now_ms", sl::l_now_ms}, {"sleep_ms", sl::l_sleep_ms},
         {"match_code", sl::l_match_code}, {"llm_context", l_llm_context}, {"kick_context", l_kick_context},
         {"edit_reset_context", l_edit_reset_context}, {"fg_changed", l_fg_changed},

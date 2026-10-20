@@ -45,6 +45,9 @@ public:
     TokenSeq tokens(uint32_t e) const;
     int weight(uint32_t e) const { return entries_[e].weight; }
 
+    // 词的词典权重（多音词取最大）；不在索引里（单字、四字以上、词表外字）返回 -1。统一排序的词频先验用。
+    int word_weight(const TokenSeq & toks) const;
+
 private:
     struct Entry {
         uint16_t tok[3];   // 字的编号（词表不超过 65535 个字）
@@ -58,7 +61,14 @@ private:
                       int max_segs) const;
     bool can_split_full(const std::string & s) const;
 
+    struct FreqEntry {
+        uint64_t key;     // 字编号序列的哈希
+        int32_t weight;
+    };
+    static uint64_t hash_tokens(const uint16_t * t, size_t n);
+
     std::vector<Entry> entries_;
+    std::vector<FreqEntry> freq_;                              // 按 key 排序，供 word_weight 二分查找
     std::vector<std::string> syllables_;                       // 编号 → 音节
     std::unordered_map<std::string, uint16_t> syllable_id_;
     std::vector<char> initial_ok_;                             // 可作声母的首字母（a～z）
