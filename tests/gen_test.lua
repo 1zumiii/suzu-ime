@@ -91,6 +91,11 @@ check("上文不足 2 个字：no_context", r == nil and why == "no_context", to
 local st = m.status()
 check("状态里有生成的计数", st:find('"gen":{"requests":', 1, true) ~= nil)
 
+-- 词频查询：多音重复词取最大权重；单字、不在词典里的词、含词表外字的词返回 nil
+check("word_freq 取最大权重", m.word_freq("经理") == 100, tostring(m.word_freq("经理")))
+check("word_freq 三字词", m.word_freq("看电影") == 70, tostring(m.word_freq("看电影")))
+check("word_freq 单字与未收录词为 nil", m.word_freq("我") == nil and m.word_freq("不存在") == nil)
+
 if fails > 0 then print(fails .. " FAILED"); os.exit(1) end
 print("ALL PASS")
 os.exit(0)

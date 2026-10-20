@@ -166,6 +166,18 @@ void Engine::request_load_locked() {
     cv_.notify_all();
 }
 
+int Engine::word_weight(const std::string & word) const {
+    std::shared_ptr<const Lexicon> lex;
+    std::shared_ptr<const Vocab> vocab;
+    {
+        std::lock_guard<std::mutex> lk(mu_);
+        lex = lexicon_;
+        vocab = vocab_;
+    }
+    if (!lex || !vocab) return -1;
+    return lex->word_weight(vocab->encode(word));
+}
+
 void Engine::touch() {
     std::lock_guard<std::mutex> lk(mu_);
     last_use_ms_ = now_ms();

@@ -95,6 +95,8 @@ public:
     // 候选生成：按输入串（拼音、简拼或两者混合）在词典里匹配，由模型按上文挑出前 k 个。时限与缓存同 score。
     // 全拼输入（能完整切成纯音节）不生成，返回 NotApplicable。
     GenResult generate(const std::string & context, const std::string & input, int k, double budget_ms);
+    // 词的词典权重（词频先验）；词典未就绪或词不在索引里返回 -1。
+    int word_weight(const std::string & word) const;
     void touch();                      // 刷新“最近使用”时间（空闲卸载用）
     bool is_ready() const;
     EngineState state() const;
