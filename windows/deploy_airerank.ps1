@@ -8,6 +8,7 @@
 # -> wait until the compiled config has the new names -> health check -> automatic rollback on failure.
 param(
   [switch]$Rollback,
+  [switch]$UpdateLua,                         # already switched: only refresh the shared Lua files (backup first, restart the server, no recompile)
   [switch]$SetRanker,                         # only change llm_rerank/ranker (to -Ranker) in the already switched config, then recompile
   [string]$BackupDir = "",
   [ValidateSet("legacy", "unified")][string]$Ranker = "legacy",
@@ -83,6 +84,33 @@ if ($Rollback) {
   Restore $BackupDir
   Recompile "llm_processor"
   Say "rolled back; compiled config uses llm_processor again"
+  exit 0
+}
+
+if ($UpdateLua) {
+  foreach ($f in $shared) { if (-not (Test-Path (Join-Path $LuaSrc $f))) { throw "missing $LuaSrc\$f" } }
+  $bk = Join-Path $root (Get-Date -Format "yyyyMMdd-HHmmss")
+  New-Item -ItemType Directory -Force (Join-Path $bk "lua") | Out-Null
+  Copy-Item $yaml $bk
+  $added = @()
+  foreach ($f in $shared) { $dst = Join-Path $luaDir $f; if (Test-Path $dst) { Copy-Item $dst (Join-Path $bk "lua") } else { $added += $f } }
+  Set-Content -Path (Join-Path $bk "added.txt") -Value $added -Encoding ascii
+  Say "backup written to $bk"
+  try {
+    Stop-Server
+    foreach ($f in $shared) { Copy-Item (Join-Path $LuaSrc $f) (Join-Path $luaDir $f) -Force }
+    Start-Server
+    Start-Sleep -Seconds 5
+    if (-not (Server-Running)) { throw "WeaselServer is not running after start" }
+    Say "Lua files updated. rollback: restore from $bk (deploy_airerank.ps1 -Rollback -BackupDir `"$bk`" would also switch back to llm_*, so copy the files from $bk\lua instead)"
+  } catch {
+    Say "FAILED: $($_.Exception.Message) -- restoring the Lua files"
+    try { Stop-Server } catch {}
+    foreach ($f in Get-ChildItem (Join-Path $bk "lua") -File) { Copy-Item $f.FullName (Join-Path $luaDir $f.Name) -Force }
+    foreach ($f in $added) { Remove-Item (Join-Path $luaDir $f) -ErrorAction SilentlyContinue }
+    try { if (-not (Server-Running)) { Start-Server } } catch {}
+    exit 1
+  }
   exit 0
 }
 
