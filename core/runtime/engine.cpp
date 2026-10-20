@@ -2,6 +2,9 @@
 
 #include <cstdio>
 #include <cstdlib>
+#if defined(__GLIBC__)
+#include <malloc.h>
+#endif
 
 #include "llama.h"
 #include "runtime/clock.h"
@@ -20,10 +23,24 @@ namespace {
 constexpr double kRetryFailedLoadMs = 30000;   // 同一配置加载失败后，30 秒内不再重试（避免每次按键都去读盘）
 constexpr int kCandidateMaxChars = 12;
 constexpr int kContextSlots = 2;               // 第一阶段与第二阶段的上文各占一条
+constexpr size_t kGenMaxWords = 4000;          // 生成时一次输入最多考虑的词（按词频取前面的），防止极端输入拖慢
+constexpr int kGenMinChars = 2, kGenMaxChars = 3;
+
+// 生成任务的结果在缓存里的存法：[词条下标, 分数, 词条下标, 分数, …]，按分数降序
+std::vector<double> top_k_flat(const std::vector<double> & sc, int k) {
+    std::vector<int> idx;
+    for (size_t i = 0; i < sc.size(); i++) if (sc[i] > SuzuModel::kNotReached / 2) idx.push_back((int)i);
+    size_t n = std::min(idx.size(), (size_t)std::max(0, k));
+    std::partial_sort(idx.begin(), idx.begin() + (long)n, idx.end(), [&](int a, int b) { return sc[a] > sc[b]; });
+    std::vector<double> out;
+    for (size_t j = 0; j < n; j++) { out.push_back(idx[j]); out.push_back(sc[idx[j]]); }
+    return out;
+}
 
 bool load_affecting_changed(const EngineConfig & a, const EngineConfig & b) {
     return a.model_path != b.model_path || a.vocab_path != b.vocab_path || a.n_threads != b.n_threads ||
-           a.context_chars != b.context_chars || a.max_candidates != b.max_candidates || a.repack != b.repack;
+           a.context_chars != b.context_chars || a.max_candidates != b.max_candidates || a.repack != b.repack ||
+           a.lexicon_dir != b.lexicon_dir || a.gen_beam != b.gen_beam;
 }
 
 void quiet_llama_log() {
@@ -45,6 +62,8 @@ const char * score_reason(ScoreStatus s) {
         case ScoreStatus::FewCandidates: return "few_candidates";
         case ScoreStatus::Timeout: return "timeout";
         case ScoreStatus::Error: return "error";
+        case ScoreStatus::NoLexicon: return "no_lexicon";
+        case ScoreStatus::NotApplicable: return "not_applicable";
     }
     return "error";
 }
@@ -71,6 +90,9 @@ struct Engine::ScoreJob {
     bool abandoned = false;    // 等待方已超时返回
     bool ok = false;
     std::vector<double> scores;
+    // 生成任务
+    bool gen = false;
+    int beam = 0, k = 0;
 };
 
 Engine::Engine() {
@@ -271,6 +293,86 @@ ScoreResult Engine::score(const std::string & context, const std::vector<std::st
     return res;
 }
 
+GenResult Engine::generate(const std::string & context, const std::string & input, int k, double budget_ms) {
+    const Clock::time_point t0 = Clock::now();
+    GenResult res;
+    std::shared_ptr<const Vocab> vocab;
+    std::shared_ptr<const Lexicon> lex;
+    int chars, beam;
+    {
+        std::lock_guard<std::mutex> lk(mu_);
+        stats_.gen_requests++;
+        last_use_ms_ = now_ms();
+        if (!enabled_) { res.status = ScoreStatus::Disabled; return res; }
+        if (state_ != EngineState::Ready) {
+            request_load_locked();
+            res.status = state_ == EngineState::Loading ? ScoreStatus::Loading : ScoreStatus::NoModel;
+            return res;
+        }
+        vocab = vocab_;
+        lex = lexicon_;
+        chars = cfg_.context_chars;
+        beam = cfg_.gen_beam;
+    }
+    if (!lex || beam <= 0) { res.status = ScoreStatus::NoLexicon; return res; }
+
+    // 切分与匹配在锁外做（词典索引加载后只读）
+    bool full = false;
+    auto segs = lex->segment(input, &full);
+    if (full || segs.empty()) { res.status = ScoreStatus::NotApplicable; return res; }
+    std::vector<uint32_t> entries = lex->match(segs);
+    res.matched = (int)entries.size();
+    if (entries.empty()) { res.status = ScoreStatus::FewCandidates; return res; }   // 只匹配到一个词也生成：它可能正是 Rime 没给的那个
+    if (entries.size() > kGenMaxWords) entries.resize(kGenMaxWords);
+    auto job = std::make_shared<ScoreJob>();
+    job->gen = true;
+    job->beam = beam;
+    job->k = std::max(1, k);
+    job->ctx = vocab->encode_context(context, chars);
+    for (uint32_t e : entries) job->cand_tokens.push_back(lex->tokens(e));
+    auto fill = [&](const std::vector<double> & flat) {
+        for (size_t j = 0; j + 1 < flat.size(); j += 2) {
+            size_t i = (size_t)flat[j];
+            if (i >= entries.size()) continue;
+            std::string w;
+            for (Token t : job->cand_tokens[i]) w += vocab->piece(t);
+            res.words.push_back(std::move(w));
+            res.scores.push_back(flat[j + 1]);
+            res.ranks.push_back((int)i + 1);
+        }
+    };
+
+    std::unique_lock<std::mutex> lk(mu_);
+    if (job->ctx.empty()) { res.status = ScoreStatus::NoContext; return res; }
+    job->key = ResultCache::make_key(job->ctx, {"\x01gen", input, std::to_string(beam), std::to_string(job->k)});
+    std::vector<double> flat;
+    if (cache_.get(job->key, &flat)) {
+        stats_.gen_ok++;
+        fill(flat);
+        res.status = ScoreStatus::Ok;
+        res.cache_hit = true;
+        return res;
+    }
+    if (state_ != EngineState::Ready) { res.status = ScoreStatus::Loading; return res; }
+    job->submitted = Clock::now();
+    score_queue_.push_back(job);
+    cv_.notify_all();
+    auto pred = [&] { return job->done; };
+    if (budget_ms > 0) job->done_cv.wait_until(lk, t0 + std::chrono::duration<double, std::milli>(budget_ms), pred);
+    else job->done_cv.wait(lk, pred);
+    if (!job->done) {
+        job->abandoned = true;
+        stats_.gen_timeout++;
+        res.status = ScoreStatus::Timeout;
+        return res;
+    }
+    if (!job->ok) { res.status = ScoreStatus::Error; return res; }
+    stats_.gen_ok++;
+    fill(job->scores);
+    res.status = ScoreStatus::Ok;
+    return res;
+}
+
 void Engine::shutdown() {
     std::thread t;
     {
@@ -281,11 +383,13 @@ void Engine::shutdown() {
         t = std::move(worker_);
     }
     if (t.joinable()) t.join();
+    if (lexicon_thread_.joinable()) lexicon_thread_.join();
     std::lock_guard<std::mutex> lk(mu_);
     worker_running_ = false;
     stop_ = false;
     load_requested_ = unload_requested_ = prepare_pending_ = false;
     vocab_.reset();
+    lexicon_.reset();
     cache_.clear();
     last_prepared_.clear();
     if (state_ != EngineState::Disabled) state_ = EngineState::Idle;
@@ -362,6 +466,7 @@ void Engine::do_load(const EngineConfig & cfg) {
         gen = cfg_gen_;
         stats_.loads++;
     }
+    if (lexicon_thread_.joinable()) lexicon_thread_.join();   // 上一次加载的词典索引线程（它结束时要拿 mu_，此处不持锁）
     model_.reset();
     log_event("loading model: %s threads=%d", cfg.model_path.c_str(), cfg.n_threads);
     const Clock::time_point t0 = Clock::now();
@@ -373,6 +478,7 @@ void Engine::do_load(const EngineConfig & cfg) {
     mo.n_threads = cfg.n_threads;
     if (hw > 1 && (unsigned)mo.n_threads > hw - 1) mo.n_threads = (int)hw - 1;
     mo.max_candidates = cfg.max_candidates;
+    mo.gen_beam = cfg.lexicon_dir.empty() ? 0 : std::max(0, cfg.gen_beam);
     mo.context_slots = kContextSlots;
     mo.candidate_max_chars = kCandidateMaxChars;
     mo.repack = cfg.repack;
@@ -413,6 +519,29 @@ void Engine::do_load(const EngineConfig & cfg) {
     stats_.last_load_ms = ms;
     last_use_ms_ = now_ms();
     log_event("model ready in %.0f ms (threads=%d max_candidates=%d)", ms, model_->options().n_threads, cfg.max_candidates);
+    if (mo.gen_beam > 0) start_lexicon_load_locked(cfg, gen);
+}
+
+// 候选生成的词典索引：模型就绪之后在单独的线程里读，打分与预解码不必等它；读不到或加载失败只影响生成。
+// 读完若模型已换代或已卸载就丢弃。调用时持有 mu_。
+void Engine::start_lexicon_load_locked(const EngineConfig & cfg, uint64_t gen) {
+    std::shared_ptr<const Vocab> vocab = vocab_;
+    lexicon_thread_ = std::thread([this, cfg, gen, vocab] {
+        const Clock::time_point tl = Clock::now();
+        auto lex = std::make_shared<Lexicon>();
+        std::string err;
+        bool ok = lex->load({cfg.lexicon_dir + "/base.dict.yaml", cfg.lexicon_dir + "/ext.dict.yaml"}, *vocab,
+                            kGenMinChars, kGenMaxChars, &err);
+        double ms = ms_between(tl, Clock::now());
+        std::lock_guard<std::mutex> lk(mu_);
+        if (!ok) { log_event("WARN: %s", err.c_str()); return; }
+        if (gen != loaded_gen_ || state_ != EngineState::Ready) return;
+        lexicon_ = std::move(lex);
+#if defined(__GLIBC__)
+        malloc_trim(0);   // 解析词典时的临时内存还给系统（glibc 默认留着不还）
+#endif
+        log_event("lexicon ready: %zu words in %.0f ms", lexicon_->size(), ms);
+    });
 }
 
 void Engine::do_unload(const char * why) {
@@ -420,6 +549,7 @@ void Engine::do_unload(const char * why) {
     model_.reset();
     std::lock_guard<std::mutex> lk(mu_);
     vocab_.reset();
+    lexicon_.reset();
     cache_.clear();
     last_prepared_.clear();
     for (auto & job : score_queue_) { job->done = true; job->ok = false; job->done_cv.notify_all(); }
@@ -437,7 +567,9 @@ void Engine::run_score(const std::shared_ptr<ScoreJob> & job) {
     DecodeStats st;
     std::vector<double> scores;
     const Clock::time_point t0 = Clock::now();
-    bool ok = model_ && model_->score(job->ctx, job->cand_tokens, &scores, &st);
+    bool ok = model_ && (job->gen ? model_->generate(job->ctx, job->cand_tokens, job->beam, &scores, &st)
+                                  : model_->score(job->ctx, job->cand_tokens, &scores, &st));
+    if (ok && job->gen) scores = top_k_flat(scores, job->k);
     double ms = ms_between(t0, Clock::now());
 
     std::lock_guard<std::mutex> lk(mu_);

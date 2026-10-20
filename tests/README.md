@@ -21,6 +21,7 @@ tests/run_all.sh <core 的构建目录> <suzu.gguf> <suzu.vocab.txt> [--quick]
 |---|---|---|
 | `smoke_test.lua` | 接口存在、缺模型时优雅降级 | 否 |
 | `student_test.lua`、`model_test.lua` | 加载、几组同音词的排序、粗略耗时 | 是 |
+| `gen_test.lua` | 候选生成：适用范围（全拼不生成）、简拼、混合输入、隔音符、三字词、词频名次、词表外字；束宽足够大时与逐个打分一致 | 是 |
 | `filter_test.lua` | 模拟 Rime 环境中的处理器与过滤器端到端测试 | 是 |
 | `idle_test.lua` | 空闲卸载、内存归还、透明重载 | 是 |
 | `concurrency_test.lua` | 卸载与输入交错、加载中输入、模块重新初始化、配置反复切换、退出 | 是 |

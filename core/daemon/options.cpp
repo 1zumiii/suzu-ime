@@ -8,7 +8,7 @@ namespace suzu::daemon {
 void print_usage() {
     fprintf(stderr,
             "usage: rimellmd [--supervise] --model PATH [--student-vocab PATH] [--rime-dir DIR] [--port N]\n"
-            "                [--log-dir DIR] [--threads N] [--n-seq-max N] [--idle-sec N] [--screen-off-sec N]\n"
+            "                [--log-dir DIR] [--threads N] [--n-seq-max N] [--gen-beam N] [--idle-sec N] [--screen-off-sec N]\n"
             "                [--orphan-sec N] [--budget-ms N] [--sync-budget-ms N] [--repack]\n"
             "                [--heartbeat-ms N] [--max-backoff-s N]   (supervisor timing, for tests)\n");
 }
@@ -39,6 +39,7 @@ bool parse_options(int argc, char ** argv, Options * o, int * exit_code) {
         else if (a == "--log-dir") o->log_dir = v;
         else if (a == "--threads") o->threads = atoi(v);
         else if (a == "--n-seq-max") o->n_seq_max = atoi(v);
+        else if (a == "--gen-beam") o->gen_beam = atoi(v);
         else if (a == "--idle-sec") o->idle_sec = atoi(v);
         else if (a == "--screen-off-sec") o->screen_off_sec = atoi(v);
         else if (a == "--orphan-sec") o->orphan_sec = atoi(v);

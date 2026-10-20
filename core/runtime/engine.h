@@ -19,6 +19,7 @@
 #include <thread>
 #include <vector>
 
+#include "lexicon/lexicon.h"
 #include "model/suzu_model.h"
 #include "runtime/result_cache.h"
 #include "runtime/stats.h"
@@ -34,6 +35,8 @@ enum class ScoreStatus {
     FewCandidates,   // 候选不足 2 个
     Timeout,         // 时限内没算完
     Error,           // 推理出错
+    NoLexicon,       // 生成：没有词典索引（未配置、读不到或加载失败）
+    NotApplicable,   // 生成：输入不适用（全拼、切分不出、字数超出范围）
 };
 
 // 返回给 Lua 的原因码（Ok 为空串）
@@ -46,6 +49,16 @@ struct ScoreResult {
     bool cache_hit = false;
 };
 
+// 候选生成的结果：按模型分降序的前 k 个词
+struct GenResult {
+    ScoreStatus status = ScoreStatus::Error;
+    std::vector<std::string> words;
+    std::vector<double> scores;        // 与 words 对齐
+    std::vector<int> ranks;            // 词频名次（在这次输入匹配到的全部词里，从 1 起）
+    int matched = 0;                   // 匹配到的词数
+    bool cache_hit = false;
+};
+
 struct EngineConfig {
     std::string model_path;
     std::string vocab_path;
@@ -54,6 +67,8 @@ struct EngineConfig {
     int max_candidates = 11;
     bool repack = false;
     int idle_unload_sec = 0;           // 0 = 不自动卸载
+    std::string lexicon_dir;           // 候选生成的词典目录（雾凇的 cn_dicts）；空 = 不生成
+    int gen_beam = 0;                  // 候选生成每层最多展开的节点数；0 = 不生成
 };
 
 enum class EngineState { Idle, Loading, Ready, Failed, Disabled };
@@ -77,6 +92,9 @@ public:
     bool prepare(const std::string & context);
     // 打分：最多等待 budget_ms（<= 0 表示一直等到算完，只用于测试与工具）。
     ScoreResult score(const std::string & context, const std::vector<std::string> & cands, double budget_ms);
+    // 候选生成：按输入串（拼音、简拼或两者混合）在词典里匹配，由模型按上文挑出前 k 个。时限与缓存同 score。
+    // 全拼输入（能完整切成纯音节）不生成，返回 NotApplicable。
+    GenResult generate(const std::string & context, const std::string & input, int k, double budget_ms);
     void touch();                      // 刷新“最近使用”时间（空闲卸载用）
     bool is_ready() const;
     EngineState state() const;
@@ -96,12 +114,14 @@ private:
     void worker_main();
     void do_load(const EngineConfig & cfg);
     void do_unload(const char * why);
+    void start_lexicon_load_locked(const EngineConfig & cfg, uint64_t gen);
     void run_score(const std::shared_ptr<ScoreJob> & job);
     void run_prepare(const TokenSeq & ctx);
 
     mutable std::mutex mu_;
     std::condition_variable cv_;       // 唤醒工作线程
     std::thread worker_;
+    std::thread lexicon_thread_;       // 读词典索引（只由工作线程启动；下一次加载前与 shutdown 时回收）
     bool worker_running_ = false;
     bool stop_ = false;
 
@@ -116,6 +136,7 @@ private:
     uint64_t failed_gen_ = 0;
 
     std::shared_ptr<const Vocab> vocab_;   // 调用方用它分词；模型就绪时发布，卸载时撤回
+    std::shared_ptr<const Lexicon> lexicon_;   // 候选生成的词典索引；与模型一同加载与卸载
     std::unique_ptr<SuzuModel> model_;     // 只在工作线程上访问
 
     std::deque<std::shared_ptr<ScoreJob>> score_queue_;

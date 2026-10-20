@@ -46,7 +46,10 @@ std::string EngineStats::json() const {
              (unsigned long long)jobs_dropped, (unsigned long long)loads, (unsigned long long)load_failures,
              (unsigned long long)unloads, (unsigned long long)decode_failures, (unsigned long long)ctx_hit,
              (unsigned long long)ctx_partial, (unsigned long long)ctx_full, last_load_ms);
-    return std::string(b) + "\"wait_ms\":" + wait_ms.json() + ",\"queue_ms\":" + queue_ms.json() +
+    char g[128];
+    snprintf(g, sizeof g, "\"gen\":{\"requests\":%llu,\"ok\":%llu,\"timeout\":%llu},",
+             (unsigned long long)gen_requests, (unsigned long long)gen_ok, (unsigned long long)gen_timeout);
+    return std::string(b) + g + "\"wait_ms\":" + wait_ms.json() + ",\"queue_ms\":" + queue_ms.json() +
            ",\"compute_ms\":" + compute_ms.json() + ",\"prepare_ms\":" + prepare_ms.json();
 }
 

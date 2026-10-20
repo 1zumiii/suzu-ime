@@ -103,7 +103,7 @@ std::unique_ptr<SuzuModel> SuzuModel::load(const ModelOptions & opt, std::string
     }
 
     int slots = std::max(1, opt.context_slots);
-    int cands = std::max(2, opt.max_candidates);
+    int cands = self->seq_pool();
     int seq_max = slots + cands;
     // 每条上文至多 n_ctx_train 格；候选路径每条至多 candidate_max_chars 格
     int cells = slots * self->n_ctx_train_ + cands * opt.candidate_max_chars;
@@ -113,7 +113,8 @@ std::unique_ptr<SuzuModel> SuzuModel::load(const ModelOptions & opt, std::string
     // 非共享存储时每条序列独占 n_ctx / n_seq_max 格，必须容得下一整条上文加候选
     cp.n_ctx = opt.kv_unified ? (uint32_t)((cells + 255) / 256 * 256)
                               : (uint32_t)(seq_max * (self->n_ctx_train_ + opt.candidate_max_chars));
-    cp.n_batch = (uint32_t)std::max(self->n_ctx_train_, cands);
+    // llama.cpp 要求输出缓冲（n_batch）不小于序列数：候选生成的序列池较大时 seq_max 可能超过 n_ctx_train
+    cp.n_batch = (uint32_t)std::max(self->n_ctx_train_, seq_max);
     cp.n_ubatch = cp.n_batch;
     cp.n_threads = opt.n_threads;
     cp.n_threads_batch = opt.n_threads;
@@ -163,7 +164,7 @@ void SuzuModel::reset() {
     llama_memory_clear(llama_get_memory(ctx_), false);
     for (auto & s : slots_) { s.valid = false; s.tokens.clear(); s.logits.clear(); }
     int slots = (int)slots_.size();
-    int seq_max = slots + std::max(2, opt_.max_candidates);
+    int seq_max = slots + seq_pool();
     free_seqs_.clear();
     for (int s = seq_max - 1; s >= slots; s--) free_seqs_.push_back(s);
 }
@@ -315,6 +316,98 @@ bool SuzuModel::score(const TokenSeq & ctx, const std::vector<TokenSeq> & cands,
     }
     for (size_t i = 1; i < nodes.size(); i++)
         for (int ci : nodes[i].ends_here) (*out)[ci] = lp[i];
+    return true;
+}
+
+bool SuzuModel::generate(const TokenSeq & ctx, const std::vector<TokenSeq> & words, int beam, std::vector<double> * out,
+                         DecodeStats * st) {
+    out->assign(words.size(), kNotReached);
+    if (words.empty()) return true;
+    beam = std::min(beam, opt_.gen_beam);
+    if (beam < 1) return false;
+    int si = ensure_context(ctx, st);
+    if (si < 0) return false;
+    const ContextSlot & slot = slots_[si];
+    const int ctx_len = (int)ctx.size();
+    const int max_chars = std::min(opt_.candidate_max_chars, n_ctx_train_ - ctx_len);
+    if (max_chars < 1) return false;
+
+    PrefixTree tree(words, max_chars, true);
+    const auto & nodes = tree.nodes();
+    std::vector<double> lp(nodes.size(), kNotReached);
+    lp[0] = 0;
+
+    // 在有子节点的候选节点里取对数概率最高的 beam 个
+    auto pick = [&](std::vector<int> cand) {
+        size_t k = std::min(cand.size(), (size_t)beam);
+        std::partial_sort(cand.begin(), cand.begin() + (long)k, cand.end(), [&](int a, int b) { return lp[a] > lp[b]; });
+        cand.resize(k);
+        return cand;
+    };
+
+    {   // 第 1 个字：上文末位的 logits 已在缓存里，不需要解码
+        float m; double lse;
+        log_normalizer(slot.logits.data(), n_vocab_, &m, &lse);
+        for (int ch : nodes[0].children) lp[ch] = log_prob(slot.logits.data(), nodes[ch].token, m, lse);
+    }
+    struct Pending { int node; int seq; };
+    std::vector<Pending> frontier;
+    auto * mem = llama_get_memory(ctx_);
+    bool ok = true;
+    {
+        std::vector<int> cand;
+        for (int ch : nodes[0].children) if (!nodes[ch].children.empty()) cand.push_back(ch);
+        for (int n : pick(cand)) {
+            int s = acquire_seq();
+            if (s < 0) { ok = false; break; }
+            llama_memory_seq_cp(mem, slot.seq, s, -1, -1);
+            frontier.push_back({n, s});
+        }
+    }
+
+    auto t0 = std::chrono::steady_clock::now();
+    while (ok && !frontier.empty()) {
+        Batch batch((int)frontier.size());
+        for (auto & p : frontier) batch.add(nodes[p.node].token, ctx_len + nodes[p.node].depth - 1, p.seq, true);
+        int rc = decode(ctx_, batch.b);
+        if (st) { st->decode_calls++; st->cand_tokens += (int)frontier.size(); }
+        if (rc != 0) { ok = false; break; }
+
+        std::vector<int> cand;
+        std::vector<int> parent_seq(nodes.size(), -1);
+        for (size_t k = 0; k < frontier.size(); k++) {
+            const Pending & p = frontier[k];
+            const float * lg = llama_get_logits_ith(ctx_, (int)k);
+            if (!lg) { ok = false; break; }
+            float m; double lse;
+            log_normalizer(lg, n_vocab_, &m, &lse);
+            for (int ch : nodes[p.node].children) {
+                lp[ch] = lp[p.node] + log_prob(lg, nodes[ch].token, m, lse);
+                if (!nodes[ch].children.empty()) { cand.push_back(ch); parent_seq[ch] = p.seq; }
+            }
+        }
+        if (!ok) break;
+        // 下一层：先从父节点的序列复制出新序列，再归还这一层的序列
+        std::vector<Pending> next;
+        for (int n : pick(cand)) {
+            int s = acquire_seq();
+            if (s < 0) { ok = false; break; }
+            llama_memory_seq_cp(mem, parent_seq[n], s, -1, -1);
+            next.push_back({n, s});
+        }
+        if (!ok) break;
+        for (auto & p : frontier) release_seq(p.seq);
+        frontier.swap(next);
+    }
+    if (st) st->cand_ms += ms_since(t0);
+
+    if (!ok) {
+        reset();
+        return false;
+    }
+    for (size_t i = 1; i < nodes.size(); i++)
+        if (lp[i] > kNotReached)
+            for (int wi : nodes[i].ends_here) (*out)[wi] = lp[i];
     return true;
 }
 

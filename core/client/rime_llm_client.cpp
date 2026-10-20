@@ -100,6 +100,34 @@ int l_score(lua_State * L) {
     return 1;
 }
 
+// generate(上文, 输入串, k = 10, allow_sync = true)：候选生成（守护进程版本 3 起）。与进程内模块同一接口
+int l_generate(lua_State * L) {
+    size_t cl = 0, il = 0;
+    const char * ctx = luaL_checklstring(L, 1, &cl);
+    const char * in = luaL_checklstring(L, 2, &il);
+    lua_Integer k = luaL_optinteger(L, 3, 10);
+    bool allow_sync = sl::read_allow_sync(L, 4);
+    int budget = allow_sync ? g_sync_budget_ms : g_budget_ms;
+    std::vector<std::string> rep;
+    bool ok = conn().rpc({"W", std::to_string(budget), std::to_string(k), std::string(ctx, cl), std::string(in, il)},
+                         budget + kMarginMs, &rep);
+    if (!ok) return sl::push_skip(L, "down");
+    if (rep.empty() || rep[0] != "R") {
+        // 旧版守护进程不认识 W：应答 ERR op
+        const std::string why = (!rep.empty() && rep[0] == "ERR") ? "unsupported" : (rep.size() >= 2 ? rep[1] : "");
+        return sl::push_skip(L, why.c_str());
+    }
+    std::vector<std::string> words;
+    std::vector<double> scores;
+    std::vector<int> ranks;
+    for (size_t i = 1; i + 2 < rep.size(); i += 3) {
+        words.push_back(rep[i]);
+        scores.push_back(atof(rep[i + 1].c_str()));
+        ranks.push_back(atoi(rep[i + 2].c_str()));
+    }
+    return sl::push_generated(L, words, scores, ranks, (int)words.size());
+}
+
 int l_get_scores(lua_State * L) { sl::push_last_scores(L); return 1; }
 
 int l_prepare(lua_State * L) {
@@ -207,7 +235,7 @@ int l_gc(lua_State *) { conn().close(); return 0; }
 extern "C" __attribute__((visibility("default"))) int luaopen_rime_llm(lua_State * L) {
     lua_newtable(L);
     static const sl::Fn fns[] = {
-        {"score", l_score}, {"get_scores", l_get_scores}, {"prepare", l_prepare}, {"is_ready", l_is_ready},
+        {"score", l_score}, {"generate", l_generate}, {"get_scores", l_get_scores}, {"prepare", l_prepare}, {"is_ready", l_is_ready},
         {"touch", l_touch}, {"screen_off", l_screen_off}, {"set_enabled", l_set_enabled}, {"status", l_status},
         {"connected", l_connected}, {"llm_context", l_nil}, {"kick_context", l_noop}, {"edit_reset_context", l_noop},
         {"fg_changed", l_false}, {"click_happened", l_false}, {"match_code", sl::l_match_code},

@@ -45,6 +45,23 @@ int push_skip(lua_State * L, const char * reason) {
     return 1;
 }
 
+int push_generated(lua_State * L, const std::vector<std::string> & words, const std::vector<double> & scores,
+                   const std::vector<int> & ranks, int matched) {
+    lua_createtable(L, (int)words.size(), 0);
+    for (size_t i = 0; i < words.size(); i++) {
+        lua_createtable(L, 0, 3);
+        lua_pushlstring(L, words[i].data(), words[i].size());
+        lua_setfield(L, -2, "w");
+        lua_pushnumber(L, i < scores.size() ? scores[i] : 0);
+        lua_setfield(L, -2, "s");
+        lua_pushinteger(L, i < ranks.size() ? ranks[i] : 0);
+        lua_setfield(L, -2, "r");
+        lua_rawseti(L, -2, (lua_Integer)i + 1);
+    }
+    lua_pushinteger(L, matched);
+    return 2;
+}
+
 namespace {
 std::mutex g_scores_mu;
 std::vector<std::string> g_last_cands;
