@@ -8,6 +8,10 @@
 -- 配置（方案里的 llm_rerank 节点）：
 --   code_pattern            触发的编码正则（全串匹配），默认 [a-z]{3,}（避开单/双字母，保留置顶词与简拼）
 --   max_candidates          参与重排的候选数，默认 5
+--   max_candidates_short    简拼（2 到 short_input_len 个字母，且打分组的首位候选字数等于字母数）时参与重排的候选数，
+--                           默认 0 = 不放大。简拼的答案常排在前 10 名之外（留出集上前 10 名只覆盖 50%），放到 40 时首选准确率
+--                           32.7% 升到 40.5%，Mac 上打分只要约 9 ms；手机吃紧，不要开。processor 会据此放大核心的候选上限
+--   short_input_len         上一项适用的输入字母数上限，默认 3
 --   max_tokens              上文 token 数，默认 10
 --   expected_length_weight  预期词长加成，全拼设 0（默认 0）
 --   freq_beta               词频融合系数，默认 1.5
@@ -30,6 +34,8 @@
 local cfg = {
     code_pattern = '[a-z]{3,}',
     max_candidates = 5,
+    max_candidates_short = 0,
+    short_input_len = 3,
     expected_length_weight = 0,
     freq_beta = 1.5,
     pair_gamma = 1.5,
@@ -236,6 +242,10 @@ local function init_config(env)
     if v ~= nil then cfg.gate_margin_short = math.max(0, v) end
     v = sc:get_int("llm_rerank/max_candidates")
     if v then cfg.max_candidates = v end
+    v = sc:get_int("llm_rerank/max_candidates_short")
+    if v then cfg.max_candidates_short = math.max(0, v) end
+    v = sc:get_int("llm_rerank/short_input_len")
+    if v then cfg.short_input_len = math.max(2, v) end
     v = get_config_number(sc, "llm_rerank/fuzzy_penalty")
     if v ~= nil then cfg.fuzzy_penalty = math.max(0, v) end
     v = sc:get_int("llm_rerank/scan_limit")
@@ -575,9 +585,15 @@ local function inner(translation, env)
     if _G.ai_rerank_context_get then ctx_text = _G.ai_rerank_context_get() end
     local context = (ctx_text or ""):gsub('%s+', '')
     if rp then rp.c = tail_chars(context, 30) end   -- 模型实际看到的上文（核心只取最后 30 个字）
+    -- 简拼：打分组的首位候选字数等于字母数（zm → 怎么），说明每个字母是一个字的声母，答案常在前 10 名之外
+    local kmax = cfg.max_candidates
+    if cfg.max_candidates_short > kmax and #input >= 2 and #input <= cfg.short_input_len and all[1] then
+        local okl, n = pcall(utf8.len, all[1].text or "")
+        if okl and n == #input then kmax = cfg.max_candidates_short end
+    end
     local cands = {}
     for i, c in ipairs(all) do
-        if i > cfg.max_candidates then break end
+        if i > kmax then break end
         table.insert(cands, c.text)
     end
 

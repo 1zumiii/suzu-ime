@@ -144,6 +144,12 @@ local function load_llm(env)
     if mt then cpp.max_ctx = mt end
     local cores = sc:get_int("llm_rerank/cpu_cores")
     if cores then cpp.n_threads = cores end
+    -- 简拼放大候选数时，核心的候选上限（n_seq_max - 1）要跟着放大；没配置放大就不动，手机的守护进程由启动参数决定
+    do
+        local mc = sc:get_int("llm_rerank/max_candidates") or 5
+        local ms = sc:get_int("llm_rerank/max_candidates_short") or 0
+        if ms > mc then pcall(function() cpp.n_seq_max = ms + 1 end) end
+    end
     if ud then cpp.log_dir = ud end                    -- 日志只含模型路径与耗时，不含输入内容
     -- 空闲多少分钟没用就卸载模型（释放约 320 MB 内存），下次打字时自动加载回来（约 0.5~1 秒，期间不重排）。
     -- 0 = 不卸载。默认 20 分钟。
