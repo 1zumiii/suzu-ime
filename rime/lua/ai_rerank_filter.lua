@@ -26,7 +26,7 @@
 --   stage2                  四字两阶段总开关，默认 true；另有方案开关 ai_stage2（方案菜单 / 手机三个点面板里的「单段/两段」）在运行时切换，两者都开才跑第二阶段
 --   stage2_context_chars    第二阶段只用最后 N 个字作为上文，默认 8（现场解码，越短越快）
 --   stage2_min_rest         剩余拼音至少 N 个字母才跑第二阶段，默认 4
---   badge / badge2          首选候选的注释标记：重排后的首选 / 两阶段拼出来的首选，默认 ◇ / ◈（单字符，省空间；❖ 仍表示语法模型整句）
+--   badge / badge2          首选候选的注释标记：模型参与了排序的首选（含与 Rime 原首位相同的）/ 两阶段拼出来的首选，默认 ◇ / ◈（单字符，省空间；❖ 仍表示语法模型整句）
 --   model_path / cpu_cores  见 ai_rerank_processor
 
 local cfg = {
@@ -46,7 +46,7 @@ local cfg = {
     generate = true,            -- 候选生成（只在统一排序下）；processor 据此给核心设置词典目录与 gen_beam
     gen_k = 10,                 -- 每次生成的词数
     ranker = "unified",         -- unified：统一排序（rank_unified.lua），关 AI 时也排序；legacy：旧的融合与门控
-    badge = "◇",       -- AI 按上文重排后的首选
+    badge = "◇",       -- 模型参与了排序的首选
     badge2 = "◈",      -- 两阶段拼出来的首选（四字 = 两个两字词）
     debug_latency = false,
 }
@@ -756,8 +756,8 @@ local function inner(translation, env)
 
         for i, f in ipairs(sorted) do
             local c = cand_of[f]
-            -- ◇ 只在模型改变了首位时标出（与 λ = 0 时的首位不同）
-            if i == 1 and cfg.badge ~= "" and f ~= base_top then
+            -- ◇ 表示模型参与了这次排序：首位带模型分且上文权重 λ > 0。首位与 Rime 原首位相同时也标出，用来区分“模型看过并同意”和“模型没参与”
+            if i == 1 and cfg.badge ~= "" and ((lam > 0 and f.s ~= nil) or f ~= base_top) then
                 local cm = c.comment
                 emit(ShadowCandidate(c, c.type, c.text, (cm and cm ~= "") and (cm .. " " .. cfg.badge) or cfg.badge, true))
             else

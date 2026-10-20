@@ -212,6 +212,22 @@ local nc = 0
 for _ in io.lines(ud .. "/select_corpus.tsv") do nc = nc + 1 end
 check("语料与回放数据同样条数", nc == #lines, nc .. "/" .. #lines)
 
+-- ◇ 标记：模型参与排序就标出，首位与 Rime 原首位相同时也标；关 AI（λ = 0）时不标
+do
+  C.ranker = "unified"
+  hist = { "他在公司当" }
+  ai_on = true
+  local out = run_filter("jingli", JL)
+  check("◇：模型同意 Rime 首位时仍标出", out[1] and out[1].text == "经理" and (out[1].comment or ""):find("◇", 1, true) ~= nil,
+    out[1] and (out[1].text .. "/" .. tostring(out[1].comment)) or "无输出")
+  ai_on = false
+  yielded = {}
+  ctx.input = "jingli"
+  filter(translation(JL), env)
+  check("◇：关 AI 时不标", yielded[1] and (yielded[1].comment or ""):find("◇", 1, true) == nil, yielded[1] and tostring(yielded[1].comment))
+  ai_on = true
+end
+
 -- 失步（点击光标等，运行时选项 ai_ctx_reset）之后上文为空：下一次输入不推理，候选保持 Rime 原顺序
 do
   hist = { "他在公司当" }
