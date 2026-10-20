@@ -14,6 +14,7 @@
 --     speed=F              节奏倍数：按键间隔乘以 F（默认 1；0.5 = 打字快一倍）
 --     out=PATH             另写一份逐次记录（只含数字与原因码），便于画分布
 --     chaos=SCRIPT         故障注入：每输入 10 个词在后台执行一次「SCRIPT <词序号>」（由脚本决定杀进程、冻结、删模型等）
+--     ranker=… max_candidates=N code_pattern=… gate_margin=F gate_margin_short=F   覆盖对应的 llm_rerank 配置
 --     label=TEXT           结果行的标签
 local repo, so_dir, cases_path, n_words = arg[1], arg[2], arg[3], tonumber(arg[4] or "200")
 local opt = { mode = "inproc", threads = "2", seed = "1", speed = "1", label = "" }
@@ -123,6 +124,10 @@ local tail_cands = {}
 Component = { Translator = function() return { query = function(_, rest) return mk_translation(tail_cands[rest] or {}) end } end }
 
 local conf = { ["llm_rerank/max_candidates"] = 5 }
+-- 配置项：ranker=legacy|unified、max_candidates=N、code_pattern=…、gate_margin=F、gate_margin_short=F（按手机的配置对照时用）
+for _, k in ipairs({ "ranker", "max_candidates", "code_pattern", "gate_margin", "gate_margin_short" }) do
+  if opt[k] then conf["llm_rerank/" .. k] = tonumber(opt[k]) or opt[k] end
+end
 if opt.mode == "inproc" then
   conf["llm_rerank/student_model"] = assert(opt.model, "inproc mode needs model=")
   conf["llm_rerank/student_vocab"] = assert(opt.vocab, "inproc mode needs vocab=")
