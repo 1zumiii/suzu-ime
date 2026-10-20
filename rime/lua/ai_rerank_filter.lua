@@ -8,11 +8,7 @@
 -- 配置（方案里的 llm_rerank 节点）：
 --   code_pattern            触发的编码正则（全串匹配），默认 [a-z]{3,}（避开单/双字母，保留置顶词与简拼）
 --   max_candidates          参与重排的候选数，默认 5
---   max_candidates_short    简拼（2 到 short_input_len 个字母，且打分组的首位候选字数等于字母数）时参与重排的候选数，
---                           默认 0 = 不放大。简拼的答案常排在前 10 名之外（留出集上前 10 名只覆盖 50%），放到 40 时首选准确率
---                           32.7% 升到 40.5%，Mac 上打分只要约 9 ms；手机吃紧，不要开。processor 会据此放大核心的候选上限
---   short_input_len         上一项适用的输入字母数上限，默认 3。开启 generate（且为统一排序）时不放大，二者取其一
---   generate                候选生成（只在 ranker: unified 下），默认 false；gen_k 每次生成的词数，默认 10；
+--   generate                候选生成（只在 ranker: unified 下），默认 true；核心没有生成接口或没有词典时自动不生成；gen_k 每次生成的词数，默认 10；
 --                           gen_beam 核心每层展开的节点数（processor 读取），默认 20。见 add_generated
 --   max_tokens              上文 token 数，默认 10
 --   expected_length_weight  预期词长加成，全拼设 0（默认 0）
@@ -36,8 +32,6 @@
 local cfg = {
     code_pattern = '[a-z]{3,}',
     max_candidates = 5,
-    max_candidates_short = 0,
-    short_input_len = 3,
     expected_length_weight = 0,
     freq_beta = 1.5,
     pair_gamma = 1.5,
@@ -49,9 +43,9 @@ local cfg = {
     stage2 = true,              -- 四字两阶段总开关；怀疑它有问题时设为 false
     stage2_context_chars = 8,   -- 第二阶段只用「上文+第一阶段选中词」的最后 N 个字，解码更快
     stage2_min_rest = 4,        -- 剩余拼音至少 N 个字母才跑第二阶段（输入过程中的半截拼音不值得推理）
-    generate = false,           -- 候选生成（只在统一排序下）；processor 据此给核心设置词典目录与 gen_beam
+    generate = true,            -- 候选生成（只在统一排序下）；processor 据此给核心设置词典目录与 gen_beam
     gen_k = 10,                 -- 每次生成的词数
-    ranker = "legacy",          -- legacy：现有的融合与门控；unified：统一排序（rank_unified.lua），关 AI 时也排序
+    ranker = "unified",         -- unified：统一排序（rank_unified.lua），关 AI 时也排序；legacy：旧的融合与门控
     badge = "◇",       -- AI 按上文重排后的首选
     badge2 = "◈",      -- 两阶段拼出来的首选（四字 = 两个两字词）
     debug_latency = false,
@@ -246,10 +240,6 @@ local function init_config(env)
     if v ~= nil then cfg.gate_margin_short = math.max(0, v) end
     v = sc:get_int("llm_rerank/max_candidates")
     if v then cfg.max_candidates = v end
-    v = sc:get_int("llm_rerank/max_candidates_short")
-    if v then cfg.max_candidates_short = math.max(0, v) end
-    v = sc:get_int("llm_rerank/short_input_len")
-    if v then cfg.short_input_len = math.max(2, v) end
     v = get_config_number(sc, "llm_rerank/fuzzy_penalty")
     if v ~= nil then cfg.fuzzy_penalty = math.max(0, v) end
     v = sc:get_int("llm_rerank/scan_limit")
@@ -650,12 +640,7 @@ local function inner(translation, env)
         local okg, gl = pcall(llm.generate, context, input, cfg.gen_k, false)
         if okg and type(gl) == "table" then gen_pre, use_model = gl, true end
     end
-    -- 简拼：打分组的首位候选字数等于字母数（zm → 怎么），说明每个字母是一个字的声母，答案常在前 10 名之外
     local kmax = cfg.max_candidates
-    if cfg.max_candidates_short > kmax and not (cfg.generate and unified) and #input >= 2 and #input <= cfg.short_input_len and all[1] then
-        local okl, n = pcall(utf8.len, all[1].text or "")
-        if okl and n == #input then kmax = cfg.max_candidates_short end
-    end
     local cands = {}
     for i, c in ipairs(all) do
         if i > kmax then break end

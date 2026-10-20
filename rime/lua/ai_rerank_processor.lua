@@ -146,17 +146,13 @@ local function load_llm(env)
     if cores then cpp.n_threads = cores end
     -- 候选生成（llm_rerank/generate）：词典就是用户目录里随方案部署的雾凇词典（cn_dicts）。
     -- 进程内核心在这里设置；手机的守护进程由启动参数决定（--rime-dir 下的 cn_dicts，--gen-beam），这两个属性对客户端无作用
-    if sc:get_bool("llm_rerank/generate") then
+    local gen_on = sc:get_bool("llm_rerank/generate")
+    if gen_on == nil then gen_on = true end        -- 默认开启；核心没有生成接口时下面的赋值无效，过滤器会自动跳过
+    if gen_on then
         local ud = user_dir()
         local gb = sc:get_int("llm_rerank/gen_beam") or 20
         if ud then pcall(function() cpp.lexicon_dir = ud .. "/cn_dicts" end) end
         pcall(function() cpp.gen_beam = gb end)
-    end
-    -- 简拼放大候选数时，核心的候选上限（n_seq_max - 1）要跟着放大；没配置放大就不动，手机的守护进程由启动参数决定
-    do
-        local mc = sc:get_int("llm_rerank/max_candidates") or 5
-        local ms = sc:get_int("llm_rerank/max_candidates_short") or 0
-        if ms > mc then pcall(function() cpp.n_seq_max = ms + 1 end) end
     end
     if ud then cpp.log_dir = ud end                    -- 日志只含模型路径与耗时，不含输入内容
     -- 空闲多少分钟没用就卸载模型（释放约 320 MB 内存），下次打字时自动加载回来（约 0.5~1 秒，期间不重排）。

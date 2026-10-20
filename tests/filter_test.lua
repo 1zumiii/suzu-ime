@@ -36,7 +36,8 @@ Component = { Translator = function(_, _, name)
   end }
 end }
 
-local conf = { ["llm_rerank/model_path"] = model, ["llm_rerank/max_candidates"] = 5 }
+-- 本文件测的是旧排序（legacy）的融合、门控与两阶段；统一排序与生成由 replay_test、gen_test 覆盖
+local conf = { ["llm_rerank/model_path"] = model, ["llm_rerank/max_candidates"] = 5, ["llm_rerank/ranker"] = "legacy" }
 local function mk_env(input, hist, enabled, extra_conf)
   local c = {}
   for k, v in pairs(conf) do c[k] = v end
@@ -218,36 +219,6 @@ do
   _G.ReverseDb = nil
   _G.ai_rerank_reset_reverse()
   check("B4b. 没有 ReverseDb 时不扣分", fz("shang", "三") == false)
-end
-
--- B6: 简拼放大候选数：2 个字母、打分组首位候选字数等于字母数时，打分的候选数取 max_candidates_short
-do
-  hist = { "他在公司当" }
-  press(mk_env("", hist, true), "d")
-  local words = { "经理", "经历", "精力", "敬礼", "警力", "经里", "镜里", "惊立" }
-  local function scored(input, first_len, conf)
-    _G.llm_filter_cache = nil
-    package.loaded["ai_rerank_filter"] = nil      -- 过滤器的配置只读一次：每组配置重新加载
-    filter = require("ai_rerank_filter")
-    local cands = {}
-    for i, w in ipairs(words) do cands[i] = mk(i == 1 and first_len == 1 and "经" or w, 0, #input) end
-    run(mk_env(input, hist, true, conf), cands)
-    local n = 0
-    for _ in pairs((_G.llm_filter_cache and _G.llm_filter_cache.scores) or {}) do n = n + 1 end
-    return n
-  end
-  local base = { ["llm_rerank/max_candidates"] = 3, ["llm_rerank/code_pattern"] = "[a-z]{2,}" }
-  local wide = { ["llm_rerank/max_candidates"] = 3, ["llm_rerank/code_pattern"] = "[a-z]{2,}",
-                 ["llm_rerank/max_candidates_short"] = 6, ["llm_rerank/short_input_len"] = 3 }
-  check("B6. 未配置放大：只打分 max_candidates 个", scored("jl", 2, base) == 3)
-  check("B6. 简拼（首位两字、两个字母）：放大到 6 个", scored("jl", 2, wide) == 6)
-  check("B6. 首位只有一个字（不是简拼）：不放大", scored("jl", 1, wide) == 3)
-  check("B6. 字母数超过 short_input_len：不放大", scored("jlgl", 2, wide) == 3)
-  -- 恢复默认配置，不影响后面的测试
-  package.loaded["ai_rerank_filter"] = nil
-  filter = require("ai_rerank_filter")
-  run(mk_env("zzz", hist, true), { mk("甲", 0, 3), mk("乙", 0, 3) })
-  _G.llm_filter_cache = nil
 end
 
 -- C: 上文为空 → 不重排（原样）
