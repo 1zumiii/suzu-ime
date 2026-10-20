@@ -44,11 +44,13 @@ class Session:
         self.stack = []
         self.pending = []        # 本次上屏之前的选词事件（一次上屏可能由几次选词组成）
         self.deleted = []        # 刚被整段删除的段（按删除顺序：从右到左）
+        self.waiting = None      # 等待迟到选词的上屏：(新段, 上文, 被删的段)
         self.incomplete = False
         self.last_t = None
 
     # ---------- 句子 ----------
     def seal(self, t):
+        self.settle()
         text = "".join(s.text for s in self.stack)
         if text:
             self.out.sentence(text, t, not self.incomplete,
@@ -59,23 +61,52 @@ class Session:
     def on_cmt(self, ev):
         text = ev.get("w", "")
         sels, self.pending = self.pending, []
-        if sels and "".join(s.get("w", "") for s in sels) == text:
+        joined = "".join(s.get("w", "") for s in sels)
+        if sels and text.startswith(joined):
             new = [Seg(s["w"], s.get("in"), ev["t"]) for s in sels]
+            if len(text) > len(joined):
+                new.append(Seg(text[len(joined):], None, ev["t"]))   # 最后一段的选词迟到（整段上屏）
         else:
             new = [Seg(text, None, ev["t"])]
-        self.match_corrections(new)
+        ctx = "".join(s.text for s in self.stack)[-30:]
+        deleted, self.deleted = self.deleted, []
+        if new[-1].py is None:
+            self.waiting = (new, ctx, deleted)   # 整段上屏时选词通知晚于上屏：等它补上拼音再推导纠错
+        else:
+            self.match_corrections(new, ctx, deleted)
         self.stack += new
         if text and text[-1] in ENDS:
             self.seal(ev["t"])
 
-    def match_corrections(self, new):
-        """被删的段（恢复成从左到右）与新上屏的选词段依次比较拼音。"""
-        if not self.deleted:
+    def on_late_sel(self, ev):
+        """整段上屏的选词（late = 1）：补到刚才那次上屏的最后一段上。"""
+        if not self.waiting:
             return
-        old = list(reversed(self.deleted))
-        self.deleted = []
-        ctx = "".join(s.text for s in self.stack)[-30:]
-        for a, b in zip(old, new):
+        new, ctx, deleted = self.waiting
+        self.waiting = None
+        top, w = new[-1], ev.get("w", "")
+        if top.py is None and w and top.text.endswith(w):
+            if top.text != w:     # 多段选词的最后一段：拆成前缀（未知拼音）与这一段
+                head = Seg(top.text[:-len(w)], None, top.t)
+                top.text = top.orig = w
+                i = self.stack.index(top)
+                self.stack.insert(i, head)
+                new.insert(len(new) - 1, head)
+            top.py = ev.get("in")
+        self.match_corrections(new, ctx, deleted)
+
+    def settle(self):
+        """迟到的选词没来：按已有信息推导纠错。"""
+        if self.waiting:
+            new, ctx, deleted = self.waiting
+            self.waiting = None
+            self.match_corrections(new, ctx, deleted)
+
+    def match_corrections(self, new, ctx, deleted):
+        """被删的段（恢复成从左到右）与新上屏的选词段依次比较拼音。"""
+        if not deleted:
+            return
+        for a, b in zip(reversed(deleted), new):
             if a.py is None or b.py is None:
                 break
             if norm_py(a.py) == norm_py(b.py):
@@ -101,11 +132,17 @@ class Session:
     def feed(self, ev, idle):
         t, k = ev.get("t", 0), ev.get("k")
         self.out.count["事件 " + str(k)] += 1
+        late = k == "sel" and ev.get("late") == 1
+        if not late:
+            self.settle()
         if self.last_t is not None and t - self.last_t > idle and k != "start":
             self.seal(self.last_t)
         self.last_t = t
         if k == "start":
             self.seal(t)
+        elif late:
+            self.out.sel(ev)
+            self.on_late_sel(ev)
         elif k == "sel":
             self.pending.append(ev)
             self.out.sel(ev)

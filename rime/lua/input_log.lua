@@ -14,6 +14,7 @@
 --   del    没有未上屏拼音时的退格
 --   cut    失步：why 为原因码（nav 方向键等、enter 回车、mod 组合键、delete 向后删除、ascii 英文模式直接输入）
 local json = require("rerank_json")
+local select_info = require("select_info")
 
 local M = {}
 
@@ -158,18 +159,15 @@ function M.attach(env)
     ctx.select_notifier:connect(function(c)
         pcall(function()
             flush_commits(st, c)
-            local cand = c:get_selected_candidate()
-            if not cand or not has_han(cand.text or "") then return end
-            local seg = c.composition:back()
-            local input = c.input or ""
-            local info = _G.ai_select_info
-            local fresh = info and info.input == input
+            local s = select_info.resolve(c, "log")   -- 整段上屏时由过滤器信息补全
+            if not s or not has_han(s.text) then return end
+            local info = s.info
             write(st, {
-                k = "sel", ["in"] = input, w = cand.text, ty = cand.type,
-                i = (seg and seg.selected_index or 0) + 1,
+                k = "sel", ["in"] = s.input, w = s.text, ty = s.type, i = s.sel,
                 ai = c:get_option("ai_rerank") and 1 or 0,
-                top = fresh and info.ft or nil, orig = fresh and info.of or nil,
-                c = fresh and info.rp and info.rp.nat and info.rp or nil,
+                top = info and info.ft or nil, orig = info and info.of or nil,
+                c = info and info.rp and info.rp.nat and info.rp or nil,
+                late = s.filled and 1 or nil,   -- 1：整段上屏，选词通知晚于上屏（cmt 在前）
             })
         end)
     end)

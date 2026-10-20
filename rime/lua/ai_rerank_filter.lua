@@ -866,14 +866,16 @@ return function(translation, env)
     -- 关 AI：旧模式原样透传；统一排序照常排序，只是不用模型（λ = 0）
     if not env.engine.context:get_option("ai_rerank") and cfg.ranker ~= "unified" then
         dbg("filter called: switch OFF in this session")
-        _G.ai_select_info = nil   -- 选词统计：本次没有重排，按原顺序记
-        local first_seen = false
+        -- 本次没有重排：边透传边记下各候选的位次（Rime 只拉取候选窗用到的部分，选中的候选一定在其中），
+        -- 供整段上屏时补全选词记录（select_info.lua）
+        local info = { input = env.engine.context.input or "", o = {}, f = {}, n = 0, s1 = "-", s2 = "-",
+                       ft = "", of = "", off = true, t = os.time(), prev = okpp and pp.prev() or nil }
+        _G.ai_select_info = info
+        local k = 0
         for cand in translation:iter() do
-            if _G.ai_select_stats_on and not first_seen then
-                first_seen = true
-                _G.ai_select_info = { input = env.engine.context.input or "", o = {}, f = {}, n = 0,
-                                      s1 = "-", s2 = "-", ft = cand.text, of = cand.text, off = true }
-            end
+            k = k + 1
+            if k == 1 then info.ft, info.of = cand.text, cand.text end
+            if not info.f[cand.text] then info.f[cand.text] = k; info.o[cand.text] = k end
             yield(cand)
         end
         return
@@ -902,8 +904,9 @@ return function(translation, env)
     end
     if not ok or #cap == 0 then cap = native end
 
-    -- 选词统计（见 ai_rerank_processor 的 select_stats）：只记每个候选在原始顺序和最终顺序里的位次，不记文字内容之外的任何东西
-    if _G.ai_select_stats_on then
+    -- 选词信息：每个候选在原始顺序和最终顺序里的位次，供选词统计、语料、纠错记忆与事件流使用（只在内存里）。
+    -- 整段上屏时选词通知里取不到候选，要靠它补全（select_info.lua），所以统计关闭时也保留
+    do
         local o, fpos = {}, {}
         for i, c in ipairs(native) do if not o[c.text] then o[c.text] = i end end
         for i, c in ipairs(cap) do if not fpos[c.text] then fpos[c.text] = i end end
@@ -911,7 +914,8 @@ return function(translation, env)
                               s1 = flags.s1 or "-", s2 = flags.s2 or "-",
                               ft = cap[1] and cap[1].text or "", of = native[1] and native[1].text or "",
                               mg = flags.mg, gated = flags.gated or 0, mtop = flags.mtop or 0,
-                              rp = ok and flags.rp or nil }
+                              rp = ok and flags.rp or nil, t = os.time(),
+                              prev = okpp and pp.prev() or nil }   -- 上屏前的“前一个词”（整段上屏时纠错记忆要用）
     end
 
     if cfg.debug_latency then

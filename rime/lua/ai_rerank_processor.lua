@@ -6,6 +6,8 @@
 -- 配置（llm_rerank 节点）：idle_unload_minutes 空闲多少分钟后卸载模型，默认 20，0 = 不卸载。
 -- 在 engine/processors 增加 - lua_processor@*ai_rerank_processor（放在最前面）
 
+local select_info = require("select_info")   -- 选词通知里取“这一次选了什么”（含整段上屏的补全）
+
 -- os.rename 在 Windows 上目标已存在会失败（C 运行库的行为）；先试，失败再删掉目标重来。
 local function replace_file(src, dst)
     if os.rename(src, dst) then return true end
@@ -193,17 +195,13 @@ local function setup_choice_memory(env)
     pcall(pp.init)
     env.engine.context.select_notifier:connect(function(ctx)
         pcall(function()
-            local input = ctx.input or ""
-            if not input:match("^[a-z]+$") then return end
-            local cand = ctx:get_selected_candidate()
-            if not cand then return end
-            local e, st = cand._end, cand._start
-            if type(e) == "number" and e - (type(st) == "number" and st or 0) < #input then return end   -- 只选了前半截：不记
-            local prev = pp.prev()
+            local s = select_info.resolve(ctx, "choice")
+            if not s or not s.whole or not s.input:match("^[a-z]+$") then return end   -- 只选了前半截：不记
+            -- 整段上屏时上屏已先发生，pp.prev() 已是刚上屏的词，要用过滤器在上屏前记下的“前一个词”
+            local prev
+            if s.filled then prev = s.info.prev else prev = pp.prev() end
             if not prev then return end
-            local seg = ctx.composition:back()
-            local sel = (seg and seg.selected_index or 0) + 1
-            pp.record_choice(prev, input, cand.text or "", sel > 1 and 2.0 or 0.5)
+            pp.record_choice(prev, s.input, s.text, s.sel > 1 and 2.0 or 0.5)
         end)
     end)
 end
@@ -287,19 +285,17 @@ local function setup_select_stats(env)
         fired = fired + 1
         if fired <= 3 then diag("select_notifier fired #" .. fired) end
         xpcall(function()
-            local cand = ctx:get_selected_candidate()
-            if not cand then return end
-            local text = cand.text or ""
-            local input = ctx.input or ""
+            local s = select_info.resolve(ctx, "stats")   -- 整段上屏时由过滤器信息补全
+            if not s then return end
+            local text, input = s.text, s.input
             local now = os.time()
             local key = input .. "\1" .. text
             if key == last_key and now - last_t <= 1 then return end   -- 同一次选择被通知两次时只记一次
             last_key, last_t = key, now
-            local seg = ctx.composition:back()
-            local sel = (seg and seg.selected_index or 0) + 1          -- 最终顺序里的位次（从 1 起）
+            local sel = s.sel                                         -- 最终顺序里的位次（从 1 起）
             local ai = ctx:get_option("ai_rerank") and 1 or 0
-            local info = _G.ai_select_info
-            local fresh = info and info.input == input
+            local info = s.info
+            local fresh = info ~= nil
             local o, f, n, s1 = sel, sel, 0, "-"
             local mg10, gated, mtop = "-", 0, 0
             if ai == 1 and fresh then
@@ -312,7 +308,7 @@ local function setup_select_stats(env)
             local bucket = clen == 0 and 0 or clen <= 2 and 1 or clen <= 9 and 2 or 3
             if stats_on then
                 append(spath, string.format("%d\t%d\t%s\t%d\t%d\t%d\t%d\t%d\t%d\t%s\t%s\t%s\t%d\t%d\n",
-                    now, ai, model_kind(), #input, n, o, f, bucket, utf8.len(text) or 0, tostring(cand.type), s1,
+                    now, ai, model_kind(), #input, n, o, f, bucket, utf8.len(text) or 0, tostring(s.type), s1,
                     tostring(mg10), gated, mtop), 2 * 1024 * 1024)
             end
             if corpus_on and text:find("[\228-\233][\128-\191][\128-\191]") and (utf8.len(text) or 99) <= 12 then

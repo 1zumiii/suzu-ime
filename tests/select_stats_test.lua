@@ -196,5 +196,45 @@ do
   local d3 = read_diag()
   check("diag: 初始化出错有记录", d3:find("setup_select_stats error", 1, true) ~= nil and d3:find("config-boom", 1, true) ~= nil)
 end
+-- ===== 整段上屏：librime 先上屏、清空组合，再通知选词（取不到候选，input 为空）=====
+do
+  local cbs, committed = {}, nil
+  local ctx = {
+    input = "",
+    select_notifier = { connect = function(_, f) cbs[#cbs + 1] = f end },
+    option_update_notifier = { connect = function() end },
+    commit_notifier = { connect = function() end },
+    get_option = function(_, n) return n == "ai_rerank" end,
+    get_selected_candidate = function() return nil end,
+    composition = { back = function() return nil end },
+    commit_history = { back = function() return committed end,
+                       to_table = function() return committed and { committed } or {} end },
+  }
+  local env = { engine = { context = ctx, schema = { config = {
+    get_string = function() return "" end, get_int = function() return nil end, get_bool = function() return nil end,
+    get_double = function(_, k) if k == "llm_rerank/select_anchor_rate" then return 1.0 end return nil end } } } }
+  mod.init(env)
+  local function fire() for _, f in ipairs(cbs) do f(ctx) end end
+  local before = #corpus_lines()
+  -- 过滤器在上屏前留下的信息：选了最终顺序第 2 位的“精力”，上屏前的前一个词是“明天”
+  _G.ai_select_info = { input = "jinglia", o = { ["经理"] = 1, ["精力"] = 2 }, f = { ["经理"] = 1, ["精力"] = 2 }, n = 2,
+                        s1 = "hit", s2 = "-", ft = "经理", of = "经理", t = os.time(), prev = "明天",
+                        rp = { nat = { { t = "经理", e = 7 } }, g = {} } }
+  committed = { text = "精力", type = "phrase" }
+  fire(); fire()   -- 同一次选择通知两次
+  local cl2 = corpus_lines()
+  local cf2 = fields(cl2[#cl2] or "")
+  check("整段上屏：补写一条难例", #cl2 == before + 1 and cf2[5] == "精力" and cf2[8] == "hard", table.concat(cf2, "|"))
+  local rf = io.open(tmp .. "/select_replay.jsonl", "r"); local rs = rf and rf:read("a") or ""; if rf then rf:close() end
+  check("整段上屏：回放数据有记录", rs:find('"chosen":"精力"', 1, true) ~= nil and rs:find('"input":"jinglia"', 1, true) ~= nil)
+  local cf3 = io.open(tmp .. "/recent_choices.tsv", "r"); local cs = cf3 and cf3:read("a") or ""; if cf3 then cf3:close() end
+  check("整段上屏：纠错记忆用上屏前的前一个词", cs:find("明天\tjinglia\t精力", 1, false) ~= nil, cs)
+  -- 过期的信息不用
+  _G.ai_select_info = { input = "jinglib", o = {}, f = { ["精力"] = 2 }, n = 2, s1 = "hit", ft = "经理", of = "经理",
+                        t = os.time() - 60, prev = "明天" }
+  fire()
+  check("整段上屏：过期信息不补写", #corpus_lines() == before + 1)
+end
+
 print(fails == 0 and "全部通过" or ("失败 " .. fails))
 os.exit(fails == 0 and 0 or 1)
