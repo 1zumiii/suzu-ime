@@ -4,6 +4,9 @@
 -- 超出 90 天或 6000 条的旧记录不丢弃，移到 recent_pairs.archive.tsv（见 corpus_archive.lua）。
 -- 纠错记忆另存 recent_choices.tsv（时间戳<Tab>前一个词<Tab>拼音<Tab>所选词<Tab>权重），明文、仅本机，规则同上（180 天、4000 条，旧记录归档）。
 -- 清空个人词对：删除该文件后重新部署即可。
+-- 基础词对表 personal_pairs_base.tsv（可选，只在本机）：由 tools/import_pair_base.py 从历史文字一次性导入，不衰减、不受条数与天数限制。
+-- 文件里没有任何可读的词：首行 `#salt<Tab>设备盐`，其后每行 `词对哈希<Tab>次数`，哈希为 64 位 FNV-1a（盐 .. 前词 .. "\1" .. 当前词）。
+-- 查询时把基础表的次数加到实时记录的衰减计数上。
 -- 「前一个词」只在上一次上屏后 GAP 秒内有效；编辑键（退格、方向键等）由 ai_rerank_processor 调 reset() 清掉。
 
 -- os.rename 在 Windows 上目标已存在会失败（C 运行库的行为）；先试，失败再删掉目标重来。
@@ -23,6 +26,42 @@ local GAP = 20                  -- 秒
 local MAX_CHARS = 8             -- 过长的上屏文本（整句）不参与词对
 
 local tbl = {}                  -- tbl[前词][当前词] = { s = 衰减计数, t = 最近时间 }
+
+-- 基础词对表（只含哈希）
+local BASE_FILE = "personal_pairs_base.tsv"
+local base = {}                 -- base[64 位哈希] = 次数
+local base_salt = nil
+
+-- 64 位 FNV-1a。Lua 5.4 的整数乘法按 2^64 回绕；tools/import_pair_base.py 须用同样的算法
+local function fnv(str)
+    local h = 0xcbf29ce484222325
+    for i = 1, #str do h = (h ~ str:byte(i)) * 0x100000001b3 end
+    return h
+end
+
+function M._base_count(prev, word)
+    if not base_salt or not prev then return 0 end
+    return base[fnv(base_salt .. prev .. "\1" .. word)] or 0
+end
+
+function M._load_base(file)
+    base, base_salt = {}, nil
+    local f = io.open(file, "r")
+    if not f then return 0 end
+    local n = 0
+    for line in f:lines() do
+        local salt = line:match("^#salt\t(%x+)")
+        if salt then
+            base_salt = salt
+        else
+            local h, c = line:match("^(%x+)\t(%d+)$")
+            if h and #h <= 16 then base[tonumber("0x" .. h)] = tonumber(c); n = n + 1 end
+        end
+    end
+    f:close()
+    if not base_salt then base = {}; return 0 end
+    return n
+end
 
 -- 纠错记忆：在“前一个词 + 输入的拼音”这个具体情境下，用户选了哪个词（选了非首位的权重更大）
 local CHOICE_FILE = "recent_choices.tsv"
@@ -68,6 +107,7 @@ function M.init(file_path)
     local f = io.open(path, "r")
     choice_path = path:gsub("recent_pairs%.tsv$", CHOICE_FILE)
     M._load_choices()
+    M._load_base((path:gsub("recent_pairs%.tsv$", BASE_FILE)))
     if not f then return end
     local now = os.time()
     local keep, old = {}, {}
@@ -193,13 +233,14 @@ end
 function M.eff(prev, word, now)
     local row = prev and tbl[prev]
     local e = row and row[word]
-    if not e then return 0 end
-    return e.s * math.exp(math.min(0, (e.t - (now or os.time())) / TAU))
+    local live = e and e.s * math.exp(math.min(0, (e.t - (now or os.time())) / TAU)) or 0
+    return live + M._base_count(prev, word)      -- 基础表的次数不衰减
 end
 
 -- 测试用：清空内存状态
 function M._reset_all()
     tbl, prev_text, prev_ts, inited, path = {}, nil, 0, false, nil
+    base, base_salt = {}, nil
     choices, choice_path = {}, nil
 end
 

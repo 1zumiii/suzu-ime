@@ -17,3 +17,6 @@ select_replay.part-*
 input_log.jsonl*
 input_log.part-*
 input_log.parts
+
+# 个人基础词对表（只在本机）
+personal_pairs_base.tsv
