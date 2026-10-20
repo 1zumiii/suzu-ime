@@ -144,6 +144,14 @@ local function load_llm(env)
     if mt then cpp.max_ctx = mt end
     local cores = sc:get_int("llm_rerank/cpu_cores")
     if cores then cpp.n_threads = cores end
+    -- 候选生成（llm_rerank/generate）：词典就是用户目录里随方案部署的雾凇词典（cn_dicts）。
+    -- 进程内核心在这里设置；手机的守护进程由启动参数决定（--rime-dir 下的 cn_dicts，--gen-beam），这两个属性对客户端无作用
+    if sc:get_bool("llm_rerank/generate") then
+        local ud = user_dir()
+        local gb = sc:get_int("llm_rerank/gen_beam") or 20
+        if ud then pcall(function() cpp.lexicon_dir = ud .. "/cn_dicts" end) end
+        pcall(function() cpp.gen_beam = gb end)
+    end
     -- 简拼放大候选数时，核心的候选上限（n_seq_max - 1）要跟着放大；没配置放大就不动，手机的守护进程由启动参数决定
     do
         local mc = sc:get_int("llm_rerank/max_candidates") or 5

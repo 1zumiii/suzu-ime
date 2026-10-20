@@ -13,6 +13,12 @@ end
 os.execute("rm -rf '" .. ud .. "' && mkdir -p '" .. ud .. "'")
 io.open(ud .. "/select_corpus.enabled", "w"):close()
 local wf = io.open(ud .. "/weird_words.tsv", "w"); wf:write("今里\n"); wf:close()
+-- 候选生成用的小词典（格式同雾凇 cn_dicts：YAML 头以 ... 结束，之后每行 词<Tab>拼音<Tab>词频）
+os.execute("mkdir -p '" .. ud .. "/cn_dicts'")
+local df = io.open(ud .. "/cn_dicts/base.dict.yaml", "w")
+df:write("---\nname: base\n...\n经理\tjing li\t100\n精力\tjing li\t90\n经历\tjing li\t80\n教练\tjiao lian\t50\n",
+         "家里\tjia li\t40\n今里\tjin li\t30\n局里\tju li\t10\n奖励\tjiang li\t60\n")
+df:close()
 
 local m = require("rime_llm")
 
@@ -35,7 +41,7 @@ Component = { Translator = function() return { query = function(_, rest) return 
 local conf = {
   ["llm_rerank/max_candidates"] = 5, ["llm_rerank/select_anchor_rate"] = 1.0,
   ["llm_rerank/student_model"] = model, ["llm_rerank/student_vocab"] = vocab, ["llm_rerank/model_path"] = model,
-  ["llm_rerank/cpu_cores"] = 2,
+  ["llm_rerank/cpu_cores"] = 2, ["llm_rerank/generate"] = true, ["llm_rerank/gen_beam"] = 8,
 }
 local hist = {}
 ai_on = true
@@ -145,6 +151,36 @@ for round = 1, 3 do
 end
 ai_on = true
 
+-- 统一排序 + 候选生成：简拼 jl，Rime 只给了前三个（经理、精力、经历），其余由核心在小词典里生成；怪词“今里”不出现
+local t1 = os.time()
+while true do   -- 词典索引在后台加载
+  local _, why = m.generate("他在公司当", "jl", 3, true)
+  if why ~= "no_lexicon" or os.time() - t1 > 20 then break end
+  sleep_ms(50)
+end
+C.uni.alpha = 1
+local JL3 = { mk("经理", 0, 2, "phrase", "［jing li］", 1.2), mk("精力", 0, 2, "phrase", "［jing li］", 1.1),
+              mk("经历", 0, 2, "phrase", "［jing li］", 1.0) }
+local n_gen_seen, weird_seen, last_pick = 0, false, nil
+for i, c in ipairs(PY) do
+  hist[#hist + 1] = c
+  local out = run_filter("jl", JL3)
+  for _, c2 in ipairs(out) do
+    if c2.text == "教练" or c2.text == "家里" or c2.text == "奖励" or c2.text == "局里" then n_gen_seen = n_gen_seen + 1 end
+    if c2.text == "今里" then weird_seen = true end
+  end
+  -- 选一个与上一轮不同的词（同一输入、同一个词在 1 秒内的两次通知会被当作重复，只记一次）
+  local k = (i % 2) + 1
+  if out[k].text == last_pick then k = 3 - k end
+  last_pick = out[k].text
+  ctx._cand, ctx._sel = out[k], k - 1
+  select_cb(ctx)
+  hist[#hist + 1] = out[k].text
+  ctx.input = ""
+  n_sel = n_sel + 1
+end
+check("生成：Rime 没给的词进入候选窗，怪词不出现", n_gen_seen > 0 and not weird_seen, "gen=" .. n_gen_seen)
+
 -- ---------- 检查回放数据 ----------
 local lines = {}
 for ln in io.lines(ud .. "/select_replay.jsonl") do lines[#lines + 1] = ln end
@@ -165,7 +201,10 @@ for _, ln in ipairs(lines) do
   if ln:find('"s2cmp":1') then n_cmp = n_cmp + 1 end
   if ln:find('"uni":1') and ln:find('"lam":0[,}]') then n_lam0 = n_lam0 + 1 end
 end
-check("统一排序：记录、与整句比分、关 AI 时 λ = 0", n_uni == 24 and n_cmp > 0 and n_lam0 >= 8 and n_uni_s2 > 0,
+local n_genrec = 0
+for _, ln in ipairs(lines) do if ln:find('"inr":0') and ln:find('"gen":1') then n_genrec = n_genrec + 1 end end
+check("生成：回放数据带生成标记", n_genrec >= 1, "records=" .. n_genrec)
+check("统一排序：记录、与整句比分、关 AI 时 λ = 0", n_uni == 28 and n_cmp > 0 and n_lam0 >= 8 and n_uni_s2 > 0,
   string.format("uni=%d cmp=%d lam0=%d s2=%d", n_uni, n_cmp, n_lam0, n_uni_s2))
 local nc = 0
 for _ in io.lines(ud .. "/select_corpus.tsv") do nc = nc + 1 end

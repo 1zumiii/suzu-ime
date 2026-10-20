@@ -202,8 +202,9 @@ def coverage(recs, rate):
         if not g:
             w["未打分（跳过或上文不足）"] += wt
             continue
-        if r["chosen"] in {e["t"] for e in g}:
-            w["在打分组内"] += wt
+        hit = next((e for e in g if e["t"] == r["chosen"]), None)
+        if hit is not None:
+            w["生成的候选（Rime 没给）" if hit.get("inr") == 0 else "在打分组内"] += wt
             continue
         nat = rp.get("nat", [])
         same = [x for x in nat if x.get("e") == rp.get("be")]

@@ -11,7 +11,9 @@
 --   max_candidates_short    简拼（2 到 short_input_len 个字母，且打分组的首位候选字数等于字母数）时参与重排的候选数，
 --                           默认 0 = 不放大。简拼的答案常排在前 10 名之外（留出集上前 10 名只覆盖 50%），放到 40 时首选准确率
 --                           32.7% 升到 40.5%，Mac 上打分只要约 9 ms；手机吃紧，不要开。processor 会据此放大核心的候选上限
---   short_input_len         上一项适用的输入字母数上限，默认 3
+--   short_input_len         上一项适用的输入字母数上限，默认 3。开启 generate（且为统一排序）时不放大，二者取其一
+--   generate                候选生成（只在 ranker: unified 下），默认 false；gen_k 每次生成的词数，默认 10；
+--                           gen_beam 核心每层展开的节点数（processor 读取），默认 20。见 add_generated
 --   max_tokens              上文 token 数，默认 10
 --   expected_length_weight  预期词长加成，全拼设 0（默认 0）
 --   freq_beta               词频融合系数，默认 1.5
@@ -47,6 +49,8 @@ local cfg = {
     stage2 = true,              -- 四字两阶段总开关；怀疑它有问题时设为 false
     stage2_context_chars = 8,   -- 第二阶段只用「上文+第一阶段选中词」的最后 N 个字，解码更快
     stage2_min_rest = 4,        -- 剩余拼音至少 N 个字母才跑第二阶段（输入过程中的半截拼音不值得推理）
+    generate = false,           -- 候选生成（只在统一排序下）；processor 据此给核心设置词典目录与 gen_beam
+    gen_k = 10,                 -- 每次生成的词数
     ranker = "legacy",          -- legacy：现有的融合与门控；unified：统一排序（rank_unified.lua），关 AI 时也排序
     badge = "◇",       -- AI 按上文重排后的首选
     badge2 = "◈",      -- 两阶段拼出来的首选（四字 = 两个两字词）
@@ -260,6 +264,10 @@ local function init_config(env)
     if b ~= nil then cfg.badge = b end
     b = sc:get_string("llm_rerank/badge2")
     if b ~= nil then cfg.badge2 = b end
+    local gv = sc:get_bool("llm_rerank/generate")
+    if gv ~= nil then cfg.generate = gv end
+    v = sc:get_int("llm_rerank/gen_k")
+    if v then cfg.gen_k = math.max(1, v) end
     local rk = sc:get_string("llm_rerank/ranker")
     if rk ~= nil and rk ~= "" then cfg.ranker = rk end
     if okru then cfg.uni = ru.load(sc) end
@@ -422,6 +430,54 @@ local function replay_cands(group, pos, n, mrank, scores, input, prev_any)
     return list
 end
 
+-- === 候选生成（llm_rerank/generate，只在统一排序下）===
+-- 简拼、混合输入（如 zm、yangs）时，由核心在词典里按上文挑出前 gen_k 个词，并入打分组（全拼由核心判定为不适用）：
+--   Rime 已给出且参与了打分的：沿用 Rime 的名次，只标记 gen；
+--   Rime 给出了但在打分范围之外的：提上来参与排序，名次取它在打分组里的位次，不重复显示；
+--   Rime 没给的：新建候选，先验名次取 max(词频名次, 打分组大小 + 1)，不会靠先验排到 Rime 的候选前面。
+-- 怪词不生成。只在打分组覆盖整个输入时进行（第二阶段只在打分组覆盖前半段时进行，两者不会同时发生）。
+-- 返回不必再按原位输出的组内下标（已被提上来的）。
+local function add_generated(feats, cand_of, all, n, has_model, best_e, input, context, llm, rp, pre)
+    local skip_tail = {}
+    if not (cfg.generate and has_model and best_e == #input and llm.generate) then return skip_tail end
+    local okg, gl = true, pre
+    if not gl then okg, gl = pcall(llm.generate, context, input, cfg.gen_k, false) end
+    if rp then rp.gen = (okg and type(gl) == "table") and #gl or -1 end
+    if not okg or type(gl) ~= "table" then return skip_tail end
+    local have, pos = {}, {}
+    for _, f in ipairs(feats) do have[f.t] = f end
+    for i, c in ipairs(all) do if not pos[c.text] then pos[c.text] = i end end
+    local hints = _G.rank_hints
+    local rec = (hints and hints.input == input) and hints.rec or {}
+    local freq_eff = _G.ai_rerank_freq_eff
+    local prev_any = okpp and pp.prev() or nil
+    local st0 = all[1] and all[1]._start
+    for _, g in ipairs(gl) do
+        local f = have[g.w]
+        if f then
+            f.gen, f.gr = 1, g.r
+        elseif not is_weird(g.w) then
+            local i = pos[g.w]
+            local cand
+            if i then
+                cand, skip_tail[i] = all[i], true
+            else
+                local okc, c = pcall(Candidate, "phrase", type(st0) == "number" and st0 or 0, #input, g.w, "")
+                cand = okc and c or nil
+            end
+            if cand then
+                f = { t = g.w, s = g.s, ty = cand.type, r = i or math.max(g.r, n + 1), gen = 1, gr = g.r,
+                      inr = i and 1 or 0, fq = freq_eff and freq_eff(g.w) or 0, pr = pp_raw("eff", prev_any, g.w),
+                      ch = pp_raw("choice_eff", prev_any, input, g.w), fz = 0, wd = 0, rec = rec[g.w] or 0 }
+                feats[#feats + 1] = f
+                cand_of[f] = cand
+                have[g.w] = f
+            end
+        end
+    end
+    return skip_tail
+end
+
 local function inner(translation, env)
     weird_load()
     if not cfg._inited then
@@ -452,11 +508,16 @@ local function inner(translation, env)
     flags.shr = shrinking and "1" or "0"
     local llm = _G.ai_rerank_llm   -- 由 ai_rerank_processor 加载
     local unified = cfg.ranker == "unified" and okru
+    local gen_probe, gen_pre = false, nil
     local use_model = llm ~= nil and env.engine.context:get_option("ai_rerank")
     if unified then
         -- 统一排序：只处理普通拼音输入；不用模型（关 AI、编码不匹配、模块未加载）时 λ = 0，照样按先验与个人习惯排序
         if not input:match("^[a-z' ]+$") then for _, c in ipairs(all) do Y(c) end; return end
-        if use_model and not match_code_pattern(llm, input) then use_model = false end
+        if use_model and not match_code_pattern(llm, input) then
+            use_model = false
+            -- 编码不匹配（如两个字母的简拼）：开了候选生成时先试探，能生成才用模型（全拼由核心判定为不适用，行为不变）
+            gen_probe = cfg.generate and llm.generate ~= nil
+        end
     else
         if not llm then
             dbg("skip: llm module not loaded (_G.ai_rerank_llm is nil)")
@@ -585,9 +646,13 @@ local function inner(translation, env)
     if _G.ai_rerank_context_get then ctx_text = _G.ai_rerank_context_get() end
     local context = (ctx_text or ""):gsub('%s+', '')
     if rp then rp.c = tail_chars(context, 30) end   -- 模型实际看到的上文（核心只取最后 30 个字）
+    if gen_probe and best_e == #input then
+        local okg, gl = pcall(llm.generate, context, input, cfg.gen_k, false)
+        if okg and type(gl) == "table" then gen_pre, use_model = gl, true end
+    end
     -- 简拼：打分组的首位候选字数等于字母数（zm → 怎么），说明每个字母是一个字的声母，答案常在前 10 名之外
     local kmax = cfg.max_candidates
-    if cfg.max_candidates_short > kmax and #input >= 2 and #input <= cfg.short_input_len and all[1] then
+    if cfg.max_candidates_short > kmax and not (cfg.generate and unified) and #input >= 2 and #input <= cfg.short_input_len and all[1] then
         local okl, n = pcall(utf8.len, all[1].text or "")
         if okl and n == #input then kmax = cfg.max_candidates_short end
     end
@@ -635,10 +700,11 @@ local function inner(translation, env)
         local feats = replay_cands(all, full_pos, n, mrank, has_model and scores or {}, input, okpp and pp.prev() or nil)
         local p = cfg.uni
         local lam = ru.lam(p, math.min(utf8.len(context) or 0, 30), #input, has_model)
-        local sorted = ru.order(feats, p, lam)
-        local base_top = lam > 0 and ru.order(feats, p, 0)[1] or sorted[1]
         local cand_of = {}
         for i = 1, n do cand_of[feats[i]] = all[i] end
+        local skip_tail = add_generated(feats, cand_of, all, n, has_model, best_e, input, context, llm, rp, gen_pre)
+        local sorted = ru.order(feats, p, lam)
+        local base_top = lam > 0 and ru.order(feats, p, 0)[1] or sorted[1]
         if rp then rp.g, rp.uni, rp.lam, rp.ucfg = feats, 1, lam, p end
 
         -- 第二阶段：拼出的句子与 Rime 的整句比分（rank_unified.stage2_wins），胜了置顶，否则放第二位。
@@ -705,7 +771,7 @@ local function inner(translation, env)
                 emit(c)
             end
         end
-        for i = n + 1, #all do emit(all[i]) end
+        for i = n + 1, #all do if not skip_tail[i] then emit(all[i]) end end
     elseif ok and result then
         local seen = {}
         local ordered = {}
