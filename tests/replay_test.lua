@@ -47,14 +47,15 @@ local hist = {}
 ai_on = true
 local select_cb
 local ctx
+local opt_cbs, reset_flag = {}, false
 ctx = {
   input = "",
   commit_history = { to_table = function() local t = {}; for i, w in ipairs(hist) do t[i] = { text = w } end; return t end },
   composition = { back = function(self) return { selected_index = ctx._sel or 0 } end },
-  get_option = function(_, name) return (name == "ai_rerank" and ai_on) or name == "ai_stage2" end,
-  set_option = function() end,
+  get_option = function(_, name) return (name == "ai_rerank" and ai_on) or name == "ai_stage2" or (name == "ai_ctx_reset" and reset_flag) end,
+  set_option = function(_, name, v) if name == "ai_ctx_reset" then reset_flag = v end end,
   get_selected_candidate = function() return ctx._cand end,
-  option_update_notifier = { connect = function() end },
+  option_update_notifier = { connect = function(_, f) opt_cbs[#opt_cbs + 1] = f end },
   select_notifier = { connect = function(_, f) select_cb = f end },
   commit_notifier = { connect = function() end },
 }
@@ -210,6 +211,31 @@ check("统一排序：记录、与整句比分、关 AI 时 λ = 0", n_uni == 28
 local nc = 0
 for _ in io.lines(ud .. "/select_corpus.tsv") do nc = nc + 1 end
 check("语料与回放数据同样条数", nc == #lines, nc .. "/" .. #lines)
+
+-- 失步（点击光标等，运行时选项 ai_ctx_reset）之后上文为空：下一次输入不推理，候选保持 Rime 原顺序
+do
+  hist = { "他在公司当" }
+  key("a")
+  check("失步：失步前有上文", _G.ai_rerank_context_get() ~= "", _G.ai_rerank_context_get())
+  reset_flag = true
+  for _, f in ipairs(opt_cbs) do f(ctx, "ai_ctx_reset") end
+  check("失步：上文清空，选项复位", _G.ai_rerank_context_get() == "" and reset_flag == false, tostring(_G.ai_rerank_context_get()))
+  ctx.input = "jingli"
+  yielded = {}
+  filter(translation(JL), env)
+  local order = {}
+  for i, c in ipairs(yielded) do order[i] = c.text end
+  local s1 = _G.ai_select_info and _G.ai_select_info.s1 or ""
+  check("失步：下一次输入没有模型结果（s1 以 skip 开头）", s1:match("^skip") ~= nil, s1)
+  check("失步：模型没有重排，经理仍在首位，只有模糊音扣分改动顺序",
+    order[1] == "经理" and order[2] == "精力" and order[3] == "经历", table.concat(order, ","))
+  -- 再上屏一个词后上文恢复，重新推理
+  hist[#hist + 1] = "经理"
+  ctx.input = ""
+  key("a")
+  check("失步：之后的上屏重新积累上文", _G.ai_rerank_context_get():find("经理", 1, true) ~= nil, tostring(_G.ai_rerank_context_get()))
+  ctx.input = ""
+end
 
 local function sh(cmd)
   local p = io.popen(cmd .. " 2>&1; echo \"rc=$?\"")
