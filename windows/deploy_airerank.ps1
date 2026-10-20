@@ -9,6 +9,8 @@
 param(
   [switch]$Rollback,
   [switch]$UpdateLua,                         # already switched: only refresh the shared Lua files (backup first, restart the server, no recompile)
+  [switch]$ApplyDefaults,                     # already switched: drop explicit ranker/generate lines (unified + generation are the defaults), code_pattern [a-z]{2,}, unified alpha 0.05; recompile
+  [double]$Alpha = 0.05,
   [switch]$SetRanker,                         # only change llm_rerank/ranker (to -Ranker) in the already switched config, then recompile
   [string]$BackupDir = "",
   [ValidateSet("legacy", "unified")][string]$Ranker = "legacy",
@@ -52,22 +54,26 @@ function Compiled-Has($text) {
   (Test-Path $f) -and [bool](Select-String -Path $f -Pattern $text -SimpleMatch -Quiet)
 }
 function Recompile($marker) {
-  # WeaselDeployer.exe /deploy asks the RUNNING server to recompile (about 2 minutes). The compiled yaml files are deleted first: without that Rime sees no change and compiles nothing.
-  # The deployer shows a settings window that is never clicked: wait until the compiled config has the marker, then close the window.
+  # Compile the config the way the tray menu "Deploy" does, WITHOUT any window: run WeaselDeployer.exe /deploy through an interactive
+  # scheduled task (the same way the server is started). Started from this process tree it opens a settings window and hangs
+  # (it cannot talk to the server from here); started by Task Scheduler in the desktop session it finishes in a few seconds.
   if (-not (Server-Running)) { Start-Server }
   Start-Sleep -Seconds 3
-  foreach ($n in 'rime_ice.schema.yaml', 'default.yaml') { Remove-Item (Join-Path $UserDir ('build'+[char]92+$n)) -ErrorAction SilentlyContinue }
+  foreach ($n in 'rime_ice.schema.yaml', 'default.yaml') { Remove-Item (Join-Path $UserDir ('build' + [char]92 + $n)) -ErrorAction SilentlyContinue }
+  $f = Join-Path $UserDir ('build' + [char]92 + 'rime_ice.schema.yaml')
   $t0 = Get-Date
-  $p = Start-Process $deployer -ArgumentList "/deploy" -WorkingDirectory $WeaselDir -PassThru
+  $act = New-ScheduledTaskAction -Execute $deployer -Argument "/deploy" -WorkingDirectory $WeaselDir
+  $pri = New-ScheduledTaskPrincipal -UserId "$env:USERDOMAIN\$env:USERNAME" -LogonType Interactive -RunLevel Limited
+  Register-ScheduledTask -TaskName "SuzuWeaselDeploy" -Action $act -Principal $pri -Force | Out-Null
+  Start-ScheduledTask -TaskName "SuzuWeaselDeploy"
   $done = $false
-  for ($i = 0; $i -lt 160 -and -not $done; $i++) {
+  for ($i = 0; $i -lt 100 -and -not $done; $i++) {
     Start-Sleep -Seconds 3
-    $f = Join-Path $UserDir "build\rime_ice.schema.yaml"
-    $done = (Compiled-Has $marker) -and (Test-Path $f) -and ((Get-Item $f).LastWriteTime -gt $t0)
+    $done = (Test-Path $f) -and ((Get-Item $f).LastWriteTime -gt $t0) -and (Compiled-Has $marker)
   }
-  Start-Sleep -Seconds 5
-  try { if (-not $p.HasExited) { [void]$p.CloseMainWindow(); Start-Sleep -Seconds 2; if (-not $p.HasExited) { $p.Kill() } } } catch {}
-  if (-not $done) { throw "compiled config does not contain $marker after 8 min" }
+  Start-Sleep -Seconds 2
+  Unregister-ScheduledTask -TaskName "SuzuWeaselDeploy" -Confirm:$false -ErrorAction SilentlyContinue
+  if (-not $done) { throw "compiled config does not contain $marker after 5 min" }
 }
 function Restore($dir) {
   $list = Join-Path $dir "added.txt"
@@ -114,12 +120,38 @@ if ($UpdateLua) {
   exit 0
 }
 
+if ($ApplyDefaults) {
+  $t = [IO.File]::ReadAllText($yaml, [Text.Encoding]::UTF8)
+  if ($t.IndexOf('ai_rerank_win_ctx') -lt 0) { throw "config is not switched to ai_rerank yet" }
+  $bk = Join-Path $root (Get-Date -Format "yyyyMMdd-HHmmss")
+  New-Item -ItemType Directory -Force (Join-Path $bk "lua") | Out-Null
+  Copy-Item $yaml $bk
+  Set-Content -Path (Join-Path $bk "added.txt") -Value @() -Encoding ascii
+  Say "backup written to $bk"
+  $t = [regex]::Replace($t, '\r+\n', "`n")   # the file may hold CR CR LF from earlier edits
+  $t = [regex]::Replace($t, '(?m)^[ \t]*(ranker|generate):[ \t]*\S+[ \t]*\n', '')
+  $t = [regex]::Replace($t, "(?m)^([ \t]*)code_pattern:[ \t]*'[^']*'", "`$1code_pattern: '[a-z]{2,}'")
+  $t = [regex]::Replace($t, '(?m)^[ \t]*unified:[ \t]*\n([ \t]+\w+:[^\n]*\n)*', '')
+  $t = ([regex]'(?m)^([ \t]*)max_candidates: 5[ \t]*$').Replace($t, "`$0`n`$1unified:`n`$1  alpha: $Alpha", 1)
+  try {
+    [IO.File]::WriteAllText($yaml, $t, (New-Object Text.UTF8Encoding($false)))
+    Recompile "alpha: $Alpha"
+    Say "defaults applied (alpha $Alpha, code_pattern [a-z]{2,}). rollback: copy $bk\rime_ice.custom.yaml back and run -SetRanker -Ranker unified"
+  } catch {
+    Say "FAILED: $($_.Exception.Message) -- restoring the config"
+    Copy-Item (Join-Path $bk "rime_ice.custom.yaml") $yaml -Force
+    try { Recompile "ai_rerank_processor" } catch { Say "recompile during restore: $($_.Exception.Message)" }
+    exit 1
+  }
+  exit 0
+}
+
 if ($SetRanker) {
   $t = [IO.File]::ReadAllText($yaml, [Text.Encoding]::UTF8)
   if ($t.IndexOf('ai_rerank_win_ctx') -lt 0) { throw "config is not switched to ai_rerank yet; run without -SetRanker first" }
-  $t = [regex]::Replace($t, '(?m)^[ 	]*ranker:[ 	]*\w+[ 	]*?
-', '')
-  if ($Ranker -eq "unified") { $t = [regex]::Replace($t, '(?m)^([ 	]*)max_candidates: 5[ 	]*?$', "`$0`r`n`$1ranker: unified", 1) }
+  $t = [regex]::Replace($t, '\r+\n', "`n")
+  $t = [regex]::Replace($t, '(?m)^[ \t]*ranker:[ \t]*\w+[ \t]*\n', '')
+  if ($Ranker -eq "unified") { $t = ([regex]'(?m)^([ \t]*)max_candidates: 5[ \t]*$').Replace($t, "`$0`n`$1ranker: unified", 1) }
   [IO.File]::WriteAllText($yaml, $t, (New-Object Text.UTF8Encoding($false)))
   Recompile "ai_rerank_processor"
   Say "ranker is now $Ranker (compiled: $(Compiled-Has 'ranker: unified'))"
