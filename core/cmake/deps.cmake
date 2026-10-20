@@ -38,7 +38,7 @@ list(FILTER SUZU_LUA_CORE_SRC EXCLUDE REGEX "/(lua|luac)\\.c$")
 #  - macOS 鼠须管：librime-lua.dylib 导出全部 lua_*，运行时解析（-undefined dynamic_lookup）
 #  - Linux 测试：lua 解释器导出 lua_*（-z undefs）
 #  - Android Trime：链接 Trime 的 librime_jni.so（SUZU_LUA_HOST_LIB），让加载器把 lua_* 解析到它
-#  - Windows 小狼毫：宿主不导出 lua_*，与上游做法相同，把 Lua 源码编进 DLL
+#  - Windows 小狼毫：宿主不导出 lua_*，与原项目做法相同，把 Lua 源码编进 DLL
 set(SUZU_LUA_HOST_LIB "" CACHE FILEPATH "导出 lua_* 的宿主库（例如 Trime 的 librime_jni.so）")
 function(suzu_link_lua_host target)
   if(WIN32)

@@ -1,5 +1,5 @@
 -- ai_rerank_filter.lua — 本地小模型按上文重排候选（rime-llm-rerank 的 macOS 移植）
--- 上游：zhanghaozhecn/rime-llm-rerank（署名许可，作者 zhanghaozhecn）；
+-- 原项目：zhanghaozhecn/rime-llm-rerank（署名许可，作者 zhanghaozhecn）；
 --       两阶段（四字 = 两个两字词）与全拼适配取自其 Windows 侧修改版。
 -- 在 engine/filters 增加 - lua_filter@*ai_rerank_filter（放在最后，uniquifier 之后）
 -- 开关：方案开关 ai_rerank。关闭时直接透传，不取尽候选、不加载模型。

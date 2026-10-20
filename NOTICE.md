@@ -2,13 +2,13 @@
 
 ## 推理核心
 
-本仓库的推理核心源自 [rime-llm-rerank](https://github.com/zhanghaozhecn/rime-llm-rerank)（作者 zhanghaozhecn）。该项目按自定的署名许可发布：允许自由使用、修改和分发，包括商用；商用时须在分发物中注明作者、项目名称与仓库地址。
+本仓库起步于 [rime-llm-rerank](https://github.com/zhanghaozhecn/rime-llm-rerank)（作者 zhanghaozhecn）。该项目按自定的署名许可发布：允许自由使用、修改和分发，包括商用；商用时须在分发物中注明作者、项目名称与仓库地址。
 
-`core/` 是重写后的核心：推理、调度与守护进程为新写的代码，Lua 接口、`match_code` 的语义与打分口径沿用上游。以下部分直接取自上游，文件开头注明了出处：
+`core/` 是重写后的核心：推理、调度与守护进程为新写的代码，Lua 接口、`match_code` 的语义与打分口径沿用原项目。以下部分直接取自原项目，文件开头注明了出处：
 
 - `core/platform/windows/ctxlink_win.cpp`：Windows 的光标上文读取（COM 与 UIA）、前台切换与点击检测。
-- `rime/lua/ai_rerank_filter.lua`、`rime/lua/ai_rerank_processor.lua`：移植自上游的 `llm_filter.lua`、`llm_processor.lua`。
-- `windows/rime-llm-rerank-windows.patch`：对上游 Lua 脚本的补丁。
+- `rime/lua/ai_rerank_filter.lua`、`rime/lua/ai_rerank_processor.lua`：移植自原项目的 `llm_filter.lua`、`llm_processor.lua`。
+- `windows/rime-llm-rerank-windows.patch`：对原项目 Lua 脚本的补丁。
 
 ## Android 端
 

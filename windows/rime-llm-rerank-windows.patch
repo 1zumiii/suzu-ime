@@ -1,12 +1,12 @@
 雾凇 custom 分支：Windows（小狼毫）版 AI 重排的 Lua 补丁
 ==========================================================
 
-上游：zhanghaozhecn/rime-llm-rerank（署名许可协议，作者 zhanghaozhecn），基于提交 21503e5。
+原项目：zhanghaozhecn/rime-llm-rerank（署名许可协议，作者 zhanghaozhecn），基于提交 21503e5。
 本补丁只含 user/llm_filter.lua、user/llm_processor.lua 两个文件的修改。
-推理核心 rime_llm.dll 不再由上游 cpp/rime_llm.cpp 打补丁得到，而是由本仓库的 core/ 构建（见 core/README.md 的 Windows 一节），
-接口与上游 DLL 兼容（含 UIA/COM 光标上文、前台切换与点击检测，代码移自上游，见 core/platform/windows/）。
+推理核心 rime_llm.dll 不再由原项目 cpp/rime_llm.cpp 打补丁得到，而是由本仓库的 core/ 构建（见 core/README.md 的 Windows 一节），
+接口与原项目 DLL 兼容（含 UIA/COM 光标上文、前台切换与点击检测，代码移自原项目，见 core/platform/windows/）。
 
-用法：在上游仓库根目录执行 git apply rime-llm-rerank-windows.patch，把 user/ 下的两个 Lua 文件放进小狼毫用户目录的 lua/，
+用法：在原项目仓库根目录执行 git apply rime-llm-rerank-windows.patch，把 user/ 下的两个 Lua 文件放进小狼毫用户目录的 lua/，
 再放入由 core/ 构建的 rime_llm.dll；方案补丁见本仓库 windows/rime_ice.custom.yaml。
 
 Lua 侧的主要改动（2026-10-19）：

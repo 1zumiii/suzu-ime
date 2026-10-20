@@ -134,7 +134,7 @@ cmake -G Ninja -S core -B core\build -DCMAKE_BUILD_TYPE=Release
 cmake --build core\build --target rime_llm
 ```
 
-产物为 `core\build\rime_llm.dll`。小狼毫不导出 `lua_*`，因此与上游做法相同，Lua 源码编进 DLL。光标上文读取的代码在 `platform/windows/ctxlink_win.cpp`，移自上游。Lua 脚本使用上游的 `llm_filter.lua`、`llm_processor.lua` 加本仓库的 [windows/rime-llm-rerank-windows.patch](../windows/rime-llm-rerank-windows.patch)。
+产物为 `core\build\rime_llm.dll`。小狼毫不导出 `lua_*`，因此与原项目做法相同，Lua 源码编进 DLL。光标上文读取的代码在 `platform/windows/ctxlink_win.cpp`，移自原项目。Lua 脚本使用原项目的 `llm_filter.lua`、`llm_processor.lua` 加本仓库的 [windows/rime-llm-rerank-windows.patch](../windows/rime-llm-rerank-windows.patch)。
 
 **Windows 构建未在本仓库的验证环境中编译过**，首次构建后须在小狼毫上确认：模块能加载，`llm_context()` 能读到光标前文字，重排生效。
 

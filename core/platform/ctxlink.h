@@ -1,4 +1,4 @@
-// 光标上文旁路：从前台应用读取光标前的文字（只有 Windows 版实现，经 UIA/COM，代码来自上游 rime-llm-rerank）。
+// 光标上文旁路：从前台应用读取光标前的文字（只有 Windows 版实现，经 UIA/COM，代码来自原项目 rime-llm-rerank）。
 // 其他平台是桩：不读取任何应用里的文字，Lua 侧回落到 Rime 自己的 commit_history。
 #pragma once
 

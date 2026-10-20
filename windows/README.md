@@ -9,7 +9,7 @@
 
 ## 切换到共用的 ai_rerank_* Lua（与 Mac、手机相同）
 
-`windows/deploy_airerank.ps1` 把小狼毫从“上游加补丁的 llm_processor/llm_filter”切到共用的 `ai_rerank_*`，无引导、有备份、一条命令回滚：
+`windows/deploy_airerank.ps1` 把小狼毫从“原项目加补丁的 llm_processor/llm_filter”切到共用的 `ai_rerank_*`，无引导、有备份、一条命令回滚：
 
 - 切换：`powershell -NoProfile -ExecutionPolicy Bypass -File windows\deploy_airerank.ps1 [-Ranker legacy|unified]`；只改排序模式：加 `-SetRanker`；回滚：加 `-Rollback [-BackupDir <目录>]`。
 - Windows 专用的 `windows/lua/ai_rerank_win_ctx.lua` 把 UIA/COM 光标前文接到 `_G.ai_rerank_context_get`（读不到退回上屏历史），并处理点击、切换前台应用、编辑键、上屏后重读快照，以及按实际上文预解码；测试：`tests/windows/win_ctx_test.lua`。
