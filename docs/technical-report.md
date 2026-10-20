@@ -1,6 +1,6 @@
 # 技术报告：实测结果与未验证项目
 
-本文收录 suzu-ime 的全部实测数据：各平台的延迟与内存、候选生成的对照、新旧核心的一致性，以及尚未验证的项目。概览与快速开始见仓库根目录的 [README](../README.md)，推理核心的设计与测量见 [design/](design/README.md)。
+本文收录 suzu-ime 的全部实测数据：各平台的延迟与内存、候选生成的对照、新旧核心的一致性，以及尚未验证的项目。概览与快速开始见仓库根目录的 [README](../README.md)。下文的候选生成对照与延迟数据由 Suzu-2.1 测得，Suzu-2.4 的数字见 [模型卡](https://huggingface.co/IzumiThe3rd/Suzu-2.4)，推理核心的设计与测量见 [design/](design/README.md)。
 
 ## 实测结果
 
