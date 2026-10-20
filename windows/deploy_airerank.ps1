@@ -26,7 +26,7 @@ $root = Join-Path $UserDir "backup-airerank"
 $yaml = Join-Path $UserDir "rime_ice.custom.yaml"
 $luaDir = Join-Path $UserDir "lua"
 $shared = "ai_rerank_filter.lua", "ai_rerank_processor.lua", "input_log.lua", "rank_unified.lua", "rerank_json.lua",
-          "personal_pairs.lua", "recent_boost_filter.lua", "corpus_archive.lua"
+          "personal_pairs.lua", "recent_boost_filter.lua", "corpus_archive.lua", "select_info.lua"
 $winOnly = "ai_rerank_win_ctx.lua"
 function Say($m) { Write-Host ("{0:HH:mm:ss} {1}" -f (Get-Date), $m) }
 function Server-Running { [bool](Get-Process -Name WeaselServer -ErrorAction SilentlyContinue) }

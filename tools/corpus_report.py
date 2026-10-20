@@ -79,6 +79,8 @@ def rescore(recs, build, model, vocab):
     helper = os.path.join(os.path.dirname(os.path.abspath(__file__)), "corpus_rescore.lua")
     lua = os.path.join(build, "lua54")
     if not os.access(lua, os.X_OK):
+        lua = os.path.join(build, "lua54.exe")   # Windows
+    if not os.access(lua, os.X_OK):
         lua = "lua5.4"
     jobs = []
     for r in recs:
