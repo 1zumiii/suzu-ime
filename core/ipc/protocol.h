@@ -12,6 +12,7 @@
 //   Z <0|1>                               OK                      屏幕亮/灭
 //   G                                     <状态 JSON>
 //   K <计数>…                             OK                      客户端上报自己看到的计数（版本 2），并入状态文件
+//   W <时限毫秒> <k> <上文> <输入串>      R <词> <分数> <名次>… | N <原因>     候选生成（版本 3）：按模型分降序的前 k 个词
 //
 // 守护进程保证打分请求在时限内应答（超时就应答 N timeout），因此连接上不会残留迟到的应答；
 // 客户端只有在守护进程整个卡住时才会等到自己的超时，那时直接断开重连。
@@ -20,7 +21,7 @@
 namespace suzu::ipc {
 
 constexpr int kDefaultPort = 17920;
-constexpr const char * kVersion = "2";
+constexpr const char * kVersion = "3";
 
 // 客户端上报的计数，按这个顺序放在 K 帧里
 constexpr const char * kClientCounterNames[] = {

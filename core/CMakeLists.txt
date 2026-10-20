@@ -2,6 +2,7 @@
 #
 # 分层（下层不依赖上层）：
 #   model/    Suzu 推理：词表、候选前缀树、llama.cpp 封装（单线程，无锁）
+#   lexicon/  候选生成用的词典索引与拼音切分（只依赖词表，加载后只读）
 #   runtime/  调度：独占模型的工作线程、带时限的请求、结果缓存、统计与日志
 #   lua/      进程内 Lua 模块 rime_llm（macOS 鼠须管、Windows 小狼毫、Linux 测试）
 #   ipc/      守护进程与客户端的线路协议
@@ -55,6 +56,10 @@ add_library(suzu_model STATIC
   model/vocab.cpp
   model/prefix_tree.cpp
   model/suzu_model.cpp)
+
+# ---------------------------------------------------------------- 词典索引（候选生成用；只依赖词表）
+add_library(suzu_lexicon STATIC lexicon/lexicon.cpp)
+target_include_directories(suzu_lexicon PUBLIC ${CMAKE_CURRENT_SOURCE_DIR})
 target_include_directories(suzu_model PUBLIC ${CMAKE_CURRENT_SOURCE_DIR})
 target_link_libraries(suzu_model PUBLIC llama)
 if(SUZU_TEST_HOOKS)
@@ -68,7 +73,7 @@ add_library(suzu_runtime STATIC
   runtime/log.cpp
   runtime/stats.cpp
   runtime/engine.cpp)
-target_link_libraries(suzu_runtime PUBLIC suzu_model Threads::Threads)
+target_link_libraries(suzu_runtime PUBLIC suzu_model suzu_lexicon Threads::Threads)
 target_compile_definitions(suzu_runtime PRIVATE SUZU_REPACK_DEFAULT=$<BOOL:${SUZU_REPACK}>)
 
 # ---------------------------------------------------------------- Lua 绑定的公共部分（进程内模块与客户端共用）

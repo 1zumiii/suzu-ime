@@ -57,9 +57,13 @@ class Host:
         self.vocab = os.path.join(self.dir, "suzu.vocab.txt")
         shutil.copy(model, self.model)
         shutil.copy(vocab, self.vocab)
+        # 候选生成用的小词典（格式同雾凇 cn_dicts）：--rime-dir 下的 cn_dicts
+        os.makedirs(os.path.join(self.rime, "cn_dicts"))
+        with open(os.path.join(self.rime, "cn_dicts", "base.dict.yaml"), "w", encoding="utf-8") as f:
+            f.write("---\nname: base\n...\n经理\tjing li\t100\n精力\tjing li\t90\n教练\tjiao lian\t50\n家里\tjia li\t40\n")
         self.proc = subprocess.Popen(
             [binp, "--supervise", "--model", self.model, "--student-vocab", self.vocab, "--rime-dir", self.rime,
-             "--log-dir", self.dir, "--port", str(self.port), "--threads", "2", "--idle-sec", "0", "--n-seq-max", "10",
+             "--log-dir", self.dir, "--port", str(self.port), "--threads", "2", "--idle-sec", "0", "--n-seq-max", "10", "--gen-beam", "8",
              # 监督进程的节奏调短：心跳 0.5 秒、重启退避不超过 1 秒（手机上用默认的 3 秒与 30 秒）
              "--heartbeat-ms", "500", "--max-backoff-s", "1",
              # 版本 1 请求（S）的时限放宽：功能检查不因机器忙而超时；时限本身用 Q 请求单独检查
@@ -197,6 +201,20 @@ try:
     t = wait_ready(s)
     check("model loads and context prepares", t is not None, f"{t:.1f}s" if t else "")
     time.sleep(0.3)
+    # ---- 候选生成（W，版本 3）：简拼生成；全拼不适用。手机上没有开 --gen-beam 时为 no_lexicon
+    r = None
+    for _ in range(50):
+        r = rpc(s, ["W", "500", "3", "他在公司当", "jl"])
+        if r[:2] != ["N", "no_lexicon"] or env.__class__.__name__ != "Host":
+            break
+        time.sleep(0.1)
+    if env.__class__.__name__ == "Host":
+        check("generate: abbreviation -> words with score and rank", r[0] == "R" and len(r) >= 4 and (len(r) - 1) % 3 == 0
+              and set(r[1::3]) <= {"经理", "精力", "教练", "家里"}, str(r))
+        r = rpc(s, ["W", "500", "3", "他在公司当", "jingli"])
+        check("generate: full pinyin -> not_applicable", r[:2] == ["N", "not_applicable"], str(r))
+    else:
+        check("generate: answered (R or N)", r[0] in ("R", "N"), str(r))
     cands = ["经理", "经历", "精力", "敬礼", "警力"]
     r = rpc(s, ["S", "0", "他在公司当"] + cands)
     check("score returns a ranking", r[0] == "R" and len(r) == 1 + 2 * len(cands), str(r[:5]))

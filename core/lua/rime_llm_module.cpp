@@ -57,6 +57,19 @@ int l_score(lua_State * L) {
     return 1;
 }
 
+// generate(上文, 输入串, k = 10, allow_sync = true)：候选生成，返回 { {w, s, r}, … }, 匹配词数；失败返回 nil, 原因
+int l_generate(lua_State * L) {
+    size_t cl = 0, il = 0;
+    const char * ctx = luaL_checklstring(L, 1, &cl);
+    const char * in = luaL_checklstring(L, 2, &il);
+    lua_Integer k = luaL_optinteger(L, 3, 10);
+    bool allow_sync = sl::read_allow_sync(L, 4);
+    suzu::GenResult r = engine().generate(std::string(ctx, cl), std::string(in, il), (int)k,
+                                          allow_sync ? g_sync_budget_ms : g_budget_ms);
+    if (r.status != ScoreStatus::Ok) return sl::push_skip(L, suzu::score_reason(r.status));
+    return sl::push_generated(L, r.words, r.scores, r.ranks, r.matched);
+}
+
 int l_get_scores(lua_State * L) { sl::push_last_scores(L); return 1; }
 
 int l_prepare(lua_State * L) {
@@ -101,6 +114,8 @@ int l_index(lua_State * L) {
     else if (!strcmp(k, "n_seq_max")) lua_pushinteger(L, c.max_candidates + 1);
     else if (!strcmp(k, "idle_unload_sec")) lua_pushinteger(L, c.idle_unload_sec);
     else if (!strcmp(k, "use_repack")) lua_pushboolean(L, c.repack ? 1 : 0);
+    else if (!strcmp(k, "lexicon_dir")) lua_pushstring(L, c.lexicon_dir.c_str());
+    else if (!strcmp(k, "gen_beam")) lua_pushinteger(L, c.gen_beam);
     else if (!strcmp(k, "log_dir")) lua_pushstring(L, suzu::log_dir().c_str());
     else if (!strcmp(k, "budget_ms")) lua_pushnumber(L, g_budget_ms);
     else if (!strcmp(k, "sync_budget_ms")) lua_pushnumber(L, g_sync_budget_ms);
@@ -132,6 +147,8 @@ void apply_property(const char * k, const PropValue & v) {
     else if (!strcmp(k, "n_seq_max")) c.max_candidates = v.i > 2 ? (int)v.i - 1 : 2;   // 旧口径：候选数上限 = n_seq_max - 1
     else if (!strcmp(k, "idle_unload_sec")) c.idle_unload_sec = v.i > 0 ? (int)v.i : 0;
     else if (!strcmp(k, "use_repack")) c.repack = v.b;
+    else if (!strcmp(k, "lexicon_dir")) c.lexicon_dir = v.s;
+    else if (!strcmp(k, "gen_beam")) c.gen_beam = v.i > 0 ? (int)v.i : 0;
     else return;   // 未知属性：忽略（与旧核心一致）
     engine().set_config(c);
 }
@@ -139,7 +156,7 @@ void apply_property(const char * k, const PropValue & v) {
 int l_newindex(lua_State * L) {
     const char * k = luaL_checkstring(L, 2);
     PropValue v;
-    static const char * const kStr[] = {"model_path", "student_vocab", "log_dir"};
+    static const char * const kStr[] = {"model_path", "student_vocab", "log_dir", "lexicon_dir"};
     static const char * const kNum[] = {"budget_ms", "sync_budget_ms"};
     bool done = false;
     for (const char * n : kStr) if (!strcmp(k, n)) { v.s = luaL_checkstring(L, 3); done = true; }
@@ -165,7 +182,7 @@ SUZU_EXPORT int luaopen_rime_llm(lua_State * L) {
     g_open_count++;
     lua_newtable(L);
     static const sl::Fn fns[] = {
-        {"score", l_score}, {"get_scores", l_get_scores}, {"prepare", l_prepare}, {"is_ready", l_is_ready},
+        {"score", l_score}, {"generate", l_generate}, {"get_scores", l_get_scores}, {"prepare", l_prepare}, {"is_ready", l_is_ready},
         {"status", l_status}, {"touch", l_touch}, {"now_ms", sl::l_now_ms}, {"sleep_ms", sl::l_sleep_ms},
         {"match_code", sl::l_match_code}, {"llm_context", l_llm_context}, {"kick_context", l_kick_context},
         {"edit_reset_context", l_edit_reset_context}, {"fg_changed", l_fg_changed},

@@ -61,6 +61,7 @@ lua_tests() {
   export SUZU_VOCAB="$VOCAB"
   run "smoke_test"            "$LUA" smoke_test.lua "$B" "$(d smoke)"
   run "student_test"          "$LUA" student_test.lua "$B" "$MODEL" "$VOCAB" "$(d student)" 2
+  run "gen_test"              "$LUA" gen_test.lua "$B" "$MODEL" "$VOCAB" "$(d gen)"
   run "pairs_test"            "$LUA" pairs_test.lua "$REPO" "$(d pairs)"
   run "select_stats_test"     "$LUA" select_stats_test.lua "$REPO" "$(d select)"
   run "input_log_test"        "$LUA" input_log_test.lua "$REPO" "$(d ilog)"

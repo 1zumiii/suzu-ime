@@ -19,11 +19,13 @@ bool Vocab::load(const std::string & path, std::string * err) {
         return false;
     }
     map_.clear();
+    pieces_.clear();
     std::string line;
     Token id = 0;
     while (std::getline(in, line)) {
         if (!line.empty() && line.back() == '\r') line.pop_back();
         map_.emplace(line, id++);   // 重复的行保留第一次出现的编号
+        pieces_.push_back(line);
     }
     size_ = (size_t)id;
     if (size_ < 8) {
@@ -31,6 +33,11 @@ bool Vocab::load(const std::string & path, std::string * err) {
         return false;
     }
     return true;
+}
+
+const std::string & Vocab::piece(Token id) const {
+    static const std::string empty;
+    return (id >= 0 && (size_t)id < pieces_.size()) ? pieces_[(size_t)id] : empty;
 }
 
 TokenSeq Vocab::encode(const std::string & text) const {

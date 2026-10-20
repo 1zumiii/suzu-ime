@@ -38,6 +38,9 @@ struct EngineStats {
     uint64_t skip_error = 0;      // 推理出错（已自愈）
     uint64_t no_context = 0;      // 上文不足 2 个字：不打分，不算跳过
     uint64_t few_candidates = 0;  // 候选不足 2 个：不打分，不算跳过
+    uint64_t gen_requests = 0;    // 候选生成的调用（不计入上面的 requests）
+    uint64_t gen_ok = 0;
+    uint64_t gen_timeout = 0;
     // 工作线程
     uint64_t prepares = 0, prepare_done = 0;
     uint64_t jobs_done = 0, jobs_dropped = 0;   // 被放弃（等待方已超时且有更新的请求）的任务

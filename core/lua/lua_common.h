@@ -23,6 +23,10 @@ void push_ranking(lua_State * L, const std::vector<std::string> & cands, const s
 // 压入 nil 与原因码（原因为空时只压 nil），返回值个数
 int push_skip(lua_State * L, const char * reason);
 
+// 候选生成的结果：{ {w = 词, s = 模型分, r = 词频名次}, … }（已按模型分降序），第二个返回值为匹配到的词数。返回压栈个数
+int push_generated(lua_State * L, const std::vector<std::string> & words, const std::vector<double> & scores,
+                   const std::vector<int> & ranks, int matched);
+
 // 最近一次打分的结果，供 get_scores() 使用（进程级，带锁）
 void remember_scores(const std::vector<std::string> & cands, const std::vector<double> & scores);
 void push_last_scores(lua_State * L);

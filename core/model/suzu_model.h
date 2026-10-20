@@ -12,6 +12,7 @@
 //  - 候选前缀树（PrefixTree）：首字相同的候选共享解码。
 #pragma once
 
+#include <algorithm>
 #include <cstdint>
 #include <memory>
 #include <string>
@@ -30,6 +31,7 @@ struct ModelOptions {
     std::string vocab_path;
     int n_threads = 4;
     int max_candidates = 11;     // 一次最多打分的候选数
+    int gen_beam = 0;            // 候选生成每层最多展开的节点数（0 = 不生成）；序列池按 2 倍预留
     int context_slots = 2;       // 缓存几条上文
     int candidate_max_chars = 12;
     bool repack = false;         // llama.cpp 的 CPU 权重重排（更快一些，但权重变成私有内存）
@@ -73,6 +75,13 @@ public:
     // 给候选打分：out[i] 为候选 i 的对数概率和。失败返回 false（缓存会被清空，下次自愈）。
     bool score(const TokenSeq & ctx, const std::vector<TokenSeq> & cands, std::vector<double> * out, DecodeStats * st);
 
+    // 候选生成：在 words 组成的前缀树上逐层解码，每层只展开对数概率最高的 beam 个节点（束搜索，beam 不超过 gen_beam）。
+    // 被展开节点的所有子节点都会得到分数，因此两字词等于“只展开前 beam 个首字，其下的词全部打分”。
+    // out[i] 为词 i 的对数概率和；没有展开到的词为 kNotReached。失败返回 false（缓存会被清空，下次自愈）。
+    static constexpr double kNotReached = -1e30;
+    bool generate(const TokenSeq & ctx, const std::vector<TokenSeq> & words, int beam, std::vector<double> * out,
+                  DecodeStats * st);
+
     // 丢弃全部缓存的上文
     void reset();
 
@@ -88,6 +97,7 @@ private:
     };
 
     int ensure_context(const TokenSeq & ctx, DecodeStats * st);   // 返回槽位下标，失败 -1
+    int seq_pool() const { return std::max(std::max(2, opt_.max_candidates), 2 * opt_.gen_beam); }   // 候选用的序列数
     int acquire_seq();
     void release_seq(int seq);
 

@@ -32,11 +32,15 @@ public:
     // 候选：各字的编号；空串记为一个填充符（与旧核心一致）。
     TokenSeq encode_candidate(const std::string & text) const;
 
+    // 编号对应的字（越界返回空串）。
+    const std::string & piece(Token id) const;
+
     // UTF-8 首字节对应的字符长度（非法字节按 1 处理，与旧核心一致）。
     static int utf8_len(unsigned char lead);
 
 private:
     std::unordered_map<std::string, Token> map_;
+    std::vector<std::string> pieces_;   // 编号 → 字
     size_t size_ = 0;
 };
 

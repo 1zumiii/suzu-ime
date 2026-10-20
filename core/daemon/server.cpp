@@ -77,6 +77,20 @@ struct Worker {
         return out;
     }
 
+    std::vector<std::string> generate(const std::string & ctx, const std::string & input, int k, int budget) {
+        GenResult r = engine.generate(ctx, input, k, budget);
+        if (r.status != ScoreStatus::Ok) return {"N", score_reason(r.status)};
+        std::vector<std::string> out = {"R"};
+        for (size_t i = 0; i < r.words.size(); i++) {
+            char buf[40];
+            snprintf(buf, sizeof buf, "%.9g", r.scores[i]);
+            out.push_back(r.words[i]);
+            out.push_back(buf);
+            out.push_back(std::to_string(r.ranks[i]));
+        }
+        return out;
+    }
+
     void configure(const std::string & key, long long v) {
         EngineConfig c = engine.config();
         if (key == "enabled") {
@@ -87,6 +101,7 @@ struct Worker {
         }
         if (key == "idle_unload_sec" && v >= 0 && v <= 86400) { idle_normal = (int)v; apply_idle(); return; }
         if (key == "n_threads" && v >= 1 && v <= 8) { c.n_threads = (int)v; engine.set_config(c); return; }
+        if (key == "gen_beam" && v >= 0 && v <= 64) { c.gen_beam = (int)v; engine.set_config(c); return; }
         // max_ctx、min_tokens 是 Qwen 时代的配置，对 Suzu 无作用：接受但忽略
     }
 
@@ -122,6 +137,10 @@ struct Worker {
                 if (budget <= 0 || budget > kMaxBudgetMs) budget = opt.budget_ms;
                 std::vector<std::string> cands(f.begin() + 3, f.end());
                 reply = score(f[2], cands, budget);
+            } else if (op == 'W' && f.size() >= 5) {
+                int budget = atoi(f[1].c_str());
+                if (budget <= 0 || budget > kMaxBudgetMs) budget = opt.budget_ms;
+                reply = generate(f[3], f[4], atoi(f[2].c_str()), budget);
             } else if (op == 'I') {
                 reply = {engine.is_ready() ? "1" : "0"};
             } else if (op == 'T') {
@@ -224,6 +243,10 @@ int run_worker(const Options & opt) {
     c.max_candidates = opt.n_seq_max > 2 ? opt.n_seq_max - 1 : 11;
     c.repack = opt.repack;
     c.idle_unload_sec = opt.idle_sec;
+    if (!opt.rime_dir.empty() && opt.gen_beam > 0) {   // 候选生成：词典就是随方案部署的雾凇词典
+        c.lexicon_dir = opt.rime_dir + "/cn_dicts";
+        c.gen_beam = opt.gen_beam;
+    }
     engine.set_config(c);
     // 默认关闭，与手机上方案开关 ai_rerank 的默认值一致；客户端同步开关后才加载
     engine.set_enabled(false);

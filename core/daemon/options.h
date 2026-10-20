@@ -15,6 +15,7 @@ struct Options {
     std::string rime_dir;             // 状态文件、令牌文件所在目录（Trime 的 rime 用户目录）
     std::string log_dir = "/data/local/tmp/rimellm";
     int threads = 2;
+    int gen_beam = 0;                 // 候选生成每层最多展开的节点数；0 = 不生成、不加载词典（词典取 rime_dir/cn_dicts）
     int n_seq_max = 0;                // 旧口径：候选上限 = n_seq_max - 1；0 = 默认（11 个候选）
     bool repack = false;
     int idle_sec = 0;                 // 屏幕亮着时的空闲卸载时限；0 = 不自动卸载
