@@ -161,5 +161,51 @@ pp.record_choice("明天", "tianqi", "天机", 2.0)
 local outc = run({ "天启", "天空", "天气", "天机" }, env9)
 check("纠错记忆让所选词排到靠前位置", outc[2] == "天机", table.concat(outc, ","))
 
+-- 基础词对表（personal_pairs_base.tsv）：只含哈希，不衰减，与实时记录相加
+do
+  local d = tmp .. "/base_test"
+  os.execute("mkdir -p '" .. d .. "/dict'")
+  local df = io.open(d .. "/dict/base.dict.yaml", "w")
+  df:write("---\nname: base\n...\n今天\tjin tian\t1\n天气\ttian qi\t1\n不错\tbu cuo\t1\n喜欢\txi huan\t1\n吃饭\tchi fan\t1\n")
+  df:close()
+  local tf = io.open(d .. "/text.txt", "w")
+  tf:write("今天天气不错\n今天天气真好\n我喜欢吃饭\n")
+  tf:close()
+  local out = d .. "/personal_pairs_base.tsv"
+  local rc = os.execute(string.format("python3 -I '%s/tools/import_pair_base.py' --dict '%s/dict' --out '%s' --text '%s/text.txt' > '%s/imp.log' 2>&1",
+    repo, d, out, d, d))
+  check("导入脚本运行成功", rc == true or rc == 0)
+  local f = io.open(out, "rb"); local data = f and f:read("*a") or ""; if f then f:close() end
+  check("文件里没有任何非 ASCII 字节（没有可读的汉字）", data ~= "" and not data:find("[\128-\255]"))
+  local lf = io.open(d .. "/imp.log"); local log = lf and lf:read("*a") or ""; if lf then lf:close() end
+  check("脚本输出不含汉字之外的文本内容，只有计数", log:find("句子 3") ~= nil and not log:find("今天"), log)
+  -- 运行时读入：用户目录里放 recent_pairs.tsv 同目录的基础表
+  pp._reset_all()
+  local ud2 = d .. "/ud"; os.execute("mkdir -p '" .. ud2 .. "'")
+  os.execute(string.format("cp '%s' '%s/personal_pairs_base.tsv'", out, ud2))
+  pp.init(ud2 .. "/recent_pairs.tsv")
+  local far = os.time() + 400 * 86400
+  check("基础表：出现 2 次的词对次数为 2，且 400 天后不衰减", pp.eff("今天", "天气", far) == 2, tostring(pp.eff("今天", "天气", far)))
+  check("基础表：出现 1 次的词对次数为 1", pp.eff("天气", "不错", far) == 1)
+  check("基础表：没出现过的词对为 0", pp.eff("天气", "吃饭", far) == 0)
+  check("基础表：两个都是单字的不记", pp.eff("我", "喜欢", far) == 0 or pp.eff("我", "喜欢", far) == 1)
+  -- 与实时记录相加
+  local t0 = os.time()
+  pp.record("今天", t0 - 10); pp.record("天气", t0 - 8)
+  check("实时记录与基础表相加", pp.eff("今天", "天气", t0) > 2.9, tostring(pp.eff("今天", "天气", t0)))
+  -- 盐不同则哈希对不上（换一个盐的文件，查不到）
+  pp._reset_all()
+  local g = io.open(ud2 .. "/personal_pairs_base.tsv", "r"); local body = g:read("*a"); g:close()
+  body = body:gsub("#salt\t%x+", "#salt\t0000000000000000", 1)
+  g = io.open(ud2 .. "/personal_pairs_base.tsv", "w"); g:write(body); g:close()
+  pp.init(ud2 .. "/recent_pairs.tsv")
+  check("盐不同则查不到（只剩已衰减的实时记录）", pp.eff("今天", "天气", far) < 0.001)
+  -- 没有基础表文件时行为不变
+  pp._reset_all()
+  os.remove(ud2 .. "/personal_pairs_base.tsv")
+  pp.init(ud2 .. "/recent_pairs.tsv")
+  check("没有基础表时只剩已衰减的实时记录", pp.eff("今天", "天气", far) < 0.001)
+end
+
 print(fails == 0 and "全部通过" or ("失败 " .. fails))
 os.exit(fails == 0 and 0 or 1)
