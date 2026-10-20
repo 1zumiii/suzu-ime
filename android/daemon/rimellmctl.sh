@@ -21,6 +21,7 @@ THREADS="${THREADS:-2}"
 IDLE_SEC="${IDLE_SEC:-0}"
 SCREEN_OFF_SEC="${SCREEN_OFF_SEC:-0}"
 PORT="${PORT:-17920}"
+GEN_BEAM="${GEN_BEAM:-10}"      # 候选生成每层展开的首字数（手机实测 10 与 20 的准确率相同）
 N_SEQ_MAX="${N_SEQ_MAX:-10}" # 候选上限 = N_SEQ_MAX - 1（与改版 Trime 的启动参数一致）
 
 sh_() { "$ADB" shell "$@" | tr -d '\r'; }
@@ -54,7 +55,7 @@ cmd_start() {
   sh_ "[ \$(stat -c %s $DIR/daemon.log 2>/dev/null || echo 0) -gt 1048576 ] && mv $DIR/daemon.log $DIR/daemon.log.1 || true"
   # 整个启动命令放在子 shell 里并重定向全部输出，否则 adb shell 会一直等后台进程释放管道
   "$ADB" shell "( cd $DIR && setsid nohup ./rimellmd --supervise --model $DIR/suzu.gguf --student-vocab $DIR/suzu.vocab.txt --rime-dir $RIME_DIR \
-      --log-dir $DIR --port $PORT --threads $THREADS --idle-sec $IDLE_SEC --screen-off-sec $SCREEN_OFF_SEC --n-seq-max $N_SEQ_MAX \
+      --log-dir $DIR --port $PORT --threads $THREADS --idle-sec $IDLE_SEC --screen-off-sec $SCREEN_OFF_SEC --n-seq-max $N_SEQ_MAX --gen-beam $GEN_BEAM \
       >> $DIR/daemon.log 2>&1 < /dev/null & ) > /dev/null 2>&1 < /dev/null" || true
   for _ in $(seq 1 20); do sleep 0.5; sh_ "test -f $RIME_DIR/llm_token" && [[ -n "$(pids)" ]] && break; done
   [[ -n "$(pids)" ]] && echo "已启动：$(pids | tr '\n' ' ')" || { echo "启动失败，见 log"; cmd_log; exit 1; }

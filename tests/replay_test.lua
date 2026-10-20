@@ -103,6 +103,7 @@ local function select(input, list, idx)
 end
 
 local C = _G.ai_rerank_cfg
+C.ranker = "legacy"   -- 默认已是统一排序；先测旧排序的记录，再切到统一排序
 local PY = { "我们明天去公司开会", "这个问题需要", "他在公司当", "最近工作压力大没有" }
 local JL = {
   mk("经理", 0, 6, "phrase", "［jing li］", 1.2), mk("精力", 0, 6, "phrase", "［jing li］", 1.1),

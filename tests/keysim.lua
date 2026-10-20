@@ -128,8 +128,7 @@ Component = { Translator = function() return { query = function(_, rest) return 
 
 local conf = { ["llm_rerank/max_candidates"] = 5 }
 -- 配置项：ranker=legacy|unified、max_candidates=N、code_pattern=…、gate_margin=F、gate_margin_short=F（按手机的配置对照时用）
-for _, k in ipairs({ "ranker", "max_candidates", "code_pattern", "gate_margin", "gate_margin_short", "gen_k", "gen_beam",
-                     "max_candidates_short", "short_input_len" }) do
+for _, k in ipairs({ "ranker", "max_candidates", "code_pattern", "gate_margin", "gate_margin_short", "gen_k", "gen_beam" }) do
   if opt[k] then conf["llm_rerank/" .. k] = tonumber(opt[k]) or opt[k] end
 end
 if opt.generate then conf["llm_rerank/generate"] = (opt.generate == "1" or opt.generate == "true") end
