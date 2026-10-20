@@ -84,6 +84,22 @@ select("ni", "你"); commit("你"); commit("。", "punct")
 -- 英文模式直接输入、组合键
 opts.ascii_mode = true; key("a"); key("b"); opts.ascii_mode = false
 key("Control+v")
+-- 整段上屏：librime 先上屏、清空组合，再通知选词（取不到候选，input 为空），由过滤器留下的信息补全
+local function whole(input, text, f)
+  _G.ai_select_info = { input = input, f = f, o = f, ft = next(f), of = next(f), t = os.time() }
+  commit(text)
+  ctx._cand, ctx._sel, ctx.input = nil, 0, ""
+  for _, cb in ipairs(sel_cbs) do cb(ctx) end
+end
+-- 句子 5：整段上屏选错“经理”，删掉，整段上屏选第 2 位“精力”，再“好。”
+whole("jingli", "经理", { ["经理"] = 1, ["精力"] = 2 })
+key("BackSpace"); key("BackSpace")
+whole("jingli", "精力", { ["经理"] = 1, ["精力"] = 2 })
+whole("hao", "好", { ["好"] = 1 })
+commit("。", "punct")
+-- 句子 6：先选一段，再整段上屏最后一段（上屏文字是两段拼起来的）
+select("mingtianqu", "明天"); whole("mingtianqu", "明天去", { ["去"] = 1 })
+commit("。", "punct")
 -- 有拼音时的退格不记录
 key("BackSpace", "jin")
 -- 句子 4：一次上屏由两次选词组成
@@ -101,7 +117,7 @@ local n = {}
 for _, e in ipairs(evs) do n[e.k] = (n[e.k] or 0) + 1 end
 check("会话开始前的历史不记录", not table.concat(raw, "\n"):find("旧"))
 check("英文、数字不记内容", not table.concat(raw, "\n"):find("iPhone") and not table.concat(raw, "\n"):find("12345"))
-check("事件计数", n.start == 1 and n.sel == 9 and n.cmt == 11 and n.del == 7 and n.cut == 4,
+check("事件计数", n.start == 1 and n.sel == 14 and n.cmt == 17 and n.del == 9 and n.cut == 4,
   string.format("start=%s sel=%s cmt=%s del=%s cut=%s", n.start, n.sel, n.cmt, n.del, n.cut))
 local whys = {}
 for _, e in ipairs(evs) do if e.k == "cut" then whys[#whys + 1] = e.why end end
@@ -112,14 +128,16 @@ local outdir = ud .. "/derived"
 local pipe = io.popen("python3 -I '" .. repo .. "/tools/input_log.py' '" .. ud .. "' --export '" .. outdir .. "' 2>&1")
 local out = pipe:read("a"); pipe:close()
 local function num(label) return tonumber(out:match(label .. "%s+(%d+)")) end
-check("输入法选错 1、改了说法 1、重打同一个词 0", num("输入法选错") == 1 and num("改了说法") == 1 and not out:find("重打同一个词"))
-check("完整句子 3、不完整 1", num("句子（完整）") == 3 and num("句子（不完整）") == 1, out:match("句子（完整）[^\n]*"))
+check("输入法选错 2（含整段上屏）、改了说法 1、重打同一个词 0", num("输入法选错") == 2 and num("改了说法") == 1 and not out:find("重打同一个词"))
+check("完整句子 5、不完整 1", num("句子（完整）") == 5 and num("句子（不完整）") == 1, out:match("句子（完整）[^\n]*"))
 check("删除下溢 3", num("删除下溢（失步）") == 3)
 local function read(name) local f = io.open(outdir .. "/" .. name); local s = f and f:read("a") or ""; if f then f:close() end; return s end
 local sent = read("sentences.tsv")
 check("句子内容", sent:find("\t精力很好。\n") and sent:find("\t明天\n") and sent:find("\t精力过来。\n")
   and not sent:find("经理") and not sent:find("你。"))
-check("纠错：jingli 经理 → 精力", read("corrections.tsv") == "jingli\t\t经理\t精力\n", read("corrections.tsv"))
+check("纠错：两次 jingli 经理 → 精力", read("corrections.tsv") == "jingli\t\t经理\t精力\njingli\t\t经理\t精力\n", read("corrections.tsv"))
+check("整段上屏的句子与词对", read("sentences.tsv"):find("\t精力好。\n") and read("sentences.tsv"):find("\t明天去。\n")
+  and read("pairs.tsv"):find("精力\t好\t1") and read("pairs.tsv"):find("明天\t去\t1"))
 local pairs_s = read("pairs.tsv")
 check("词对：精力→很、很→好、精力→过来", pairs_s:find("精力\t很\t1") and pairs_s:find("很\t好\t1") and pairs_s:find("精力\t过来\t1"))
 check("汇总输出不含文字", not out:find("精力") and not out:find("jingli"))
