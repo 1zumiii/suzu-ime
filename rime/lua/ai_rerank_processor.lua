@@ -1,5 +1,5 @@
 -- ai_rerank_processor.lua — AI 重排的按键处理器（rime-llm-rerank 的 macOS 移植）
--- 上游：zhanghaozhecn/rime-llm-rerank（署名许可，作者 zhanghaozhecn）；逻辑取自其 Windows 侧修改版。
+-- 原项目：zhanghaozhecn/rime-llm-rerank（署名许可，作者 zhanghaozhecn）；逻辑取自其 Windows 侧修改版。
 -- 作用：加载 rime_llm.so；维护"上文"（本会话内上屏的词）；每次按键后异步预解码；编辑键后重置上文。
 -- 开关：方案开关 ai_rerank。关闭时本处理器直接放行，不加载、不记录。
 -- 隐私：不写任何文件。上文只存在内存里，来自 Rime 自己的 commit_history，不读取任何应用里的文字。

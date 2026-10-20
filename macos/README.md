@@ -36,7 +36,7 @@ macos/install_llm.sh core/build/rime_llm.so <suzu.gguf> <suzu.vocab.txt>
 
 ## Lua 层
 
-`rime/lua/ai_rerank_filter.lua`、`ai_rerank_processor.lua` 移植自上游的 `llm_filter.lua`、`llm_processor.lua`，含针对全拼的适配（按覆盖长度分组、四字两阶段）。与上游相比的主要改动：
+`rime/lua/ai_rerank_filter.lua`、`ai_rerank_processor.lua` 移植自原项目的 `llm_filter.lua`、`llm_processor.lua`，含针对全拼的适配（按覆盖长度分组、四字两阶段）。与原项目相比的主要改动：
 
 - 开关：方案开关 `ai_rerank`，默认开启（鼠须管的每个输入框为独立会话，默认关闭会使新输入框看起来未生效）。关闭时处理器直接放行，过滤器惰性透传，不加载模型。
 - 不取尽候选：只取前 `scan_limit`（80）个候选重排，其余惰性透传。雾凇词库很大，输入单个字母时候选数以万计。

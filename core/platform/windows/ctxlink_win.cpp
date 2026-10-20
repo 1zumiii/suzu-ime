@@ -1,7 +1,7 @@
 // Windows（小狼毫）的光标上文旁路：经 COM（Word/WPS 文档模型）或 UIA（TextPattern）读取前台应用光标前的文字，
 // 另有前台窗口切换与鼠标点击检测，供 Lua 侧在这些时刻重置上文。
 //
-// 来源：上游 rime-llm-rerank（https://github.com/zhanghaozhecn/rime-llm-rerank，署名许可，作者 zhanghaozhecn）
+// 来源：原项目 rime-llm-rerank（https://github.com/zhanghaozhecn/rime-llm-rerank，署名许可，作者 zhanghaozhecn）
 // cpp/rime_llm.cpp 的 ctxlink 一节与 lua_fg_changed、lua_click_happened，原样移入，只做了四处改动：
 //   1. 命名空间改为 suzu::ctxlink::upstream，对外只暴露 platform/ctxlink.h 的接口；
 //   2. 日志改用 runtime/log.h（只记应用名与事件，不含任何文字）；
@@ -697,7 +697,7 @@ static bool pick(std::string & text, const char *& src) {
 
 // ---------------------------------------------------------------- 对外接口
 
-// 快照过期时补一次读取（每秒最多一次）。上游的快照只在 2.5 秒内有效，而“最近 3 秒内有过 kick”时后台线程暂停
+// 快照过期时补一次读取（每秒最多一次）。原项目的快照只在 2.5 秒内有效，而“最近 3 秒内有过 kick”时后台线程暂停
 // 每 2 秒一次的周期读取，所以每次 kick（上屏、编辑键、点击）之后约 2.5～4 秒之间没有可用的快照：这段时间里开始打字，
 // 拿不到光标上文，只能回落到上屏历史；在新打开的窗口里历史为空，于是不重排。自动化测试“定位光标后等 2.6 秒再打字”
 // 正好落在这个空档里。补读之后，下一次按键（约 60 ms 后）就能拿到新快照。

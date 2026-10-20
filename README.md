@@ -81,7 +81,7 @@
 
 - 模型与训练：[Suzu](https://github.com/1zumiii/Suzu)。
 - 配置与词库：[rime-ice-Custom](https://github.com/1zumiii/rime-ice-Custom)，其中的重排 Lua 由本仓库的 `rime/lua/` 同步而来。
-- 上游：推理核心源自 [rime-llm-rerank](https://github.com/zhanghaozhecn/rime-llm-rerank)，Trime 补丁基于 [osfans/trime](https://github.com/osfans/trime)。署名见 [NOTICE.md](NOTICE.md)。
+- 原项目：本项目起步于 [rime-llm-rerank](https://github.com/zhanghaozhecn/rime-llm-rerank)，推理核心已重写，Windows 的光标上文读取和部分 Lua 仍取自该项目。Trime 补丁基于 [osfans/trime](https://github.com/osfans/trime) 的固定提交。署名见 [NOTICE.md](NOTICE.md)。
 
 ## 许可
 
