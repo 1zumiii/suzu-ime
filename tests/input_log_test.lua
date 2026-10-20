@@ -13,7 +13,7 @@ rime_api = { get_user_data_dir = function() return ud end, get_distribution_code
 
 local hist = { "旧" }                 -- 会话开始前的历史：不应被记录
 local opts = { ai_rerank = false, ascii_mode = false }
-local sel_cbs, cmt_cbs = {}, {}
+local sel_cbs, cmt_cbs, opt_cbs = {}, {}, {}
 local ctx
 ctx = {
   input = "",
@@ -27,7 +27,7 @@ ctx = {
   get_selected_candidate = function() return ctx._cand end,
   select_notifier = { connect = function(_, f) sel_cbs[#sel_cbs + 1] = f end },
   commit_notifier = { connect = function(_, f) cmt_cbs[#cmt_cbs + 1] = f end },
-  option_update_notifier = { connect = function() end },
+  option_update_notifier = { connect = function(_, f) opt_cbs[#opt_cbs + 1] = f end },
 }
 local env = { engine = { context = ctx, schema = { config = {
   get_string = function() return nil end, get_int = function() return nil end,
@@ -145,3 +145,26 @@ check("汇总输出不含文字", not out:find("精力") and not out:find("jingl
 if fails > 0 then print(fails .. " FAILED"); os.exit(1) end
 print("ALL PASS")
 os.exit(0)
+
+-- ---------- 点击光标与密码框 ----------
+do
+  local function count() local n = 0; for _ in io.lines(ud .. "/input_log.jsonl") do n = n + 1 end; return n end
+  local before = count()
+  -- 改版 Trime：光标被点动 → ai_ctx_reset 置 true → 清上文，并记一次失步（cut，原因 click）
+  opts.ai_ctx_reset = true
+  opt_cbs[#opt_cbs](ctx, "ai_ctx_reset")   -- 最后一次 init 注册的回调
+  local last
+  for ln in io.lines(ud .. "/input_log.jsonl") do last = ln end
+  check("点击光标记一次失步", count() == before + 1 and last:find('"k":"cut"') and last:find('"why":"click"'), tostring(last))
+  -- 密码框、数字框：ai_no_log 为 true 期间不记任何事件
+  opts.ai_no_log = true
+  local b2 = count()
+  commit("口令")
+  key("BackSpace")
+  opt_cbs[#opt_cbs](ctx, "ai_ctx_reset")   -- 最后一次 init 注册的回调
+  check("ai_no_log 期间不记事件", count() == b2, tostring(count() - b2))
+  opts.ai_no_log = false
+  commit("好")
+  check("恢复后继续记录", count() > b2)
+end
+
