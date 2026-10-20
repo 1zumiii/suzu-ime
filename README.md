@@ -48,7 +48,7 @@
 |---|---|---|
 | macOS | 鼠须管 | 进程内加载 `rime_llm.so` |
 | Windows | 小狼毫 0.17 | 进程内加载 `rime_llm.dll` |
-| Android | 改版同文输入法（Trime） | 常驻守护进程 `rimellmd` |
+| Android | 改版同文输入法（Trime） | 常驻守护进程 `rimellmd`，须经 adb 或 Shizuku 启动 |
 
 ## 快速开始
 
@@ -57,7 +57,7 @@
 3. 按平台安装推理核心：
    - macOS：`macos/install_llm.sh core/build/rime_llm.so suzu.gguf suzu.vocab.txt`，详见 [macos/README.md](macos/README.md)
    - Windows：见 [windows/README.md](windows/README.md)
-   - Android：见 [android/README.md](android/README.md)
+   - Android：见 [android/README.md](android/README.md)。推理在常驻守护进程里，Trime 自己不加载模型，守护进程须借助 adb 或 Shizuku 启动，手机重启后要重新启动一次；没有启动时 AI 重排不生效，输入不受影响。准备好电脑上的 adb，或手机上的 Shizuku，再开始配置。
 4. 核心的构建与接口见 [core/README.md](core/README.md)。
 
 ## 文档
