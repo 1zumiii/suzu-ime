@@ -18,6 +18,8 @@ public:
 
     // 记下一项配置并尝试立即下发；之后每次重连都会重新下发（守护进程重启后默认值会丢）
     void remember_config(const std::string & key, long long value, int timeout_ms);
+    // 同上，值为字符串（候选生成的词典目录名）；重连后重新下发
+    void remember_lexicon(const std::string & name, int timeout_ms);
 
     // 一次请求/应答，总时限 timeout_ms（含必要的重连）。连接在上次请求之后才断开（守护进程刚重启）时，立即重连重试一次。
     bool rpc(const std::vector<std::string> & req, int timeout_ms, std::vector<std::string> * rep);
@@ -38,6 +40,7 @@ private:
     std::string dir_;
     int port_ = 17920;
     std::map<std::string, long long> config_;
+    std::string lexicon_;
 };
 
 }  // namespace suzu::client

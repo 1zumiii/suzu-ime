@@ -40,7 +40,7 @@ std::vector<double> top_k_flat(const std::vector<double> & sc, int k) {
 bool load_affecting_changed(const EngineConfig & a, const EngineConfig & b) {
     return a.model_path != b.model_path || a.vocab_path != b.vocab_path || a.n_threads != b.n_threads ||
            a.context_chars != b.context_chars || a.max_candidates != b.max_candidates || a.repack != b.repack ||
-           a.lexicon_dir != b.lexicon_dir || a.gen_beam != b.gen_beam;
+           a.lexicon_dir.empty() != b.lexicon_dir.empty() || a.gen_beam != b.gen_beam;   // 词典目录换成另一个不在此列：只重读词典
 }
 
 void quiet_llama_log() {
@@ -109,7 +109,12 @@ EngineConfig Engine::config() const {
 void Engine::set_config(const EngineConfig & cfg) {
     std::lock_guard<std::mutex> lk(mu_);
     bool reload = load_affecting_changed(cfg, cfg_);
+    bool relex = !reload && cfg.lexicon_dir != cfg_.lexicon_dir;
     cfg_ = cfg;
+    if (relex && worker_running_) {
+        lexicon_.reset();            // 旧词典的词不属于新方案：立即撤回，新索引读完后再发布
+        relex_requested_ = true;
+    }
     if (reload) {
         cfg_gen_++;
         // 调用方立即看到“未就绪”；真正的释放在工作线程上做
@@ -120,6 +125,12 @@ void Engine::set_config(const EngineConfig & cfg) {
         last_prepared_.clear();
     }
     cv_.notify_all();   // 空闲时限可能变了：让工作线程重算
+}
+
+void Engine::set_lexicon_dir(const std::string & dir) {
+    EngineConfig c = config();
+    c.lexicon_dir = dir;
+    set_config(c);
 }
 
 void Engine::set_enabled(bool on) {
@@ -419,6 +430,18 @@ void Engine::worker_main() {
             lk.lock();
             continue;
         }
+        if (relex_requested_) {
+            relex_requested_ = false;
+            if (state_ == EngineState::Ready && model_ && !cfg_.lexicon_dir.empty() && cfg_.gen_beam > 0) {
+                EngineConfig cfg = cfg_;
+                uint64_t gen = loaded_gen_;
+                lk.unlock();
+                if (lexicon_thread_.joinable()) lexicon_thread_.join();   // 上一个索引线程（可能是旧目录的）读完再换
+                lk.lock();
+                if (state_ == EngineState::Ready && loaded_gen_ == gen) start_lexicon_load_locked(cfg, gen);
+            }
+            continue;
+        }
         if (load_requested_) {
             load_requested_ = false;
             EngineConfig cfg = cfg_;
@@ -548,6 +571,7 @@ void Engine::start_lexicon_load_locked(const EngineConfig & cfg, uint64_t gen) {
         std::lock_guard<std::mutex> lk(mu_);
         if (!ok) { log_event("WARN: %s", err.c_str()); return; }
         if (gen != loaded_gen_ || state_ != EngineState::Ready) return;
+        if (cfg_.lexicon_dir != cfg.lexicon_dir) return;   // 读的期间方案又换了：丢弃，新目录的读取已排队
         lexicon_ = std::move(lex);
 #if defined(__GLIBC__)
         malloc_trim(0);   // 解析词典时的临时内存还给系统（glibc 默认留着不还）

@@ -113,7 +113,8 @@ bool Connection::connect_locked(long long deadline) {
     }
     for (auto & kv : config_)
         if (!ipc::send_frame(fd, {"C", kv.first, std::to_string(kv.second)}, left())) { ::close(fd); fail_locked(); return false; }
-    for (size_t i = 0; i < config_.size(); i++)
+    if (!lexicon_.empty() && !ipc::send_frame(fd, {"X", lexicon_}, left())) { ::close(fd); fail_locked(); return false; }
+    for (size_t i = 0; i < config_.size() + (lexicon_.empty() ? 0 : 1); i++)
         if (!ipc::recv_frame(fd, rep, left(), left())) { ::close(fd); fail_locked(); return false; }
     fd_ = fd;
     fail_streak_ = 0;
@@ -146,6 +147,15 @@ void Connection::remember_config(const std::string & key, long long value, int t
     }
     // 现在就试着下发（连不上或在退避期内会立即返回）；连上之后的每次重连还会重新下发
     rpc({"C", key, std::to_string(value)}, timeout_ms, &rep);
+}
+
+void Connection::remember_lexicon(const std::string & name, int timeout_ms) {
+    std::vector<std::string> rep;
+    {
+        std::lock_guard<std::mutex> lk(mu_);
+        lexicon_ = name;
+    }
+    rpc({"X", name}, timeout_ms, &rep);
 }
 
 }  // namespace suzu::client
