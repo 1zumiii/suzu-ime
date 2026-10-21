@@ -184,6 +184,13 @@ int l_set_enabled(lua_State * L) {
     return 1;
 }
 
+// 切换候选生成的词典（rime 目录下的子目录名）：不同方案用各自的词库。守护进程重启后自动重新同步。
+int l_set_lexicon(lua_State * L) {
+    conn().remember_lexicon(luaL_checkstring(L, 1), 300);
+    lua_pushboolean(L, conn().connected());
+    return 1;
+}
+
 int l_connected(lua_State * L) { lua_pushboolean(L, conn().connected()); return 1; }
 
 // 以下与进程内模块保持接口一致（Android 上没有对应能力）
@@ -236,7 +243,7 @@ extern "C" __attribute__((visibility("default"))) int luaopen_rime_llm(lua_State
     lua_newtable(L);
     static const sl::Fn fns[] = {
         {"score", l_score}, {"generate", l_generate}, {"get_scores", l_get_scores}, {"prepare", l_prepare}, {"is_ready", l_is_ready},
-        {"touch", l_touch}, {"screen_off", l_screen_off}, {"set_enabled", l_set_enabled}, {"status", l_status},
+        {"touch", l_touch}, {"screen_off", l_screen_off}, {"set_enabled", l_set_enabled}, {"set_lexicon", l_set_lexicon}, {"status", l_status},
         {"connected", l_connected}, {"llm_context", l_nil}, {"kick_context", l_noop}, {"edit_reset_context", l_noop},
         {"fg_changed", l_false}, {"click_happened", l_false}, {"match_code", sl::l_match_code},
         {"now_ms", sl::l_now_ms}, {"sleep_ms", sl::l_sleep_ms},

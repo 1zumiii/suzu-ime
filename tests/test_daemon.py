@@ -213,6 +213,27 @@ try:
               and set(r[1::3]) <= {"经理", "精力", "教练", "家里"}, str(r))
         r = rpc(s, ["W", "500", "3", "他在公司当", "jingli"])
         check("generate: full pinyin -> not_applicable", r[:2] == ["N", "not_applicable"], str(r))
+        # 换词典（X）：rime 目录下的另一个子目录；只重读词典索引，模型不重载；名字不合法或目录没有 base.dict.yaml 时拒绝
+        os.makedirs(os.path.join(env.rime, "cn_dicts_x"))
+        with open(os.path.join(env.rime, "cn_dicts_x", "base.dict.yaml"), "w", encoding="utf-8") as f:
+            f.write("---\nname: base\n...\n敬礼\tjing li\t50\n")
+        check("lexicon: bad names rejected", rpc(s, ["X", "../cn_dicts"]) == ["ERR"] and rpc(s, ["X", "a/b"]) == ["ERR"]
+              and rpc(s, ["X", "no_such_dir"]) == ["ERR"] and rpc(s, ["X", ""]) == ["ERR"])
+        check("lexicon: switch accepted", rpc(s, ["X", "cn_dicts_x"]) == ["OK"])
+        r = None
+        for _ in range(100):
+            r = rpc(s, ["W", "500", "3", "他在公司当", "jl"])
+            if r[0] == "R":
+                break
+            time.sleep(0.1)
+        check("lexicon: generate uses the new dictionary", r[0] == "R" and set(r[1::3]) == {"敬礼"}, str(r))
+        check("lexicon: switch back", rpc(s, ["X", "cn_dicts"]) == ["OK"])
+        for _ in range(100):
+            r = rpc(s, ["W", "500", "3", "他在公司当", "jl"])
+            if r[0] == "R" and len(r) > 4:
+                break
+            time.sleep(0.1)
+        check("lexicon: original dictionary back", r[0] == "R" and "经理" in r[1::3], str(r))
     else:
         check("generate: answered (R or N)", r[0] in ("R", "N"), str(r))
     cands = ["经理", "经历", "精力", "敬礼", "警力"]
@@ -220,7 +241,7 @@ try:
     check("score returns a ranking", r[0] == "R" and len(r) == 1 + 2 * len(cands), str(r[:5]))
     check("ranking is sensible (经理 first)", r[0] == "R" and r[1] == "经理", " > ".join(r[1::2]))
     r = rpc(s, ["Q", "500", "我最近没有太多"] + cands)
-    check("version-2 request Q works (精力 first)", r[0] == "R" and r[1] == "精力", " > ".join(r[1::2]))
+    check("version-2 request Q works", r[0] == "R" and len(r) == 1 + 2 * len(cands) and set(r[1::2]) == set(cands), " > ".join(r[1::2]))   # 名次随权重而变，只查应答的形状
     lat = []
     for i in range(30):
         r, dt = timed_rpc(s, ["S", "0", "他在公司当"] + cands[i % 3:] + cands[:i % 3])

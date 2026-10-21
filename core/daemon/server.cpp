@@ -105,6 +105,18 @@ struct Worker {
         // max_ctx、min_tokens 是 Qwen 时代的配置，对 Suzu 无作用：接受但忽略
     }
 
+    // 候选生成的词典：rime 目录下的子目录名（如 cn_dicts、cn_dicts_frost），只接受单层的安全名字
+    bool set_lexicon(const std::string & name) {
+        if (opt.rime_dir.empty() || opt.gen_beam <= 0 || name.empty() || name.size() > 64) return false;
+        for (char ch : name)
+            if (!(isalnum((unsigned char)ch) || ch == '_' || ch == '-')) return false;
+        std::string dir = opt.rime_dir + "/" + name;
+        if (access((dir + "/base.dict.yaml").c_str(), R_OK) != 0) { log_event("WARN: lexicon dir has no base.dict.yaml: %s", name.c_str()); return false; }
+        engine.set_lexicon_dir(dir);
+        log_event("lexicon dir: %s", name.c_str());
+        return true;
+    }
+
     void handle(int fd) {
         int one = 1;
         setsockopt(fd, IPPROTO_TCP, TCP_NODELAY, &one, sizeof one);
@@ -149,6 +161,8 @@ struct Worker {
             } else if (op == 'C' && f.size() >= 3) {
                 configure(f[1], atoll(f[2].c_str()));
                 reply = {"OK"};
+            } else if (op == 'X' && f.size() >= 2) {
+                reply = {set_lexicon(f[1]) ? "OK" : "ERR"};
             } else if (op == 'Z' && f.size() >= 2) {
                 st.screen_off.store(f[1] == "1");
                 apply_idle();

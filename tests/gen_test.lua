@@ -96,6 +96,26 @@ check("word_freq 取最大权重", m.word_freq("经理") == 100, tostring(m.word
 check("word_freq 三字词", m.word_freq("看电影") == 70, tostring(m.word_freq("看电影")))
 check("word_freq 单字与未收录词为 nil", m.word_freq("我") == nil and m.word_freq("不存在") == nil)
 
+-- 换词典目录：只重读词典索引，模型不重载（换的期间生成不可用，读完后用新词典）
+os.execute("mkdir -p '" .. tmp .. "/cn_dicts2'")
+f = io.open(tmp .. "/cn_dicts2/base.dict.yaml", "w")
+f:write("---\nname: base\n...\n经理\tjing li\t100\n精力\tjing li\t90\n")
+f:close()
+local loads_before = tonumber(m.status():match('"loads":(%d+)'))
+m.lexicon_dir = tmp .. "/cn_dicts2"
+t0 = os.time()
+repeat
+  m.sleep_ms(50)
+  r, why = m.generate(CTX, "jl", 10, true)
+until (r and #r == 2) or os.time() - t0 > 60
+check("换词典目录后 jl 只剩新词典里的两个词", r and #r == 2, r and tostring(#r) or tostring(why))
+check("换词典目录没有重载模型", tonumber(m.status():match('"loads":(%d+)')) == loads_before)
+check("换词典后 word_freq 跟着换", m.word_freq("教练") == nil and m.word_freq("经理") == 100)
+m.lexicon_dir = tmp .. "/cn_dicts"
+t0 = os.time()
+repeat m.sleep_ms(50); r = m.generate(CTX, "jl", 10, true) until (r and #r == 6) or os.time() - t0 > 60
+check("换回原目录后恢复 6 个词", r and #r == 6)
+
 if fails > 0 then print(fails .. " FAILED"); os.exit(1) end
 print("ALL PASS")
 os.exit(0)

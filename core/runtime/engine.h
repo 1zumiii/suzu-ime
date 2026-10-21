@@ -85,6 +85,7 @@ public:
     EngineConfig config() const;
     void set_config(const EngineConfig & cfg);
     void set_enabled(bool on);         // 关 = 立即卸载并拒绝推理
+    void set_lexicon_dir(const std::string & dir);   // 只换候选生成的词典，不重载模型；换的期间生成不可用（no_lexicon）
     bool enabled() const;
 
     // ---- 请求
@@ -134,6 +135,7 @@ private:
     EngineState state_ = EngineState::Idle;
     bool load_requested_ = false;
     bool unload_requested_ = false;
+    bool relex_requested_ = false;     // 模型不动，只按当前 lexicon_dir 重读词典索引
     double failed_at_ms_ = 0;
     uint64_t failed_gen_ = 0;
 

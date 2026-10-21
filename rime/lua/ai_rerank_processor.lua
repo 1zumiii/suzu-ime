@@ -144,14 +144,18 @@ local function load_llm(env)
     if mt then cpp.max_ctx = mt end
     local cores = sc:get_int("llm_rerank/cpu_cores")
     if cores then cpp.n_threads = cores end
-    -- 候选生成（llm_rerank/generate）：词典就是用户目录里随方案部署的雾凇词典（cn_dicts）。
-    -- 进程内核心在这里设置；手机的守护进程由启动参数决定（--rime-dir 下的 cn_dicts，--gen-beam），这两个属性对客户端无作用
+    -- 候选生成（llm_rerank/generate）：词典是用户目录里随方案部署的词库目录，默认 cn_dicts（雾凇）；
+    -- 方案可用 llm_rerank/lexicon_dir 指定别的目录（如白霜 cn_dicts_frost），切换方案时词典跟着换，模型不重载。
+    -- 进程内核心直接设置；手机的守护进程由启动参数决定 --gen-beam，词典目录名经 set_lexicon 下发
     local gen_on = sc:get_bool("llm_rerank/generate")
     if gen_on == nil then gen_on = true end        -- 默认开启；核心没有生成接口时下面的赋值无效，过滤器会自动跳过
     if gen_on then
         local ud = user_dir()
         local gb = sc:get_int("llm_rerank/gen_beam") or 20
-        if ud then pcall(function() cpp.lexicon_dir = ud .. "/cn_dicts" end) end
+        local lex = sc:get_string("llm_rerank/lexicon_dir")
+        if not lex or not lex:match("^[%w_%-]+$") then lex = "cn_dicts" end
+        if cpp.set_lexicon then pcall(cpp.set_lexicon, lex)
+        elseif ud then pcall(function() cpp.lexicon_dir = ud .. "/" .. lex end) end
         pcall(function() cpp.gen_beam = gb end)
     end
     if ud then cpp.log_dir = ud end                    -- 日志只含模型路径与耗时，不含输入内容
