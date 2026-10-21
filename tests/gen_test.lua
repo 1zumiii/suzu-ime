@@ -96,6 +96,16 @@ check("word_freq 取最大权重", m.word_freq("经理") == 100, tostring(m.word
 check("word_freq 三字词", m.word_freq("看电影") == 70, tostring(m.word_freq("看电影")))
 check("word_freq 单字与未收录词为 nil", m.word_freq("我") == nil and m.word_freq("不存在") == nil)
 
+-- extra.dict.yaml（本项目自己的补充词条）和 base、ext 一样被读，权重按重复词取最大
+f = io.open(tmp .. "/cn_dicts/extra.dict.yaml", "w")
+f:write("---\nname: extra\n...\n家里\tjia li\t999\n")
+f:close()
+m.lexicon_dir = tmp .. "/cn_dicts2"; m.sleep_ms(100); m.lexicon_dir = tmp .. "/cn_dicts"
+t0 = os.time()
+repeat m.sleep_ms(50) until m.word_freq("家里") == 999 or os.time() - t0 > 60
+check("extra.dict.yaml 被读入（家里的权重取最大 999）", m.word_freq("家里") == 999, tostring(m.word_freq("家里")))
+os.remove(tmp .. "/cn_dicts/extra.dict.yaml")
+
 -- 换词典目录：只重读词典索引，模型不重载（换的期间生成不可用，读完后用新词典）
 os.execute("mkdir -p '" .. tmp .. "/cn_dicts2'")
 f = io.open(tmp .. "/cn_dicts2/base.dict.yaml", "w")
