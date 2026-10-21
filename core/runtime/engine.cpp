@@ -565,8 +565,10 @@ void Engine::start_lexicon_load_locked(const EngineConfig & cfg, uint64_t gen) {
         const Clock::time_point tl = Clock::now();
         auto lex = std::make_shared<Lexicon>();
         std::string err;
-        bool ok = lex->load({cfg.lexicon_dir + "/base.dict.yaml", cfg.lexicon_dir + "/ext.dict.yaml"}, *vocab,
-                            kGenMinChars, kGenMaxChars, &err);
+        // base 与 ext 之外，目录里有 extra.dict.yaml（本项目自己的补充词条，由词库包安装脚本放入）就一并读
+        std::vector<std::string> files = {cfg.lexicon_dir + "/base.dict.yaml", cfg.lexicon_dir + "/ext.dict.yaml"};
+        if (FILE * fx = fopen((cfg.lexicon_dir + "/extra.dict.yaml").c_str(), "rb")) { fclose(fx); files.push_back(cfg.lexicon_dir + "/extra.dict.yaml"); }
+        bool ok = lex->load(files, *vocab, kGenMinChars, kGenMaxChars, &err);
         double ms = ms_between(tl, Clock::now());
         std::lock_guard<std::mutex> lk(mu_);
         if (!ok) { log_event("WARN: %s", err.c_str()); return; }
