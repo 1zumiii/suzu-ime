@@ -325,9 +325,11 @@ local function setup_select_stats(env)
             local clen = utf8.len(ctx_all) or 0
             local bucket = clen == 0 and 0 or clen <= 2 and 1 or clen <= 9 and 2 or 3
             if stats_on then
-                append(spath, string.format("%d\t%d\t%s\t%d\t%d\t%d\t%d\t%d\t%d\t%s\t%s\t%s\t%d\t%d\n",
+                -- 最后一列是方案名（rime_ice、rime_frost 等），换词库对比时按它分开统计
+                local sid = (env.engine.schema and env.engine.schema.schema_id) or "-"
+                append(spath, string.format("%d\t%d\t%s\t%d\t%d\t%d\t%d\t%d\t%d\t%s\t%s\t%s\t%d\t%d\t%s\n",
                     now, ai, model_kind(), #input, n, o, f, bucket, utf8.len(text) or 0, tostring(s.type), s1,
-                    tostring(mg10), gated, mtop), 2 * 1024 * 1024)
+                    tostring(mg10), gated, mtop, sid), 2 * 1024 * 1024)
             end
             if corpus_on and text:find("[\228-\233][\128-\191][\128-\191]") and (utf8.len(text) or 99) <= 12 then
                 local kind = nil

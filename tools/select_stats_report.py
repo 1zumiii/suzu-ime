@@ -2,7 +2,7 @@
 """汇总 select_stats.tsv（纯数字的选词统计）：重排前后“被选中的是第一位”的比例等。
 用法：python3 -I tools/select_stats_report.py <select_stats.tsv> [更多文件…]
 列：时间戳, AI 开关, 模型(q|s), 输入字母数, 候选数, 原顺序位次, 最终顺序位次, 上文档(0 空 1 短 2 中 3 长), 候选字数, 候选类型, 缓存标记,
-    以及（14 列版本）margin×10, 是否被门控, 模型首位的原位次"""
+    以及（14 列版本起）margin×10, 是否被门控, 模型首位的原位次，（15 列版本起）方案名"""
 import sys
 from collections import Counter, defaultdict
 
@@ -10,13 +10,15 @@ rows = []
 for p in sys.argv[1:]:
     for line in open(p, encoding="utf-8"):
         f = line.rstrip("\n").split("\t")
-        if len(f) in (11, 14) and f[0].isdigit():
+        if len(f) in (11, 14, 15) and f[0].isdigit():
             r = dict(ts=int(f[0]), ai=int(f[1]), model=f[2], inlen=int(f[3]), n=int(f[4]),
                      o=int(f[5]), f=int(f[6]), ctx=int(f[7]), clen=int(f[8]), typ=f[9], s1=f[10],
-                     mg=None, gated=0, mtop=0)
-            if len(f) == 14:
+                     mg=None, gated=0, mtop=0, schema="（未记录）")
+            if len(f) >= 14:
                 r["mg"] = None if f[11] == "-" else int(f[11]) / 10.0
                 r["gated"], r["mtop"] = int(f[12]), int(f[13])
+            if len(f) == 15:
+                r["schema"] = f[14]
             rows.append(r)
 if not rows:
     sys.exit("没有可用的记录")
@@ -69,7 +71,24 @@ def gate_report(rs):
         print(f"门控实际拦下 {len(g)} 次（保持了 Rime 原顺序），其中用户选了原首位 {pct(sum(r['o'] == 1 for r in g), len(g))}")
 
 
+def schema_compare(rs):
+    """按方案与 AI 开关分组，比较选词的体感指标：首选率、平均位次、翻页率（选在第 6 位及以后）。
+    位次取最终顺序，已包含词库、语法模型、AI 与个人习惯。每组至少 300 次选词再下结论。"""
+    groups = defaultdict(list)
+    for r in rs:
+        groups[(r["schema"], r["ai"])].append(r)
+    if len({k[0] for k in groups}) < 2:
+        return
+    print("\n## 按方案对比（最终顺序里被选中的位次）")
+    print("| 方案 | AI | 选词次数 | 首选率 | 平均位次 | 翻页率 |")
+    print("|---|---|---|---|---|---|")
+    for (sid, ai), g in sorted(groups.items()):
+        print(f"| {sid} | {'开' if ai else '关'} | {len(g)} | {pct(sum(r['f'] == 1 for r in g), len(g))} | "
+              f"{sum(r['f'] for r in g) / len(g):.2f} | {pct(sum(r['f'] > 5 for r in g), len(g))} |")
+
+
 block("全部", rows)
+schema_compare(rows)
 gate_report(rows)
 models = defaultdict(list)
 for r in rows:
