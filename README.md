@@ -53,7 +53,7 @@
 ## 快速开始
 
 1. 从 Hugging Face 下载模型 [Suzu-2.4](https://huggingface.co/IzumiThe3rd/Suzu-2.4) 的 `suzu.gguf` 与 `suzu.vocab.txt`。
-2. 雾凇拼音的配置、词库和 Lua 脚本使用 [rime-ice-Custom](https://github.com/1zumiii/rime-ice-Custom)，按其说明安装。
+2. Rime 的配置、Lua 脚本和词库包使用 [rime-suzu](https://github.com/1zumiii/rime-suzu)，按其说明安装。
 3. 按平台安装推理核心：
    - macOS：`macos/install_llm.sh core/build/rime_llm.so suzu.gguf suzu.vocab.txt`，详见 [macos/README.md](macos/README.md)
    - Windows：见 [windows/README.md](windows/README.md)
@@ -84,7 +84,7 @@
 ## 相关仓库
 
 - 模型与训练：[Suzu](https://github.com/1zumiii/Suzu)。
-- 配置与词库：[rime-ice-Custom](https://github.com/1zumiii/rime-ice-Custom)，其中的重排 Lua 由本仓库的 `rime/lua/` 同步而来。
+- 配置与词库包：[rime-suzu](https://github.com/1zumiii/rime-suzu)，其中的重排 Lua 由本仓库的 `rime/lua/` 同步而来。
 - 原项目：本项目起步于 [rime-llm-rerank](https://github.com/zhanghaozhecn/rime-llm-rerank)，推理核心已重写，Windows 的光标上文读取和部分 Lua 仍取自该项目。Trime 补丁基于 [osfans/trime](https://github.com/osfans/trime) 的固定提交。署名见 [NOTICE.md](NOTICE.md)。
 
 ## 许可

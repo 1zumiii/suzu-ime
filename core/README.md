@@ -159,4 +159,4 @@ cmake --build build_android --target rimellmd rime_llm_client
 3. macOS：`macos/install_llm.sh` 安装后重启鼠须管，用 `status()` 确认 `"state":"ready"`。
 4. Android：`android/trime/build_apk.sh` 出包并安装，点 AI 徽标启动守护进程，长按徽标确认在线；`ai_status.json` 的 `engine` 与 `client` 两个对象记录新核心的统计。
 5. Windows：按上一节构建并实测。
-6. 配置仓库 rime-ice-Custom 用 `tools/sync_core.sh` 同步 `rime/lua/`（本次重构未改 Lua 脚本）。
+6. 配置仓库 rime-suzu 用 `tools/sync_core.sh` 同步 `rime/lua/`（本次重构未改 Lua 脚本）。

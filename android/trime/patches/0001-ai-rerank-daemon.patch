@@ -1439,8 +1439,8 @@ index 00000000..45cbd37a
 + * 个人数据（词频库、用户词、最近使用记录、模型、用户设置）不会被覆盖。
 + */
 +object ConfigUpdater {
-+    const val DEFAULT_REPO = "https://github.com/1zumiii/rime-ice-Custom"
-+    const val DEFAULT_BRANCH = "custom"
++    const val DEFAULT_REPO = "https://github.com/1zumiii/rime-suzu"
++    const val DEFAULT_BRANCH = "main"
 +    private const val VERIFY_MS = 45_000L
 +    private const val CRASHES_TO_ROLLBACK = 2
 +

@@ -1,6 +1,6 @@
 # rime-llm-rerank 的 Android 移植（Trime，已可日常使用）
 
-> 本目录是 Android 端的推理守护进程、客户端库与改版 Trime 补丁。手机端的配置推送脚本（`deploy_trime.sh`）、手机专属覆盖配置（`*.overlay.yaml`）和主题补丁（`*.custom.yaml`）放在配置仓库 [rime-ice-Custom](https://github.com/1zumiii/rime-ice-Custom) 的 `llm-android/trime/` 下。改版 Trime 的“从仓库更新”按这个固定路径读取，路径不能改名。下文提到这些文件时，均指配置仓库里的位置。
+> 本目录是 Android 端的推理守护进程、客户端库与改版 Trime 补丁。手机端的配置推送脚本（`deploy_trime.sh`）、手机专属覆盖配置（`*.overlay.yaml`）和主题补丁（`*.custom.yaml`）放在配置仓库 [rime-suzu](https://github.com/1zumiii/rime-suzu) 的 `llm-android/trime/` 下。改版 Trime 的“从仓库更新”按这个固定路径读取，路径不能改名。下文提到这些文件时，均指配置仓库里的位置。
 
 
 目标设备：ASUS Zenfone 10（骁龙 8 Gen 2，16 GB，Android 15）。目标前端：[Trime（同文输入法）](https://github.com/osfans/trime)。
@@ -43,7 +43,7 @@ Trime 的 nightly 构建（arm64，v3.3.12-73）：
 
 ## 第一档配置的部署
 
-`rime-ice-Custom` 仓库的 `llm-android/deploy_trime.sh` 通过 `adb push` 将本仓库的配置推送到手机的 `/sdcard/Android/data/com.osfans.trime/files/rime`，再用 Trime 自带的广播 `com.osfans.trime.action.DEPLOY` 触发部署，无需在手机上操作界面：
+`rime-suzu` 仓库的 `llm-android/deploy_trime.sh` 通过 `adb push` 将本仓库的配置推送到手机的 `/sdcard/Android/data/com.osfans.trime/files/rime`，再用 Trime 自带的广播 `com.osfans.trime.action.DEPLOY` 触发部署，无需在手机上操作界面：
 
 ```bash
 llm-android/deploy_trime.sh --with-gram        # 首次：配置 + 语法模型（约 380 MB）
@@ -130,10 +130,11 @@ Trime（改版 APK）                              rimellmd（shell 身份，由
 
 ## 手机端配置更新
 
-改版 Trime 在工具栏左侧三个点打开的面板里提供“从仓库更新”入口（与原有的“更新配置”不同，后者只是重新部署本地配置），打开后可填写仓库地址与分支（默认 `1zumiii/rime-ice-Custom` 的 `custom` 分支），点击“立即更新”即完成下载、覆盖和重新部署。
+改版 Trime 在工具栏左侧三个点打开的面板里提供“从仓库更新”入口（与原有的“更新配置”不同，后者只是重新部署本地配置），打开后可填写仓库地址与分支（默认 `1zumiii/rime-suzu` 的 `main` 分支），点击“立即更新”即完成下载、覆盖和重新部署。
 
+- 配置仓库不含词库：“从仓库更新”只更新配置，词库包要先用 `deploy_trime.sh` 安装一次（见 rime-suzu 的词库包说明），之后更新配置不会动它。
 - 地址格式：`https://github.com/用户/仓库`、`用户/仓库`、`.../tree/分支`，或直接给 `.zip` 链接。仓库须公开。
-- 覆盖范围与 `deploy_trime.sh` 一致：排除其他平台文件、文档、构建产物、个人数据和大模型；`rime-ice-Custom` 仓库 `llm-android/trime/*.overlay.yaml` 追加到同名 `.custom.yaml`，`llm-android/trime/*.custom.yaml`（主题补丁）直接放入用户目录；新装默认关闭 AI 的处理也一并执行。
+- 覆盖范围与 `deploy_trime.sh` 一致：排除其他平台文件、文档、构建产物、个人数据和大模型；`rime-suzu` 仓库 `llm-android/trime/*.overlay.yaml` 追加到同名 `.custom.yaml`，`llm-android/trime/*.custom.yaml`（主题补丁）直接放入用户目录；新装默认关闭 AI 的处理也一并执行。
 - 备份与回退：覆盖前把将被改动的文件备份到应用私有目录，只保留上一个版本。更新后 45 秒内进程被重启两次（即连续崩溃两次）自动回退，部署本身失败时立即回退，也可在界面上手动回退。回退会恢复被改动的文件、删除新增的文件并强制重新编译。
 - 需要联网，因此改版 Trime 声明了 `INTERNET` 权限。更新界面不对外导出，只能从该面板进入。
 - 相关源码：补丁中的 `update/ConfigUpdater.kt`、`update/ConfigUpdateActivity.kt`、`ime/switches/SwitchOptionWindow.kt` 中的入口。
