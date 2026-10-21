@@ -33,6 +33,14 @@ Trime 的 nightly 构建（arm64，v3.3.12-73）：
 - 绑定大核比不绑核更慢。
 - 权重重排（`use_repack`）在手机上收益为零：延迟没有改善（P50 85 ms），私有内存却多约 500 MB。保持关闭。
 
+## 候选生成
+
+简拼和混合输入时，守护进程在词典里按上文挑出 Rime 没给的词（`W` 请求，见 `core/ipc/protocol.h`），默认开启：
+
+- 启动参数 `--gen-beam N` 控制每层展开的首字数，`0` 为关闭；`rimellmctl.sh` 用环境变量 `GEN_BEAM`，默认 10（手机实测 10 与 20 的准确率相同）。
+- 词典是 `--rime-dir` 下的 `cn_dicts/`，读 `base.dict.yaml`、`ext.dict.yaml`，以及有的话 `extra.dict.yaml`（本项目自己的补充词条，由词库包安装脚本放入）。词典索引在模型就绪后由单独的线程加载，打分不必等它，常驻内存约多 19 MB。
+- 不同方案可以用不同的词库：方案的补丁里设 `llm_rerank/lexicon_dir: <rime 目录下的子目录名>`，Lua 经 `set_lexicon` 把目录名发给守护进程，守护进程只重读词典索引，模型不重载。守护进程重启后客户端会重新下发。不认识该请求的旧守护进程会忽略它，继续用 `cn_dicts`。
+
 ## 第一档配置的部署
 
 `rime-ice-Custom` 仓库的 `llm-android/deploy_trime.sh` 通过 `adb push` 将本仓库的配置推送到手机的 `/sdcard/Android/data/com.osfans.trime/files/rime`，再用 Trime 自带的广播 `com.osfans.trime.action.DEPLOY` 触发部署，无需在手机上操作界面：
