@@ -1,8 +1,8 @@
 # Builds the held-out parity cases like the Mac check (same rule: candidates are rime-ice homophones of the same length, top 4 competitors by weight)
-# usage: python build_cases.py <tests dir with holdout/ and domain/> <output dir>
-import re,collections,json,sys
+# usage: CN_DICTS=<cn_dicts 目录> python build_cases.py <tests dir with holdout/ and domain/> <output dir>
+import re,collections,json,sys,os
 R=sys.argv[1]; OUT=sys.argv[2]
-D='C:/Users/user/work/rime-ice/cn_dicts/'
+D=os.environ.get('CN_DICTS','cn_dicts').rstrip('/\\')+'/'   # 词库目录：词库包安装后的 cn_dicts（含 8105、base 等）
 chars={}; index=collections.defaultdict(dict)
 def rows(name):
     body=False
