@@ -26,7 +26,8 @@ for p in "$REPO"/android/trime/patches/*.patch; do
   git -C "$SRC" apply --check -R "$p" 2>/dev/null || need=1
 done
 if [[ $need -eq 1 ]]; then
-  git -C "$SRC" checkout -q -f "$BASE"; git -C "$SRC" submodule update --init --recursive --depth 1 -q
+  git -C "$SRC" checkout -q -f "$BASE"; git -C "$SRC" clean -fdq   # 补丁新增的文件不在跟踪里，不清掉会让重新应用报“已存在”
+  git -C "$SRC" submodule update --init --recursive --depth 1 -q
   for p in "$REPO"/android/trime/patches/*.patch; do
     git -C "$SRC" apply "$p" || { echo "补丁 $p 无法应用（源码有别的改动？）"; exit 1; }
     echo "已应用 $(basename "$p")"
