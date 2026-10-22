@@ -12,6 +12,7 @@
 //   --repeat R         整套重复 R 轮（默认 1），报每轮的分位数
 //   --gap-ms N         每题打分前空闲 N 毫秒（模拟按键间隔：缓存变冷、线程睡眠）
 //   --out PATH         写出与 res_q8.tsv 同格式的打分结果（只在第一轮写）
+//   --max-cands N      一次最多打分的候选数（默认 11，同核心；测 K=40 时给 41，对应简拼放大候选数的配置）
 // cases.tsv 每行：编号 \t 0 \t 上文 \t 候选1|候选2|…
 #include <algorithm>
 #include <chrono>
@@ -90,6 +91,7 @@ int main(int argc, char ** argv) {
         else if (a == "--repeat") repeat = atoi(next());
         else if (a == "--out") out_path = next();
         else if (a == "--gap-ms") gap_ms = atoi(next());
+        else if (a == "--max-cands") opt.max_candidates = atoi(next());
         else { fprintf(stderr, "unknown option %s\n", a.c_str()); return 64; }
     }
     llama_log_set([](ggml_log_level lvl, const char * text, void *) {
