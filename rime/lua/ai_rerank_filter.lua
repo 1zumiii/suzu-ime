@@ -698,6 +698,7 @@ local function inner(translation, env)
         local skip_tail = add_generated(feats, cand_of, all, n, has_model, best_e, input, context, llm, rp, gen_pre)
         local sorted = ru.order(feats, p, lam)
         local base_top = lam > 0 and ru.order(feats, p, 0)[1] or sorted[1]
+        if ru.gate_top(sorted, base_top, p, lam) then flags.gated = 1 end
         if rp then rp.g, rp.uni, rp.lam, rp.ucfg = feats, 1, lam, p end
 
         -- 第二阶段：拼出的句子与 Rime 的整句比分（rank_unified.stage2_wins），胜了置顶，否则放第二位。
