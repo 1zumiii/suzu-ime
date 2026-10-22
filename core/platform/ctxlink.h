@@ -1,4 +1,5 @@
-// 光标上文旁路：从前台应用读取光标前的文字（只有 Windows 版实现，经 UIA/COM，代码来自原项目 rime-llm-rerank）。
+// 光标上文旁路：从前台应用读取光标前的文字。Windows 经 UIA/COM（代码来自原项目 rime-llm-rerank），
+// macOS 经辅助功能接口（platform/macos/ctxlink_mac.cpp）。Android 由客户端库另行提供（Trime 经 JNI 写入）。
 // 其他平台是桩：不读取任何应用里的文字，Lua 侧回落到 Rime 自己的 commit_history。
 #pragma once
 
@@ -6,7 +7,7 @@
 
 namespace suzu::ctxlink {
 
-// 取当前快照：成功返回 true，text 为光标前文字，source 为 "com" 或 "uia"
+// 取当前快照：成功返回 true，text 为光标前文字，source 为 "com"、"uia"（Windows）或 "ax"（macOS）
 bool pick(std::string & text, const char *& source);
 void kick();         // 上屏后：立刻刷新快照
 void edit_reset();   // 编辑键或点击后：快照作废并延迟重读
