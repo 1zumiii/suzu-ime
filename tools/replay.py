@@ -63,7 +63,7 @@ def stage1(g, inp, p):
 
 
 U_DEFAULTS = {"alpha": 1.0, "beta": 0, "dw_unknown": 3000, "mu": 0.6, "fb": 0, "pg": 1.5, "cg": 3.0, "fp": 3.0,
-              "lam_max": 1.0, "lam_ctx_full": 4, "lam_short": 0.5}
+              "lam_max": 1.0, "lam_ctx_full": 4, "lam_short": 0.5, "top_gate": 0}
 
 
 def u_lam(p, ctx_chars, input_len, use_model):
@@ -108,6 +108,13 @@ def unified_top(rec, p):
     lam = u_lam(p, min(len(rp.get("c", "")), 30), len(rec["input"]), use_model)
     smax = max((e["s"] for e in g if e.get("s") is not None), default=NEG)
     order = sorted(g, key=lambda e: (-u_score(e, p, lam, smax), e["r"]))
+    if lam > 0 and p.get("top_gate", 0) > 0:      # 首位门控，与 rank_unified.gate_top 相同
+        base = sorted(g, key=lambda e: (-u_score(e, p, 0.0, smax), e["r"]))[0]
+        if order[0] is not base:
+            s1, s0 = order[0].get("s"), base.get("s")
+            if s1 is None or s0 is None or s1 - s0 < p["top_gate"]:
+                order.remove(base)
+                order.insert(0, base)
     w1 = order[0]["t"]
     if rp.get("s2") and lam > 0:
         if "s2cmp" not in rp or w1 != rp.get("s2w1"):
@@ -175,6 +182,7 @@ CONFIGS = [
     ("统一排序 mu=0", {"mode": "unified", "mu": 0}),
     ("统一排序 mu=1.2", {"mode": "unified", "mu": 1.2}),
     ("统一排序 fb=1.5", {"mode": "unified", "fb": 1.5}),
+    ("统一排序 top_gate=3", {"mode": "unified", "top_gate": 3}),
 ]
 
 

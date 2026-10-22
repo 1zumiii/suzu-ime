@@ -9,12 +9,15 @@
 --   U      fb·ln(1+会话词频) + pg·ln(1+词对) + cg·ln(1+纠错记忆) + mu·最近用过
 --   λ      上文不足 2 个字或不用模型时为 0；随上文字数线性增长，lam_ctx_full 个字时达到 lam_max；
 --          输入只有 1～2 个字母时再乘 lam_short
+-- 首位门控（top_gate，默认 0 即关闭）：模型把首位换成别的词时，新首位的模型分要比“不用模型时的首位”高出 top_gate
+-- 以上才换，否则不用模型时的首位留在第一位，其余位置照新顺序。真实使用里分差不到 3 时 AI 改首位约一半是错的
+-- （用户顺手接受后又删掉改回），见私有文档 ime/2026-10-22-ai-top-gate.md。
 -- 关 AI 等价于 λ = 0：开与关只差 λ·模型分 这一项。
 local M = {}
 
 M.defaults = {
     alpha = 1.0, beta = 0, dw_unknown = 3000, mu = 0.6, fb = 0, pg = 1.5, cg = 3.0, fp = 3.0,
-    lam_max = 1.0, lam_ctx_full = 4, lam_short = 0.5,
+    lam_max = 1.0, lam_ctx_full = 4, lam_short = 0.5, top_gate = 0,
 }
 
 -- 读 llm_rerank/unified/<名字>，没写的取默认值
@@ -62,6 +65,22 @@ function M.order(feats, p, lam)
     local out, tot = {}, {}
     for i, a in ipairs(arr) do out[i] = a.f; tot[i] = a.t end
     return out, tot
+end
+
+-- 首位门控：sorted 为 order(feats, p, lam) 的结果，base 为不用模型时的首位（order(feats, p, 0)[1]）。
+-- 需要时把 base 移回第一位（原地修改 sorted），返回是否动过
+function M.gate_top(sorted, base, p, lam)
+    if lam <= 0 or (p.top_gate or 0) <= 0 or sorted[1] == base then return false end
+    local s1, s0 = sorted[1].s, base.s
+    if s1 and s0 and s1 - s0 >= p.top_gate then return false end
+    for i = 2, #sorted do
+        if sorted[i] == base then
+            table.remove(sorted, i)
+            table.insert(sorted, 1, base)
+            return true
+        end
+    end
+    return false
 end
 
 -- 第二阶段拼出的句子 x 与 Rime 的整句 n 比较：n 视为第 1 名、x 视为第 2 名，只比模型分与名次先验
