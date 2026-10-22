@@ -104,6 +104,7 @@ Trime（改版 APK）                              rimellmd（shell 身份，由
 | `tests/test_daemon.py` | 端到端测试：认证、非法输入、时限、正确性、并发；加 `--chaos` 还会做 `kill -9`、`SIGSTOP` 与删除模型的恢复测试；`--host` 在电脑上跑 |
 | `tools/bench_daemon.py` | 真实打分延迟基准（每次更换新候选） |
 | `trime/patches/0001-ai-rerank-daemon.patch` | 对 Trime `ad5a14be` 的改动：`INTERNET` 权限、亮灭屏接收器、AI 徽标、Shizuku 启动、流式键盘布局 |
+| `trime/patches/0005-app-context.patch` | 光标上文：没有未上屏编码时用 `getTextBeforeCursor` 读光标前最多 60 个字，经 JNI 写进客户端库，Lua 的 `llm_context` 读取（`rime/lua/ai_rerank_app_ctx.lua`），读不到退回上屏历史；密码框、数字框、电话框和无痕模式不读，文字只在内存里 |
 | `trime/build_apk.sh` | 从源码到签名 APK 的完整流程；`trime/sign_apk.sh` 仅负责对齐和签名 |
 | `trime/*.overlay.yaml` | 手机端专属配置，部署时追加到对应的 `*.custom.yaml` |
 | `trime/gen_tongwenfeng_patch.py` | 生成 `trime/tongwenfeng.trime.custom.yaml`（GBoard 风格布局补丁），不要手工编辑生成结果 |

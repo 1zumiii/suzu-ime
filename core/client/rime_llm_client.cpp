@@ -6,7 +6,10 @@
 //                守护进程自己在 budget_ms 内应答，多出的 20 ms 只在守护进程整个卡住时才会用满。
 //   prepare      50 ms；is_ready 50 ms 且结果缓存 300 ms；touch 40 ms 且 1.5 秒最多一次；其余配置类 100~150 ms。
 //   连不上       立即返回（指数退避 0.5 s → 10 s 后才再试），候选保持原顺序。
+#include <jni.h>
+
 #include <cstring>
+#include <mutex>
 #include <string>
 #include <vector>
 
@@ -195,6 +198,26 @@ int l_connected(lua_State * L) { lua_pushboolean(L, conn().connected()); return 
 
 // 以下与进程内模块保持接口一致（Android 上没有对应能力）
 int l_nil(lua_State * L) { lua_pushnil(L); return 1; }
+
+// 光标上文：改版 Trime 读输入框里光标前的文字（getTextBeforeCursor），经下面的 JNI 入口写进来，Lua 用 llm_context 读。
+// 只在内存里，不写文件。Trime 在密码框、无痕模式里写空串；空串时返回 nil，Lua 退回上屏历史。
+std::mutex g_app_ctx_mu;
+std::string g_app_ctx;
+
+int l_llm_context(lua_State * L) {
+    std::string t;
+    {
+        std::lock_guard<std::mutex> lk(g_app_ctx_mu);
+        t = g_app_ctx;
+    }
+    if (t.empty()) {
+        lua_pushnil(L);
+        return 1;
+    }
+    lua_pushlstring(L, t.data(), t.size());
+    lua_pushstring(L, "app");
+    return 2;
+}
 int l_noop(lua_State *) { return 0; }
 int l_false(lua_State * L) { lua_pushboolean(L, 0); return 1; }
 
@@ -244,7 +267,7 @@ extern "C" __attribute__((visibility("default"))) int luaopen_rime_llm(lua_State
     static const sl::Fn fns[] = {
         {"score", l_score}, {"generate", l_generate}, {"get_scores", l_get_scores}, {"prepare", l_prepare}, {"is_ready", l_is_ready},
         {"touch", l_touch}, {"screen_off", l_screen_off}, {"set_enabled", l_set_enabled}, {"set_lexicon", l_set_lexicon}, {"status", l_status},
-        {"connected", l_connected}, {"llm_context", l_nil}, {"kick_context", l_noop}, {"edit_reset_context", l_noop},
+        {"connected", l_connected}, {"llm_context", l_llm_context}, {"kick_context", l_noop}, {"edit_reset_context", l_noop},
         {"fg_changed", l_false}, {"click_happened", l_false}, {"match_code", sl::l_match_code},
         {"now_ms", sl::l_now_ms}, {"sleep_ms", sl::l_sleep_ms},
     };
@@ -262,4 +285,16 @@ extern "C" __attribute__((visibility("default"))) int luaopen_rime_llm(lua_State
     lua_setfield(L, -2, "__gc");
     lua_setmetatable(L, -2);
     return 1;
+}
+
+// Trime 的 com.osfans.trime.ime.core.SuzuAppContext.nativeSet(ByteArray)：参数是 UTF-8 字节
+extern "C" JNIEXPORT void JNICALL Java_com_osfans_trime_ime_core_SuzuAppContext_nativeSet(JNIEnv * env, jclass, jbyteArray utf8) {
+    std::string t;
+    if (utf8) {
+        jsize n = env->GetArrayLength(utf8);
+        t.resize((size_t)n);
+        if (n > 0) env->GetByteArrayRegion(utf8, 0, n, reinterpret_cast<jbyte *>(&t[0]));
+    }
+    std::lock_guard<std::mutex> lk(g_app_ctx_mu);
+    g_app_ctx.swap(t);
 }
