@@ -77,10 +77,10 @@ lua_tests() {
 # 第二组：留出集与基准逐题核对（首选一致率不低于 99.9%）
 parity() {
   local REF="$REPO/../reference/holdout-parity"
-  [[ -f "$REF/cases.tsv" ]] || { echo "skip  holdout parity（找不到 $REF）"; return; }
+  [[ -f "$REF/cases.tsv" ]] || { echo "skip  holdout parity（找不到 ${REF}）"; return; }
   # 基准分数是 Suzu-2.1（Q8_0）的；换了别的权重逐题必然有差异，此项只对 2.1 有意义
   local sha; sha="$( (shasum -a 256 "$MODEL" 2>/dev/null || sha256sum "$MODEL" 2>/dev/null) | cut -c1-16)"
-  if [[ -n "$sha" && "$sha" != e5c8d551ee35d08b ]]; then echo "skip  holdout parity（基准是 Suzu-2.1 的，当前权重 sha256 前缀 $sha）"; return; fi
+  if [[ -n "$sha" && "$sha" != e5c8d551ee35d08b ]]; then echo "skip  holdout parity（基准是 Suzu-2.1 的，当前权重 sha256 前缀 ${sha}）"; return; fi
   local t0=$SECONDS
   "$LUA" parity/run_cases.lua "$B" "$MODEL" "$VOCAB" "$REF/cases.tsv" "$T/parity.tsv" 2 >/dev/null 2>&1
   local line pct

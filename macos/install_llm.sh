@@ -10,7 +10,7 @@ SO="${1:-$REPO/core/build/rime_llm.so}"
 MODEL="${2:-$HOME/Documents/rime-llm-mac-port/models/suzu.gguf}"
 VOCAB="${3:-${MODEL%.gguf}.vocab.txt}"
 
-[[ -f "$SO" ]] || { echo "找不到 $SO，请先按 core/README.md 构建"; exit 1; }
+[[ -f "$SO" ]] || { echo "找不到 ${SO}，请先按 core/README.md 构建"; exit 1; }
 [[ -f "$MODEL" ]] || { echo "找不到模型 $MODEL"; exit 1; }
 [[ -f "$VOCAB" ]] || { echo "找不到词表 $VOCAB"; exit 1; }
 
@@ -18,7 +18,7 @@ VOCAB="${3:-${MODEL%.gguf}.vocab.txt}"
 file "$SO" | grep -q "Mach-O 64-bit bundle arm64" || { echo "$SO 不是 arm64 的 Mach-O bundle"; exit 1; }
 # 词表行数必须等于模型的词表大小（核心加载时也会检查，这里提前给出明确的提示）
 lines=$(wc -l < "$VOCAB" | tr -d ' ')
-[[ "$lines" -ge 8 ]] || { echo "$VOCAB 行数过少（$lines）"; exit 1; }
+[[ "$lines" -ge 8 ]] || { echo "$VOCAB 行数过少（${lines}）"; exit 1; }
 
 mkdir -p "$DEST/lua"
 # 重要：不要原地覆盖已存在的 .so！macOS 会缓存旧文件的代码签名，覆盖后加载会被内核以
