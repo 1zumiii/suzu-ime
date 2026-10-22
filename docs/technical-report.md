@@ -75,7 +75,7 @@ Windows 11，MSVC 14.44，4 线程，机器空闲，120 个词，新旧交替各
 | 按键最坏 | 12.1～13.9 ms | 9.1～9.7 ms |
 | 跳过 | 0% | 0% |
 
-Windows 已切换到与 Mac、手机共用的 `ai_rerank_*` Lua，光标上文用 UIA 或 COM 读取（接入层在 `windows/lua/ai_rerank_win_ctx.lua`），旧的 `llm_filter.lua` 路径保留为回退，部署与回滚脚本见 `windows/deploy_airerank.ps1`。上表为切换前的数据，切换后候选生成开启时的按键延迟见“候选生成”一节的表。空闲卸载后，进程私有内存由 45 MB 降到 3 MB，工作集由 69.5 MB 降到 11.0 MB。
+Windows 已切换到与 Mac、手机共用的 `ai_rerank_*` Lua，光标上文用 UIA 或 COM 读取（接入层是与 Mac、手机共用的 `rime/lua/ai_rerank_app_ctx.lua`），旧的 `llm_filter.lua` 路径保留为回退，部署与回滚脚本见 `windows/deploy_airerank.ps1`。上表为切换前的数据，切换后候选生成开启时的按键延迟见“候选生成”一节的表。空闲卸载后，进程私有内存由 45 MB 降到 3 MB，工作集由 69.5 MB 降到 11.0 MB。
 
 部署脚本 `windows/deploy_core.ps1` 约 4 秒完成替换，回滚演练 1 秒生效，过程中不弹窗。验证中发现并修复了两个问题：
 

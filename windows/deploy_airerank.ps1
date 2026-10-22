@@ -2,12 +2,15 @@
 # with no installer and no dialog, a backup, and a one-command rollback. The old files stay on disk (they are only unused).
 #   install:   powershell -NoProfile -ExecutionPolicy Bypass -File deploy_airerank.ps1 [-Ranker legacy|unified]
 #   rollback:  powershell -NoProfile -ExecutionPolicy Bypass -File deploy_airerank.ps1 -Rollback [-BackupDir <dir>]
+#   glue:      powershell -NoProfile -ExecutionPolicy Bypass -File deploy_airerank.ps1 -SwitchGlue    (already switched to ai_rerank_*: mount the shared
+#              ai_rerank_app_ctx instead of the old Windows-only ai_rerank_win_ctx; backup first, automatic restore on failure)
 # Order: pre-checks -> backup -> quit WeaselServer (weaselserver.exe /q, never a kill) -> copy Lua -> rewrite the three names in
 # rime_ice.custom.yaml -> start WeaselServer through an interactive scheduled task -> WeaselDeployer.exe /deploy while the server runs: the server
 # recompiles the config by itself (about 3 minutes); the settings window the deployer shows is never clicked, it is closed after the wait
 # -> wait until the compiled config has the new names -> health check -> automatic rollback on failure.
 param(
   [switch]$Rollback,
+  [switch]$SwitchGlue,                        # already switched: mount the shared ai_rerank_app_ctx instead of ai_rerank_win_ctx (backup, recompile)
   [switch]$UpdateLua,                         # already switched: only refresh the shared Lua files (backup first, restart the server, no recompile)
   [switch]$ApplyDefaults,                     # already switched: drop explicit ranker/generate lines (unified + generation are the defaults), code_pattern [a-z]{2,}, unified alpha 0.05; recompile
   [double]$Alpha = 0.05,
@@ -15,13 +18,11 @@ param(
   [string]$BackupDir = "",
   [ValidateSet("legacy", "unified")][string]$Ranker = "legacy",
   [string]$LuaSrc = "",                       # suzu-ime rime\lua (shared files); default: ..\rime\lua next to this script
-  [string]$WinLuaSrc = "",                    # suzu-ime windows\lua (Windows-only glue); default: .\lua next to this script
   [string]$WeaselDir = "D:\Applications\Rime\weasel-0.17.4",
   [string]$UserDir = "D:\AppData\Rime"
 )
 $ErrorActionPreference = "Stop"
 if (-not $LuaSrc) { $LuaSrc = Join-Path (Split-Path $PSScriptRoot -Parent) "rime\lua" }
-if (-not $WinLuaSrc) { $WinLuaSrc = Join-Path $PSScriptRoot "lua" }
 $server = Join-Path $WeaselDir "WeaselServer.exe"
 $deployer = Join-Path $WeaselDir "WeaselDeployer.exe"
 $taskName = "SuzuWeaselStart"
@@ -29,8 +30,9 @@ $root = Join-Path $UserDir "backup-airerank"
 $yaml = Join-Path $UserDir "rime_ice.custom.yaml"
 $luaDir = Join-Path $UserDir "lua"
 $shared = "ai_rerank_filter.lua", "ai_rerank_processor.lua", "input_log.lua", "rank_unified.lua", "rerank_json.lua",
-          "personal_pairs.lua", "recent_boost_filter.lua", "corpus_archive.lua", "select_info.lua"
-$winOnly = "ai_rerank_win_ctx.lua"
+          "personal_pairs.lua", "recent_boost_filter.lua", "corpus_archive.lua", "select_info.lua", "ai_rerank_app_ctx.lua"
+$oldGlue = "ai_rerank_win_ctx.lua"             # replaced by the shared ai_rerank_app_ctx.lua (same code); kept in backups, removed from the user dir by hand
+function Is-Switched($t) { ($t.IndexOf('ai_rerank_app_ctx') -ge 0) -or ($t.IndexOf('ai_rerank_win_ctx') -ge 0) }
 function Say($m) { Write-Host ("{0:HH:mm:ss} {1}" -f (Get-Date), $m) }
 function Server-Running { [bool](Get-Process -Name WeaselServer -ErrorAction SilentlyContinue) }
 function Stop-Server {
@@ -93,6 +95,40 @@ if ($Rollback) {
   exit 0
 }
 
+if ($SwitchGlue) {
+  $t = [IO.File]::ReadAllText($yaml, [Text.Encoding]::UTF8)
+  if ($t.IndexOf('ai_rerank_win_ctx') -lt 0) {
+    if ($t.IndexOf('ai_rerank_app_ctx') -ge 0) { Say "already mounts ai_rerank_app_ctx; nothing to do"; exit 0 }
+    throw "config is not switched to ai_rerank yet"
+  }
+  foreach ($f in $shared) { if (-not (Test-Path (Join-Path $LuaSrc $f))) { throw "missing $LuaSrc\$f" } }
+  $bk = Join-Path $root (Get-Date -Format "yyyyMMdd-HHmmss")
+  New-Item -ItemType Directory -Force (Join-Path $bk "lua") | Out-Null
+  Copy-Item $yaml $bk
+  $added = @()
+  foreach ($f in ($shared + $oldGlue)) { $dst = Join-Path $luaDir $f; if (Test-Path $dst) { Copy-Item $dst (Join-Path $bk "lua") } else { $added += $f } }
+  Set-Content -Path (Join-Path $bk "added.txt") -Value $added -Encoding ascii
+  Say "backup written to $bk"
+  try {
+    Stop-Server
+    foreach ($f in $shared) { Copy-Item (Join-Path $LuaSrc $f) (Join-Path $luaDir $f) -Force }
+    $t = [regex]::Replace($t, '\r+\n', "`n")
+    $t = $t.Replace('ai_rerank_win_ctx', 'ai_rerank_app_ctx')
+    [IO.File]::WriteAllText($yaml, $t, (New-Object Text.UTF8Encoding($false)))
+    Recompile "ai_rerank_app_ctx"
+    Start-Sleep -Seconds 3
+    if (-not (Server-Running)) { throw "WeaselServer is not running after start" }
+    Say "glue switched to ai_rerank_app_ctx; the old $oldGlue is still in $luaDir (unused). rollback: restore the files of $bk (yaml and lua) and recompile"
+  } catch {
+    Say "FAILED: $($_.Exception.Message) -- restoring the config and the Lua files"
+    try { Stop-Server } catch {}
+    Restore $bk
+    try { Recompile "ai_rerank_processor" } catch { Say "recompile during restore: $($_.Exception.Message)"; try { if (-not (Server-Running)) { Start-Server } } catch {} }
+    exit 1
+  }
+  exit 0
+}
+
 if ($UpdateLua) {
   foreach ($f in $shared) { if (-not (Test-Path (Join-Path $LuaSrc $f))) { throw "missing $LuaSrc\$f" } }
   $bk = Join-Path $root (Get-Date -Format "yyyyMMdd-HHmmss")
@@ -122,7 +158,7 @@ if ($UpdateLua) {
 
 if ($ApplyDefaults) {
   $t = [IO.File]::ReadAllText($yaml, [Text.Encoding]::UTF8)
-  if ($t.IndexOf('ai_rerank_win_ctx') -lt 0) { throw "config is not switched to ai_rerank yet" }
+  if (-not (Is-Switched $t)) { throw "config is not switched to ai_rerank yet" }
   $bk = Join-Path $root (Get-Date -Format "yyyyMMdd-HHmmss")
   New-Item -ItemType Directory -Force (Join-Path $bk "lua") | Out-Null
   Copy-Item $yaml $bk
@@ -148,7 +184,7 @@ if ($ApplyDefaults) {
 
 if ($SetRanker) {
   $t = [IO.File]::ReadAllText($yaml, [Text.Encoding]::UTF8)
-  if ($t.IndexOf('ai_rerank_win_ctx') -lt 0) { throw "config is not switched to ai_rerank yet; run without -SetRanker first" }
+  if (-not (Is-Switched $t)) { throw "config is not switched to ai_rerank yet; run without -SetRanker first" }
   $t = [regex]::Replace($t, '\r+\n', "`n")
   $t = [regex]::Replace($t, '(?m)^[ \t]*ranker:[ \t]*\w+[ \t]*\n', '')
   if ($Ranker -eq "unified") { $t = ([regex]'(?m)^([ \t]*)max_candidates: 5[ \t]*$').Replace($t, "`$0`n`$1ranker: unified", 1) }
@@ -160,7 +196,6 @@ if ($SetRanker) {
 
 # ---- pre-checks
 foreach ($f in $shared) { if (-not (Test-Path (Join-Path $LuaSrc $f))) { throw "missing $LuaSrc\$f" } }
-foreach ($f in $winOnly) { if (-not (Test-Path (Join-Path $WinLuaSrc $f))) { throw "missing $WinLuaSrc\$f" } }
 $text = [IO.File]::ReadAllText($yaml, [Text.Encoding]::UTF8)
 foreach ($need in 'lua_processor@*llm_processor', 'lua_filter@*llm_filter') { if ($text.IndexOf($need) -lt 0) { throw "rime_ice.custom.yaml does not contain $need (already switched?)" } }
 foreach ($f in "suzu.gguf", "suzu.vocab.txt") { if (-not (Test-Path (Join-Path $UserDir $f))) { throw "missing $UserDir\$f" } }
@@ -170,7 +205,7 @@ $bk = Join-Path $root (Get-Date -Format "yyyyMMdd-HHmmss")
 New-Item -ItemType Directory -Force (Join-Path $bk "lua") | Out-Null
 Copy-Item $yaml $bk
 $added = @()
-foreach ($f in ($shared + $winOnly)) {
+foreach ($f in $shared) {
   $dst = Join-Path $luaDir $f
   if (Test-Path $dst) { Copy-Item $dst (Join-Path $bk "lua") } else { $added += $f }
 }
@@ -181,11 +216,10 @@ Say "backup written to $bk"
 try {
   Stop-Server
   foreach ($f in $shared) { Copy-Item (Join-Path $LuaSrc $f) (Join-Path $luaDir $f) -Force }
-  foreach ($f in $winOnly) { Copy-Item (Join-Path $WinLuaSrc $f) (Join-Path $luaDir $f) -Force }
   $new = $text.Replace('lua_processor@*llm_processor', 'lua_processor@*ai_rerank_processor').Replace('lua_filter@*llm_filter', 'lua_filter@*ai_rerank_filter')
-  # Windows-only glue right behind the shared processor (keys apply in dictionary order: @before 0 first, then @before 1)
-  $new = $new.Replace('  "engine/filters/@after last":', '  "engine/processors/@before 1": lua_processor@*ai_rerank_win_ctx' + "`r`n" + '  "engine/filters/@after last":')
-  if ($new.IndexOf('ai_rerank_win_ctx') -lt 0) { throw "could not insert the glue processor line" }
+  # cursor-context glue right behind the shared processor (keys apply in dictionary order: @before 0 first, then @before 1)
+  $new = $new.Replace('  "engine/filters/@after last":', '  "engine/processors/@before 1": lua_processor@*ai_rerank_app_ctx' + "`r`n" + '  "engine/filters/@after last":')
+  if ($new.IndexOf('ai_rerank_app_ctx') -lt 0) { throw "could not insert the glue processor line" }
   if ($Ranker -eq "unified") { $new = $new -replace '(?m)^(\s*)max_candidates: 5\s*$', "`$0`r`n`$1ranker: unified" }
   [IO.File]::WriteAllText($yaml, $new, (New-Object Text.UTF8Encoding($false)))
   Recompile "ai_rerank_processor"

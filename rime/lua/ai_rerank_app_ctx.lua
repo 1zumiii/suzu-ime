@@ -11,7 +11,7 @@
 -- 位置：engine/processors 里放在 ai_rerank_processor 之后（预解码要以本文件的为准）。
 -- 配置：llm_rerank/context_source: auto（默认）| history（只用上屏历史，排查用）。
 -- 隐私：不写任何文件；读到的文字只在内存里，不记录。
--- Windows 目前仍挂载内容相同的 windows/lua/ai_rerank_win_ctx.lua，部署脚本切换到本文件后删掉那份。
+-- Windows 也挂载本文件（原 Windows 专用的 ai_rerank_win_ctx.lua 与本文件代码相同，已删除）。
 
 -- 上文净化（与旧 llm_processor 相同）：UIA/COM 读到的文字可能夹着路径、代码、网址、界面文字，
 -- 字符级学生模型只在中文句子上训练，这样的上文会把重排带偏。从光标处往回取，遇到明显不是自然语言的字符
