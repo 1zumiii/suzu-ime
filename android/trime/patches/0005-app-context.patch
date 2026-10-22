@@ -1,0 +1,119 @@
+diff --git a/app/proguard-rules.pro b/app/proguard-rules.pro
+index 4f89cdc4..179522e4 100644
+--- a/app/proguard-rules.pro
++++ b/app/proguard-rules.pro
+@@ -11,6 +11,8 @@
+ # Keep JNI interface
+ -keep class com.osfans.trime.core.* { *; }
+ -keep class rikka.shizuku.** { *; }
++# 光标上文的 JNI 入口在 librime_llm.so 里，按类名和方法名查找
++-keep class com.osfans.trime.ime.core.SuzuAppContext { *; }
+ 
+ # remove kotlin null checks
+ -assumenosideeffects class kotlin.jvm.internal.Intrinsics {
+diff --git a/app/src/main/java/com/osfans/trime/ime/core/SuzuAppContext.kt b/app/src/main/java/com/osfans/trime/ime/core/SuzuAppContext.kt
+new file mode 100644
+index 00000000..82f41c16
+--- /dev/null
++++ b/app/src/main/java/com/osfans/trime/ime/core/SuzuAppContext.kt
+@@ -0,0 +1,50 @@
++/*
++ * SPDX-FileCopyrightText: 2026 1zumiii
++ * SPDX-License-Identifier: GPL-3.0-or-later
++ */
++
++package com.osfans.trime.ime.core
++
++import timber.log.Timber
++
++// AI 重排的光标上文：把输入框里光标前的文字交给客户端库 librime_llm.so，Lua 经 llm_context 读取
++// （与 Windows 的 UIA/COM 读法共用 ai_rerank_app_ctx.lua）。只在内存里传递，不写文件、不记日志。
++// 客户端库由 Lua 用 package.loadlib("librime_llm.so") 加载；这里用 System.loadLibrary 加载的是同一个实例。
++object SuzuAppContext {
++    const val MAX_CHARS = 60
++
++    private var last = ""
++    private var blocked = false
++
++    private val loaded =
++        runCatching { System.loadLibrary("rime_llm") }
++            .onFailure { Timber.w("SuzuAppContext: librime_llm.so not loaded") }
++            .isSuccess
++
++    @JvmStatic
++    private external fun nativeSet(utf8: ByteArray)
++
++    private fun push(s: String) {
++        if (!loaded || s == last) return
++        last = s
++        // 传 UTF-8 字节：JNI 的 GetStringUTFChars 给的是改良 UTF-8，emoji 等字符在 Lua 里会成为非法序列
++        runCatching { nativeSet(s.toByteArray(Charsets.UTF_8)) }
++    }
++
++    // 进入一个输入框：密码框、数字框、无痕模式等不读上文
++    fun start(block: Boolean) {
++        blocked = block
++        push("")
++    }
++
++    fun set(text: CharSequence?) {
++        push(if (blocked) "" else (text?.toString() ?: "").takeLast(MAX_CHARS))
++    }
++
++    // 上屏后先把上屏的文字接到旧快照后面，等 onUpdateSelection 再换成输入框里的真实文字
++    fun append(text: String) {
++        if (!blocked) push((last + text).takeLast(MAX_CHARS))
++    }
++
++    fun clear() = push("")
++}
+diff --git a/app/src/main/java/com/osfans/trime/ime/core/TrimeInputMethodService.kt b/app/src/main/java/com/osfans/trime/ime/core/TrimeInputMethodService.kt
+index b573c88f..6f101d7d 100644
+--- a/app/src/main/java/com/osfans/trime/ime/core/TrimeInputMethodService.kt
++++ b/app/src/main/java/com/osfans/trime/ime/core/TrimeInputMethodService.kt
+@@ -490,6 +490,8 @@ open class TrimeInputMethodService : LifecycleInputMethodService() {
+         if (oldSelStart != newSelStart && SystemClock.uptimeMillis() - lastOwnEditAt > 500) {
+             postRimeJob { setRuntimeOption("ai_ctx_reset", true) }
+         }
++        // 没有未上屏编码时（上屏、退格、移动光标之后），重读光标前的文字作 AI 重排的上文；有编码时读到的会含编码
++        if (candidatesStart == candidatesEnd) refreshAppContext()
+         handleCursorUpdate(newSelStart, newSelEnd, candidatesStart, candidatesEnd, cursorUpdateIndex)
+         inputView?.updateSelection(newSelStart, newSelEnd)
+     }
+@@ -599,6 +601,9 @@ open class TrimeInputMethodService : LifecycleInputMethodService() {
+                                 inputVariation == InputType.TYPE_TEXT_VARIATION_WEB_PASSWORD
+                         )
+                 )
++        // 光标上文：上面这些框和应用的无痕模式（IME_FLAG_NO_PERSONALIZED_LEARNING）都不读
++        SuzuAppContext.start(noLog || attribute.imeOptions and EditorInfo.IME_FLAG_NO_PERSONALIZED_LEARNING != 0)
++        refreshAppContext()
+         postRimeJob {
+             setRuntimeOption("ai_no_log", noLog)
+             if (restarting) {
+@@ -661,12 +666,18 @@ open class TrimeInputMethodService : LifecycleInputMethodService() {
+             monitorCursorAnchor(false)
+         }
+         composingText = ""
++        SuzuAppContext.clear()
+         postRimeJob {
+             clearComposition()
+         }
+         InputFeedbackManager.finishInput()
+     }
+ 
++    private fun refreshAppContext() {
++        val ic = currentInputConnection ?: return SuzuAppContext.clear()
++        SuzuAppContext.set(runCatching { ic.getTextBeforeCursor(SuzuAppContext.MAX_CHARS, 0) }.getOrNull())
++    }
++
+     fun commitText(text: String) {
+         val ic = currentInputConnection ?: return
+         lastOwnEditAt = SystemClock.uptimeMillis()
+@@ -678,6 +689,7 @@ open class TrimeInputMethodService : LifecycleInputMethodService() {
+             ic.commitText(text, 1)
+         }
+         lastCommittedText = text
++        SuzuAppContext.append(text)
+         composingText = ""
+         InputFeedbackManager.textCommitSpeak(text)
+     }

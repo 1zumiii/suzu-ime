@@ -1,5 +1,5 @@
 -- ai_rerank_win_ctx.lua 的离线测试（模拟 Rime 环境与 DLL）：上文来源、退回历史、点击与前台切换清历史、编辑键失效快照、预解码用的上文。
--- 用法：lua54 win_ctx_test.lua <windows\lua 目录>
+-- 用法：lua54 win_ctx_test.lua <windows\lua 目录> [模块名，默认 ai_rerank_win_ctx；共用的 ai_rerank_app_ctx 在 rime/lua]
 local dir = arg[1] or "."
 package.path = dir .. "/?.lua;" .. package.path
 local fails = 0
@@ -28,7 +28,7 @@ ctx.commit_notifier = { connect = function(_, f) notifiers[#notifiers + 1] = f e
 local env = { engine = { context = ctx, schema = { config = { get_string = function() return nil end } } } }
 local function key(repr) return { release = function() return false end, repr = function() return repr end } end
 
-local glue = require("ai_rerank_win_ctx")
+local glue = require(arg[2] or "ai_rerank_win_ctx")
 glue.init(env)
 
 -- 1) 第一次按键换上函数，UIA 优先并净化
