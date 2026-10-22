@@ -1,4 +1,4 @@
-// macOS、Linux、Android：不读取任何应用里的文字。鼠须管与同文的每个输入框是独立会话，commit_history 本就不跨会话。
+// Linux 等其他平台：不读取任何应用里的文字，Lua 回落到 commit_history。
 #include "platform/ctxlink.h"
 
 namespace suzu::ctxlink {
