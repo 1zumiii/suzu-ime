@@ -39,7 +39,7 @@ printf 'sdk.dir=%s\ncmake.dir=%s\n' "$HOME/Library/Android/sdk" "$CMAKE_DIR" > "
 
 # 2. 客户端库与守护进程（由 core/ 交叉编译，客户端链接到 Trime 自己的 librime_jni.so 以解析 lua_*）
 JNI_HOST="$W/trime-built/lib/arm64-v8a/librime_jni.so"
-[[ -f "$JNI_HOST" ]] || { echo "缺少 $JNI_HOST：先用未打补丁的构建解出 librime_jni.so（见 README）"; exit 1; }
+[[ -f "$JNI_HOST" ]] || { echo "缺少 ${JNI_HOST}：先用未打补丁的构建解出 librime_jni.so（见 README）"; exit 1; }
 DEPS="${DEPS:-$HOME/Documents/rime-llm-mac-port}"     # llama.cpp 与 Lua 源码所在目录（布局见 core/README.md）
 cmake -S "$REPO/core" -B "$W/build_host" -G Ninja -DCMAKE_TOOLCHAIN_FILE="$NDK/build/cmake/android.toolchain.cmake" \
   -DANDROID_ABI=arm64-v8a -DANDROID_PLATFORM=android-30 -DCMAKE_BUILD_TYPE=Release \
