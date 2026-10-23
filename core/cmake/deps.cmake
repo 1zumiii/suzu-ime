@@ -24,9 +24,11 @@ set(LLAMA_BUILD_TOOLS OFF CACHE BOOL "" FORCE)
 set(LLAMA_BUILD_COMMON OFF CACHE BOOL "" FORCE)
 set(LLAMA_CURL OFF CACHE BOOL "" FORCE)
 if(ANDROID)
-  # 交叉编译不能用 -mcpu=native；目标机为骁龙 8 Gen 2
+  # 交叉编译不能用 -mcpu=native。基线不带 i8mm：没有 i8mm 的手机（约 2022 年以前的芯片）一运行就崩溃，
+  # 而在骁龙 8 Gen 2 上实测，带 i8mm 与否打分延迟没有可见差别
+  set(SUZU_ANDROID_ARM_ARCH "armv8.2-a+dotprod+fp16" CACHE STRING "Android 的指令集")
   set(GGML_NATIVE OFF CACHE BOOL "" FORCE)
-  set(GGML_CPU_ARM_ARCH "armv8.6-a+dotprod+i8mm+fp16" CACHE STRING "" FORCE)
+  set(GGML_CPU_ARM_ARCH "${SUZU_ANDROID_ARM_ARCH}" CACHE STRING "" FORCE)
 elseif(WIN32)
   # 发给别人的 DLL 不能用 GGML_NATIVE：在 Ryzen 9700X 上会编出 AVX-512，
   # 不支持的 CPU 上小狼毫服务进程直接崩溃。基线定为 AVX2（约 2013 年后的 Intel、2015 年后的 AMD），实测慢 3% 到 6%
