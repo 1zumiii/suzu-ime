@@ -692,7 +692,7 @@ local function inner(translation, env)
         if has_model then for i, w in ipairs(result) do mrank[w] = mrank[w] or i end end
         local feats = replay_cands(all, full_pos, n, mrank, has_model and scores or {}, input, okpp and pp.prev() or nil)
         local p = cfg.uni
-        local lam = ru.lam(p, math.min(utf8.len(context) or 0, 30), #input, has_model)
+        local lam = ru.lam(p, math.min(ru.han_count(context), 30), #input, has_model)
         local cand_of = {}
         for i = 1, n do cand_of[feats[i]] = all[i] end
         local skip_tail = add_generated(feats, cand_of, all, n, has_model, best_e, input, context, llm, rp, gen_pre)

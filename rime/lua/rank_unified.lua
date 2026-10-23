@@ -7,7 +7,8 @@
 --   s      模型分；λ 为 0 时不参与。模型在用而某候选无效分（如含词表外字）时，总分为 −∞
 --   dw     词在词典里的权重（词频），核心的 word_freq 给出；单字、四字以上等不在索引里的取 dw_unknown
 --   U      fb·ln(1+会话词频) + pg·ln(1+词对) + cg·ln(1+纠错记忆) + mu·最近用过
---   λ      上文不足 2 个字或不用模型时为 0；随上文字数线性增长，lam_ctx_full 个字时达到 lam_max；
+--   λ      上文不足 2 个汉字或不用模型时为 0；随上文汉字数线性增长，lam_ctx_full 个汉字时达到 lam_max
+--          （只数汉字：英文、代码、终端边框对字符级学生模型都是未知字，算进字数会让模型对着无用上文改首位）；
 --          输入只有 1～2 个字母时再乘 lam_short
 -- 首位门控（top_gate，默认 0 即关闭）：模型把首位换成别的词时，新首位的模型分要比“不用模型时的首位”高出 top_gate
 -- 以上才换，否则不用模型时的首位留在第一位，其余位置照新顺序。真实使用里分差不到 3 时 AI 改首位约一半是错的
@@ -28,6 +29,15 @@ function M.load(sc)
         p[k] = (ok and type(x) == "number" and x == x) and x or v
     end
     return p
+end
+
+-- 上文里的汉字数（基本区与扩展 A），给 M.lam 用；tools/replay.py 的 han_count 与此相同
+function M.han_count(t)
+    local n = 0
+    for _, cp in utf8.codes(t or "") do
+        if (cp >= 0x4E00 and cp <= 0x9FFF) or (cp >= 0x3400 and cp <= 0x4DBF) then n = n + 1 end
+    end
+    return n
 end
 
 function M.lam(p, ctx_chars, input_len, use_model)

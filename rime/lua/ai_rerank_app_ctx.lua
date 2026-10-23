@@ -15,12 +15,23 @@
 
 -- 上文净化（与旧 llm_processor 相同）：UIA/COM 读到的文字可能夹着路径、代码、网址、界面文字，
 -- 字符级学生模型只在中文句子上训练，这样的上文会把重排带偏。从光标处往回取，遇到明显不是自然语言的字符
--- （路径、代码符号）或过长的英文串就截断；截完不足 2 个字按没有上文处理（不重排）。
+-- （路径、代码符号、终端界面的框线字符）或过长的英文串就截断；截完不足 2 个字按没有上文处理（不重排）。
+-- 应用文字截完后少于 2 个汉字时也不用，退回上屏历史：终端（如 Claude Code）里读到的“光标前文字”常是界面边框、
+-- 空格和英文提示，而不是正在打的那句话（Mac 2026-10-23：门控后 54% 的选词遇到这种上文）。
 local BAD_CTX_CHARS = { ["\\"] = true, ["/"] = true, ["_"] = true, ["="] = true, ["<"] = true, [">"] = true,
                         ["{"] = true, ["}"] = true, ["["] = true, ["]"] = true, ["|"] = true, ["`"] = true,
                         ["@"] = true, ["#"] = true, ["^"] = true, ["~"] = true, ["$"] = true, ["%"] = true,
                         ["*"] = true, ["+"] = true, ["&"] = true }
 local MAX_ASCII_RUN = 10
+-- 框线与方块字符（U+2500–U+259F）：终端界面的边框，读到它说明已经出了正在编辑的文字
+local function is_box(cp) return cp >= 0x2500 and cp <= 0x259F end
+local function han_count(t)
+    local n = 0
+    for _, cp in utf8.codes(t) do
+        if (cp >= 0x4E00 and cp <= 0x9FFF) or (cp >= 0x3400 and cp <= 0x4DBF) then n = n + 1 end
+    end
+    return n
+end
 local function clean_ctx(t)
     if not t or t == "" then return "" end
     local chars = {}
@@ -28,7 +39,7 @@ local function clean_ctx(t)
     local out, run, hit_bad = {}, 0, false
     for i = #chars, math.max(1, #chars - 80), -1 do
         local c = chars[i]
-        if BAD_CTX_CHARS[c] then hit_bad = true; break end
+        if BAD_CTX_CHARS[c] or is_box(utf8.codepoint(c)) then hit_bad = true; break end
         if #c == 1 and c:match("[%w]") then
             run = run + 1
             if run > MAX_ASCII_RUN then
@@ -75,7 +86,7 @@ local function ctx_text()
         local ok, t = pcall(llm.llm_context)
         if ok and type(t) == "string" and #t > 0 then
             local c = clean_ctx((t:gsub("%s+", "")))
-            if c ~= "" then return c end
+            if han_count(c) >= 2 then return c end
         end
     end
     return clean_ctx(base_get and base_get() or "")
