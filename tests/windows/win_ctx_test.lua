@@ -26,7 +26,12 @@ function ctx:get_option(n) return options[n] end
 function ctx:set_option(n, v) options[n] = v end
 ctx.commit_notifier = { connect = function(_, f) notifiers[#notifiers + 1] = f end }
 local env = { engine = { context = ctx, schema = { config = { get_string = function() return nil end } } } }
-local function key(repr) return { release = function() return false end, repr = function() return repr end } end
+local function key(repr, mods)
+  mods = mods or {}
+  local code = (#repr == 1) and repr:byte() or 0xff08   -- 单字符键用它的字符码，其余（BackSpace 等）给一个非可打印码
+  return { release = function() return false end, repr = function() return repr end,
+           ctrl = function() return mods.ctrl == true end, alt = function() return mods.alt == true end, keycode = code }
+end
 
 local glue = require(arg[2] or "ai_rerank_app_ctx")
 glue.init(env)
@@ -77,6 +82,22 @@ ctx.input = "ni"
 glue.func(key("BackSpace"), env)
 check("BackSpace with pending input leaves snapshot", state.resets == before + 1)
 ctx.input = ""
+-- 8b) 英文模式下直接打进应用的字符：快照失效（不再有周期读取兜底）；中文模式打字母只是开始编码，不动快照
+before = state.resets
+glue.func(key("h"), env)
+check("letter in Chinese mode leaves snapshot", state.resets == before)
+options.ascii_mode = true
+glue.func(key("h"), env)
+check("letter in English mode resets snapshot", state.resets == before + 1)
+glue.func(key("1"), env)
+check("digit in English mode resets snapshot", state.resets == before + 2)
+glue.func(key("c", { ctrl = true }), env)
+check("Control+c in English mode leaves snapshot", state.resets == before + 2)
+ctx.input = "ni"
+glue.func(key("h"), env)
+check("English mode with pending input leaves snapshot", state.resets == before + 2)
+ctx.input = ""
+options.ascii_mode = nil
 -- 9) 上屏后 kick
 check("commit hook registered", #notifiers == 1)
 notifiers[1]()

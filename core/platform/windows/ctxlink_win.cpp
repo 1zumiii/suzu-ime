@@ -6,7 +6,10 @@
 //   1. 命名空间改为 suzu::ctxlink::upstream，对外只暴露 platform/ctxlink.h 的接口；
 //   2. 日志改用 runtime/log.h（只记应用名与事件，不含任何文字）；
 //   3. 合入本仓库 windows 补丁里的隐私保护：焦点是密码框时不读上文；
-//   4. 快照过期时补一次读取（见下面的 pick），填上 kick 之后 2.5～4 秒的空档。
+//   4. 快照过期时补一次读取（见下面的 pick），填上 kick 之后 2.5～4 秒的空档；
+//   5. 去掉每 2 秒一次的周期读取（2026-10-23）：只在事件发生时读（上屏、编辑键、点击、英文模式直接打字、
+//      按键时快照缺失或过期），快照有效期相应放宽到 10 秒。周期读会定时打断前台应用的界面线程，
+//      还让读取时机与输入无关，容易出难以复现的问题。
 // 注意：这个文件只在 Windows 上编译，本仓库的持续验证环境没有 Windows，改动后须在小狼毫上实测。
 #define NOMINMAX
 #include <windows.h>
@@ -38,8 +41,8 @@ namespace suzu::ctxlink {
 #define log_msg(...) ::suzu::log_event(__VA_ARGS__)
 
 //（探针 scripts/probe_wps_ctx.cpp / probe_uia_ctx.cpp，源码版 llm_filter.cc
-//  comctx 同源实现已真机验证）。单后台线程 STA：2s 周期 + kick（commit
-// 后 / 编辑键 / 点击，kick 唤醒统一延迟 ~50ms 再读）刷新；编辑键/点击
+//  comctx 同源实现已真机验证）。单后台线程 STA：只由 kick 唤醒（commit
+// 后 / 编辑键 / 点击，kick 唤醒统一延迟 ~50ms 再读；按键时补读不延迟），没有周期读；编辑键/点击
 // 经 edit_reset 先失效再 kick（2026-09-12 信号层统一——快照制对非
 // commit 编辑事件原本是盲区，旧快照 2.5s 新鲜窗内冒充真文）。
 // lua 调用线程经 mutex 快照消费，COM/UIA 调用绝不在按键同步路径。
@@ -58,8 +61,10 @@ static std::wstring g_uia_title;               // 发布时的前台标题（消
 static std::mutex g_cv_mu;
 static std::condition_variable g_cv;
 static std::atomic<bool> g_kick{false};
+static std::atomic<bool> g_kick_now{false};    // 按键时补读：应用文字没变，不用等它处理编辑，立即读
 static std::atomic<bool> g_started{false};
-static std::atomic<unsigned long long> g_last_kick_ms{0};  // 打字活跃期判定
+static std::atomic<unsigned long long> g_last_kick_ms{0};  // WPS 附着重试只在最近一次 kick 后的 3 秒内进行
+static const unsigned long long kSnapshotMs = 10000;       // 快照有效期：文字变化都有事件，10 秒只是兜底
 
 // 前台 Office 判定（2026-09-11 扩展演示）：OpusApp 同属 MS Word（开发代号
 // Opus）与 WPS 文字（复刻 Word 窗口体系）；PP12FrameClass 同属 MS
@@ -468,18 +473,22 @@ static void thread_proc() {
                               //  成功即回 2s，开销仅微秒级 ROT 查询）
     for (;;) {
         {
+            // 没有周期读：只等 kick。唯一的定时唤醒是 WPS 附着重试（前台是 Office 但还没附着上，
+            // 文档刚打开时 WPS 才注册 ROT），且只在最近一次 kick 后的 3 秒内，每 500ms 一次
             std::unique_lock<std::mutex> lk(g_cv_mu);
-            g_cv.wait_for(lk, std::chrono::milliseconds(
-                                  g_kick.load() ? 1 : (com_pending ? 500 : 2000)));
+            bool retry = com_pending && GetTickCount64() - g_last_kick_ms.load() < 3000;
+            if (retry)
+                g_cv.wait_for(lk, std::chrono::milliseconds(500), [] { return g_kick.load(); });
+            else
+                g_cv.wait(lk, [] { return g_kick.load(); });
         }
         bool woken_by_kick = g_kick.exchange(false);
+        bool now_read = g_kick_now.exchange(false);
         com_pending = false;
-        // kick 统一延迟 ~50ms 再读（2026-09-12 信号层统一）：编辑键/点击
-        // 的 kick 若立即读会赶在应用处理完退格/点击之前拿到旧文本；commit
-        // kick 的文档更新同量级。下一键远晚于 100ms（人手速度），统一延迟
-        // 无感。连续 kick 在 sleep 期间再次置位 g_kick，下一轮 1ms 即醒，
-        // 自然合并不叠加。
-        if (woken_by_kick) Sleep(50);
+        // 编辑键/点击/上屏的 kick 延迟 ~50ms 再读（2026-09-12 信号层统一）：立即读会赶在应用处理完
+        // 退格/点击之前拿到旧文本。下一键远晚于 100ms（人手速度），延迟无感。连续 kick 在 sleep 期间
+        // 再次置位 g_kick，下一轮即醒，自然合并不叠加。按键时补读（快照缺失或过期）不延迟。
+        if (woken_by_kick && !now_read) Sleep(50);
 
         // COM：前台 Office 才读（读端门控省后台空转；切标签/切窗由发布
         // 标题指纹在消费端即刻拦截，kick/周期兜住换新）
@@ -590,13 +599,8 @@ static void thread_proc() {
             com_pending = (fg != OfficeKind::NONE) && !app_w && !app_p;
         }
 
-        // UIA：读当前焦点元素（不限前台是谁——消费时校验进程一致）。
-        // 打字活跃期（最近 3s 内有 kick）暂停周期读：动态内容应用（终端
-        // 状态行时间戳等）的周期刷新令快照文本抖动 → prepare/score 双双
-        // 失配 + 推理锁竞争（真机实测 150-215ms 长尾，2026-09-11）；
-        // kick 读已覆盖上屏后的更新需求，打字期间快照保持稳定。
-        if (uia_ok && (woken_by_kick ||
-                       GetTickCount64() - g_last_kick_ms.load() > 3000)) {
+        // UIA：读当前焦点元素（不限前台是谁——消费时校验进程一致），只在 kick 时读（WPS 附着重试的唤醒不读 UIA）。
+        if (uia_ok && woken_by_kick) {
             std::string txt;
             DWORD pid = 0;
             if (uia_read(uia, txt, pid)) {
@@ -624,9 +628,13 @@ static void ensure_started() {
     if (g_started.compare_exchange_strong(expect, true))
         std::thread(thread_proc).detach();
 }
-static void kick() {
+static void kick(bool now = false) {
     g_last_kick_ms.store(GetTickCount64());
-    g_kick.store(true);
+    if (now) g_kick_now.store(true);
+    {
+        std::lock_guard<std::mutex> lk(g_cv_mu);   // 与 wait 的谓词配对，避免置位与等待之间的唤醒丢失
+        g_kick.store(true);
+    }
     g_cv.notify_all();
 }
 
@@ -663,7 +671,7 @@ static bool pick(std::string & text, const char *& src) {
         bool title_ok =
             (!fh || GetWindowTextW(fh, t, 256) <= 0);
         std::lock_guard<std::mutex> lk(g_mu);
-        if (g_com_stamp && now - g_com_stamp <= 2500 && !g_com_text.empty() &&
+        if (g_com_stamp && now - g_com_stamp <= kSnapshotMs && !g_com_text.empty() &&
             (title_ok || g_com_title.empty() || g_com_title == t)) {
             text = g_com_text;
             src = "com";
@@ -680,7 +688,7 @@ static bool pick(std::string & text, const char *& src) {
         HWND fh = GetForegroundWindow();
         bool title_ok = (!fh || GetWindowTextW(fh, t, 256) <= 0);
         std::lock_guard<std::mutex> lk(g_mu);
-        if (g_uia_stamp && now - g_uia_stamp <= 2500 && !g_uia_text.empty() &&
+        if (g_uia_stamp && now - g_uia_stamp <= kSnapshotMs && !g_uia_text.empty() &&
             g_uia_pid != 0 && g_uia_pid == fg &&
             (title_ok || g_uia_title.empty() || g_uia_title == t)) {
             text = g_uia_text;
@@ -697,10 +705,8 @@ static bool pick(std::string & text, const char *& src) {
 
 // ---------------------------------------------------------------- 对外接口
 
-// 快照过期时补一次读取（每秒最多一次）。原项目的快照只在 2.5 秒内有效，而“最近 3 秒内有过 kick”时后台线程暂停
-// 每 2 秒一次的周期读取，所以每次 kick（上屏、编辑键、点击）之后约 2.5～4 秒之间没有可用的快照：这段时间里开始打字，
-// 拿不到光标上文，只能回落到上屏历史；在新打开的窗口里历史为空，于是不重排。自动化测试“定位光标后等 2.6 秒再打字”
-// 正好落在这个空档里。补读之后，下一次按键（约 60 ms 后）就能拿到新快照。
+// 按键时快照缺失或过期（新窗口、停顿超过 10 秒、编辑后快照已失效）：立即补读一次（每秒最多一次），这一键回落到上屏历史，
+// 下一键（一般 100 ms 以后）就能拿到新快照。没有周期读之后，这是“停顿后第一个键”拿到上文的唯一途径。
 bool pick(std::string & text, const char *& source) {
     upstream::ensure_started();
     if (upstream::pick(text, source)) return true;
@@ -708,7 +714,7 @@ bool pick(std::string & text, const char *& source) {
     unsigned long long now = GetTickCount64();
     if (now - last_refresh.load() >= 1000) {
         last_refresh.store(now);
-        upstream::kick();
+        upstream::kick(true);
     }
     return false;
 }
