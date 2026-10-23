@@ -110,10 +110,10 @@ index 0867126c..ae9e5194 100644
                  onSwipe = swipeDownHideKeyboardCallback
 diff --git a/app/src/main/java/com/osfans/trime/ime/bar/ui/AiDaemonLauncher.kt b/app/src/main/java/com/osfans/trime/ime/bar/ui/AiDaemonLauncher.kt
 new file mode 100644
-index 00000000..756ff399
+index 00000000..2a63bdde
 --- /dev/null
 +++ b/app/src/main/java/com/osfans/trime/ime/bar/ui/AiDaemonLauncher.kt
-@@ -0,0 +1,140 @@
+@@ -0,0 +1,133 @@
 +/*
 + * SPDX-FileCopyrightText: 2026 1zumiii
 + * SPDX-License-Identifier: GPL-3.0-or-later
@@ -132,7 +132,7 @@ index 00000000..756ff399
 +/**
 + * 通过 Shizuku 在手机上直接拉起 AI 重排守护进程 rimellmd（不依赖电脑）。
 + * 二进制随 APK 打包为 librimellmd.so；这里以 shell 身份把它复制到 /data/local/tmp/rimellm/ 再启动。
-+ * 模型默认复用 Trime 用户目录里的 Qwen3.5-0.8B-Q4_K_M.gguf（第一次启动时复制一份到 /data/local/tmp/rimellm/model.gguf）。
++ * 模型只用 Suzu：Trime 用户目录里的 suzu.gguf 与 suzu.vocab.txt，每次启动复制到 /data/local/tmp/rimellm/；缺任一文件就不启动（不再回退 Qwen）。
 + */
 +object AiDaemonLauncher {
 +    enum class Availability { SHIZUKU_NOT_RUNNING, NEEDS_PERMISSION, READY }
@@ -144,7 +144,6 @@ index 00000000..756ff399
 +    }
 +
 +    private const val REQUEST_CODE = 7301
-+    private const val MODEL_NAME = "Qwen3.5-0.8B-Q4_K_M.gguf"
 +    private const val STUDENT_MODEL = "suzu.gguf"          // 放在 Trime 用户目录里即启用 Suzu 学生模型（需配套词表）
 +    private const val STUDENT_VOCAB = "suzu.vocab.txt"
 +    private val main = Handler(Looper.getMainLooper())
@@ -192,16 +191,10 @@ index 00000000..756ff399
 +        mkdir -p ${'$'}D || exit 11
 +        if pidof rimellmd >/dev/null 2>&1; then echo RUNNING; exit 0; fi
 +        cp "$libDir/librimellmd.so" ${'$'}D/rimellmd.new && chmod 755 ${'$'}D/rimellmd.new && mv -f ${'$'}D/rimellmd.new ${'$'}D/rimellmd || { echo COPY_FAIL; exit 12; }
-+        if [ -f "$rimeDir/$STUDENT_MODEL" ] && [ -f "$rimeDir/$STUDENT_VOCAB" ]; then
-+          cp "$rimeDir/$STUDENT_MODEL" ${'$'}D/suzu.gguf && cp "$rimeDir/$STUDENT_VOCAB" ${'$'}D/suzu.vocab.txt || { echo MODEL_COPY_FAIL; exit 14; }
-+          ARGS="--model ${'$'}D/suzu.gguf --student-vocab ${'$'}D/suzu.vocab.txt --n-seq-max 10 --gen-beam 10"
-+        else
-+          if [ ! -f ${'$'}D/model.gguf ]; then
-+            [ -f "$rimeDir/$MODEL_NAME" ] || { echo NO_MODEL; exit 13; }
-+            cp "$rimeDir/$MODEL_NAME" ${'$'}D/model.gguf || { echo MODEL_COPY_FAIL; exit 14; }
-+          fi
-+          ARGS="--model ${'$'}D/model.gguf --n-ctx 96 --n-seq-max 4"
-+        fi
++        [ -f "$rimeDir/$STUDENT_MODEL" ] && [ -f "$rimeDir/$STUDENT_VOCAB" ] || { echo NO_MODEL; exit 13; }
++        cp "$rimeDir/$STUDENT_MODEL" ${'$'}D/suzu.gguf && cp "$rimeDir/$STUDENT_VOCAB" ${'$'}D/suzu.vocab.txt || { echo MODEL_COPY_FAIL; exit 14; }
++        rm -f ${'$'}D/model.gguf                              # 旧版回退用的 Qwen 副本，不再使用
++        ARGS="--model ${'$'}D/suzu.gguf --student-vocab ${'$'}D/suzu.vocab.txt --n-seq-max 10 --gen-beam 10"
 +        cd ${'$'}D
 +        ( setsid nohup ./rimellmd --supervise ${'$'}ARGS --rime-dir "$rimeDir" --log-dir ${'$'}D \
 +            --port 17920 --threads 2 --idle-sec 0 >> ${'$'}D/daemon.log 2>&1 < /dev/null & ) > /dev/null 2>&1 < /dev/null
@@ -237,7 +230,7 @@ index 00000000..756ff399
 +                            out.contains("RUNNING") -> Result.AlreadyRunning
 +                            out.contains("STARTED") -> Result.Started
 +                            out.contains("NO_MODEL") ->
-+                                Result.Failed("找不到模型：把 $MODEL_NAME 放进 Trime 的用户目录")
++                                Result.Failed("找不到模型：把 $STUDENT_MODEL 和 $STUDENT_VOCAB 放进 Trime 的用户目录")
 +                            else -> Result.Failed("退出码 $code ${(out + " " + err).trim().take(120)}")
 +                        }
 +                    }
@@ -256,7 +249,7 @@ index 00000000..756ff399
 +}
 diff --git a/app/src/main/java/com/osfans/trime/ime/bar/ui/AiStatusButton.kt b/app/src/main/java/com/osfans/trime/ime/bar/ui/AiStatusButton.kt
 new file mode 100644
-index 00000000..3034b0cb
+index 00000000..d0211c5f
 --- /dev/null
 +++ b/app/src/main/java/com/osfans/trime/ime/bar/ui/AiStatusButton.kt
 @@ -0,0 +1,243 @@
@@ -482,7 +475,7 @@ index 00000000..3034b0cb
 +            loaded ->
 +                show(
 +                    GREEN,
-+                    "AI 重排：在线（${if (j.optBoolean("student")) modelName() else "Qwen 0.8B"}）\n${j.optLong("rss_kb") / 1024} MB·均${"%.0f".format(j.optDouble("avg_score_ms"))} ms·" +
++                    "AI 重排：在线（${modelName()}）\n${j.optLong("rss_kb") / 1024} MB·均${"%.0f".format(j.optDouble("avg_score_ms"))} ms·" +
 +                        "跳${j.optLong("skipped")}错${j.optLong("errors")}$history",
 +                )
 +            else ->
