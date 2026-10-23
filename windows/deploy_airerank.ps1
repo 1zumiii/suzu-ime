@@ -15,6 +15,8 @@ param(
   [switch]$ApplyDefaults,                     # already switched: drop explicit ranker/generate lines (unified + generation are the defaults), code_pattern [a-z]{2,}, unified alpha 0.05; recompile
   [double]$Alpha = 0.05,
   [switch]$SetRanker,                         # only change llm_rerank/ranker (to -Ranker) in the already switched config, then recompile
+  [switch]$SetTopGate,                        # only set llm_rerank/unified/top_gate (to -TopGate; 0 removes it) in the already switched config; backup, recompile
+  [double]$TopGate = 2.5,
   [string]$BackupDir = "",
   [ValidateSet("legacy", "unified")][string]$Ranker = "legacy",
   [string]$LuaSrc = "",                       # suzu-ime rime\lua (shared files); default: ..\rime\lua next to this script
@@ -165,14 +167,44 @@ if ($ApplyDefaults) {
   Set-Content -Path (Join-Path $bk "added.txt") -Value @() -Encoding ascii
   Say "backup written to $bk"
   $t = [regex]::Replace($t, '\r+\n', "`n")   # the file may hold CR CR LF from earlier edits
+  $keepGate = [regex]::Match($t, '(?m)^[ \t]*top_gate:[ \t]*([\d.]+)')   # the unified block is rebuilt below: keep an existing top gate
   $t = [regex]::Replace($t, '(?m)^[ \t]*(ranker|generate):[ \t]*\S+[ \t]*\n', '')
   $t = [regex]::Replace($t, "(?m)^([ \t]*)code_pattern:[ \t]*'[^']*'", "`$1code_pattern: '[a-z]{2,}'")
   $t = [regex]::Replace($t, '(?m)^[ \t]*unified:[ \t]*\n([ \t]+\w+:[^\n]*\n)*', '')
   $t = ([regex]'(?m)^([ \t]*)max_candidates: 5[ \t]*$').Replace($t, "`$0`n`$1unified:`n`$1  alpha: $Alpha", 1)
+  if ($keepGate.Success) { $t = ([regex]'(?m)^([ \t]*)alpha: [\d.]+[ \t]*$').Replace($t, "`$0`n`$1top_gate: $($keepGate.Groups[1].Value)", 1) }
   try {
     [IO.File]::WriteAllText($yaml, $t, (New-Object Text.UTF8Encoding($false)))
     Recompile "alpha: $Alpha"
     Say "defaults applied (alpha $Alpha, code_pattern [a-z]{2,}). rollback: copy $bk\rime_ice.custom.yaml back and run -SetRanker -Ranker unified"
+  } catch {
+    Say "FAILED: $($_.Exception.Message) -- restoring the config"
+    Copy-Item (Join-Path $bk "rime_ice.custom.yaml") $yaml -Force
+    try { Recompile "ai_rerank_processor" } catch { Say "recompile during restore: $($_.Exception.Message)" }
+    exit 1
+  }
+  exit 0
+}
+
+if ($SetTopGate) {
+  # top gate of the unified ranker (rank_unified.lua): the model may only replace Rime's first candidate when the new first
+  # candidate's model score beats the old one by at least this much; same value as Mac and the phone
+  $t = [IO.File]::ReadAllText($yaml, [Text.Encoding]::UTF8)
+  if (-not (Is-Switched $t)) { throw "config is not switched to ai_rerank yet" }
+  if ($t -notmatch '(?m)^[ \t]*unified:[ \t]*\r?\n[ \t]+alpha:') { throw "no llm_rerank/unified block with alpha (run -ApplyDefaults first)" }
+  $bk = Join-Path $root (Get-Date -Format "yyyyMMdd-HHmmss")
+  New-Item -ItemType Directory -Force (Join-Path $bk "lua") | Out-Null
+  Copy-Item $yaml $bk
+  Set-Content -Path (Join-Path $bk "added.txt") -Value @() -Encoding ascii
+  Say "backup written to $bk"
+  $t = [regex]::Replace($t, '\r+\n', "`n")
+  $t = [regex]::Replace($t, '(?m)^[ \t]*top_gate:[^\n]*\n', '')
+  if ($TopGate -gt 0) { $t = ([regex]'(?m)^([ \t]*)alpha: [\d.]+[^\n]*$').Replace($t, "`$0`n`$1top_gate: $TopGate", 1) }
+  $marker = if ($TopGate -gt 0) { "top_gate: $TopGate" } else { "ai_rerank_processor" }
+  try {
+    [IO.File]::WriteAllText($yaml, $t, (New-Object Text.UTF8Encoding($false)))
+    Recompile $marker
+    Say "top gate set to $TopGate (compiled: $(Compiled-Has 'top_gate')). rollback: copy $bk\rime_ice.custom.yaml back and run -SetTopGate -TopGate 0"
   } catch {
     Say "FAILED: $($_.Exception.Message) -- restoring the config"
     Copy-Item (Join-Path $bk "rime_ice.custom.yaml") $yaml -Force
