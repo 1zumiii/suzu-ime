@@ -123,6 +123,8 @@ cmake --build core/build --target rime_llm
 macos/install_llm.sh core/build/rime_llm.so <suzu.gguf> <suzu.vocab.txt>
 ```
 
+指令集基线固定为 M1（`armv8.4-a+dotprod+fp16`），不用 `-mcpu=native`，这样在新芯片上编出的模块也能在 M1 上运行。在 M1 Pro 上与 `-mcpu=native` 对比，延迟没有差别。
+
 安装脚本先删除旧的 `.so` 再复制并重新签名。原地覆盖会让 macOS 缓存的代码签名失效，鼠须管加载时会被系统终止，原因见 [macos/README.md](../macos/README.md)。
 
 ### Windows（小狼毫）
@@ -136,7 +138,7 @@ cmake --build core\build --target rime_llm
 
 产物为 `core\build\rime_llm.dll`。小狼毫不导出 `lua_*`，因此与原项目做法相同，Lua 源码编进 DLL。光标上文读取的代码在 `platform/windows/ctxlink_win.cpp`，移自原项目。Lua 脚本使用原项目的 `llm_filter.lua`、`llm_processor.lua` 加本仓库的 [windows/rime-llm-rerank-windows.patch](../windows/rime-llm-rerank-windows.patch)。
 
-**Windows 构建未在本仓库的验证环境中编译过**，首次构建后须在小狼毫上确认：模块能加载，`llm_context()` 能读到光标前文字，重排生效。
+指令集基线固定为 AVX2（另开 FMA、F16C，关闭 AVX-512），不用 `GGML_NATIVE`。原因是在支持 AVX-512 的 CPU 上用 `GGML_NATIVE` 编出的 DLL 会带 AVX-512 指令，在不支持的 CPU 上，小狼毫服务进程一加载就崩溃，表现为每打开一个窗口就卡死一个。AVX2 覆盖约 2013 年以后的 Intel 与 2015 年以后的 AMD CPU，在 Ryzen 9700X 上比 `GGML_NATIVE` 慢 3% 到 6%。发布前可以用 `dumpbin /disasm rime_llm.dll | findstr zmm` 检查，不应有输出。
 
 ### Android（同文输入法）
 
