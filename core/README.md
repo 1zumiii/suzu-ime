@@ -152,7 +152,7 @@ cmake -G Ninja -S core -B build_android \
 cmake --build build_android --target rimellmd rime_llm_client
 ```
 
-交叉编译固定使用 `armv8.6-a+dotprod+i8mm+fp16`（骁龙 8 Gen 2）。守护进程的命令行参数、令牌文件与状态文件的旧字段与旧版相同，改版 Trime 的启动脚本与 AI 徽标无需改动。
+交叉编译默认使用 `armv8.2-a+dotprod+fp16`（约 2018 年以后的 arm64 芯片），可用 `-DSUZU_ANDROID_ARM_ARCH=...` 改。不加 i8mm：没有 i8mm 的手机（约 2022 年以前的芯片）运行带 i8mm 的守护进程会直接崩溃，而在骁龙 8 Gen 2 上实测，带不带 i8mm 打分延迟没有可见差别。守护进程的命令行参数、令牌文件与状态文件的旧字段与旧版相同，改版 Trime 的启动脚本与 AI 徽标无需改动。
 
 ## 发布
 
