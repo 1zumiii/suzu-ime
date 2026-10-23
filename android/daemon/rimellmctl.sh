@@ -28,7 +28,7 @@ sh_() { "$ADB" shell "$@" | tr -d '\r'; }
 pids() { sh_ "pidof rimellmd" || true; }
 
 cmd_deploy() {
-  [[ -f "$BIN" ]] || { echo "找不到 $BIN（先构建 rimellmd）"; exit 1; }
+  [[ -f "$BIN" ]] || { echo "找不到 ${BIN}（先构建 rimellmd）"; exit 1; }
   sh_ "mkdir -p $DIR"
   # 二进制：先停掉再替换（运行中的可执行文件不能被覆盖）
   [[ -n "$(pids)" ]] && cmd_stop
