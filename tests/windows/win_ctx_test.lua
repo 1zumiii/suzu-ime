@@ -6,12 +6,13 @@ local fails = 0
 local function check(name, cond) if not cond then fails = fails + 1; print("FAIL " .. name) else print("ok   " .. name) end end
 
 -- 模拟 DLL
-local state = { text = "今天天气很", click = false, fg = false, resets = 0, kicks = 0, prepared = {}, ready = true }
+local state = { text = "今天天气很", click = false, fg = false, resets = 0, invalidates = 0, kicks = 0, picks = 0, prepared = {}, ready = true }
 local llm = {
-  llm_context = function() if state.text then return state.text, "uia" end end,
+  llm_context = function() state.picks = state.picks + 1; if state.text then return state.text, "uia" end end,
   click_happened = function() local c = state.click; state.click = false; return c end,
   fg_changed = function() local c = state.fg; state.fg = false; return c end,
   edit_reset_context = function() state.resets = state.resets + 1 end,
+  invalidate_context = function() state.invalidates = state.invalidates + 1 end,
   kick_context = function() state.kicks = state.kicks + 1 end,
   prepare = function(c) state.prepared[#state.prepared + 1] = c; return true end,
   is_ready = function() return state.ready end,
@@ -82,22 +83,41 @@ ctx.input = "ni"
 glue.func(key("BackSpace"), env)
 check("BackSpace with pending input leaves snapshot", state.resets == before + 1)
 ctx.input = ""
--- 8b) 英文模式下直接打进应用的字符：快照失效（不再有周期读取兜底）；中文模式打字母只是开始编码，不动快照
+-- 8b) 英文模式下直接打进应用的字符：快照只作废、不重读（不触发读取），也不取上文做预解码；中文模式打字母只是开始编码，不动快照
 before = state.resets
 glue.func(key("h"), env)
-check("letter in Chinese mode leaves snapshot", state.resets == before)
+check("letter in Chinese mode leaves snapshot", state.resets == before and state.invalidates == 0)
 options.ascii_mode = true
+local picks0, prep0 = state.picks, #state.prepared
+state.text = "英文模式里的上文"
 glue.func(key("h"), env)
-check("letter in English mode resets snapshot", state.resets == before + 1)
+check("letter in English mode invalidates snapshot", state.invalidates == 1)
+check("letter in English mode does not trigger a reread", state.resets == before)
+check("English mode does not read context", state.picks == picks0)
+check("English mode does not prepare", #state.prepared == prep0)
 glue.func(key("1"), env)
-check("digit in English mode resets snapshot", state.resets == before + 2)
+check("digit in English mode invalidates snapshot", state.invalidates == 2 and state.resets == before)
 glue.func(key("c", { ctrl = true }), env)
-check("Control+c in English mode leaves snapshot", state.resets == before + 2)
+check("Control+c in English mode leaves snapshot", state.invalidates == 2)
 ctx.input = "ni"
 glue.func(key("h"), env)
-check("English mode with pending input leaves snapshot", state.resets == before + 2)
+check("English mode with pending input leaves snapshot", state.invalidates == 2)
 ctx.input = ""
+-- 编辑键在英文模式下照常失效并重读（退格等由应用处理，要等它处理完再读）
+glue.func(key("BackSpace"), env)
+check("BackSpace in English mode still resets", state.resets == before + 1)
+-- 旧核心没有 invalidate_context：退回 edit_reset_context
+local inv = llm.invalidate_context
+llm.invalidate_context = nil
+glue.func(key("h"), env)
+check("old core falls back to edit_reset in English mode", state.resets == before + 2)
+llm.invalidate_context = inv
 options.ascii_mode = nil
+-- 切回中文后第一个键照常取上文并预解码
+glue.func(key("n"), env)
+check("back in Chinese mode: context read again", state.picks > picks0)
+check("back in Chinese mode: prepare uses app text", state.prepared[#state.prepared] == "英文模式里的上文")
+state.text = "今天天气很"
 -- 9) 上屏后 kick
 check("commit hook registered", #notifiers == 1)
 notifiers[1]()

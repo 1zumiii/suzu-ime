@@ -43,6 +43,7 @@ bool snap_ok = false;          // 快照是否可用（读失败、作废后为 
 long long snap_at = 0;
 bool want_read = false;        // 有读取请求
 long long read_not_before = 0; // 请求的最早执行时间（kick、edit_reset 要等应用处理完）
+unsigned epoch = 0;            // 作废计数：edit_reset、invalidate 各加 1，读的期间变了就丢弃这次结果
 std::once_flag started;
 
 bool trusted() {
@@ -154,12 +155,14 @@ void worker() {
             if (read_not_before > now_ms()) continue;   // 等待期间又来了新的延迟请求
         }
         want_read = false;
+        unsigned ep = epoch;
         lk.unlock();
         std::string t;
         bool ok = read_once(t);
         long long at = now_ms();
         lk.lock();
         if (want_read && read_not_before > at) continue;   // 读的期间有新的 kick 或 edit_reset，这次结果作废
+        if (epoch != ep) continue;                          // 读的期间快照被作废（如英文模式直接打字），不发布旧文字
         snap = ok ? t : std::string();
         snap_ok = ok;
         snap_at = at;
@@ -195,11 +198,14 @@ bool pick(std::string & text, const char *& source) {
 
 void kick() { request(kSettleMs); }
 
+void invalidate() {
+    std::lock_guard<std::mutex> lk(mu);
+    snap_ok = false;
+    epoch++;
+}
+
 void edit_reset() {
-    {
-        std::lock_guard<std::mutex> lk(mu);
-        snap_ok = false;
-    }
+    invalidate();
     request(kSettleMs);
 }
 

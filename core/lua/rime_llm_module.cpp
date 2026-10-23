@@ -111,6 +111,7 @@ int l_llm_context(lua_State * L) {
 }
 int l_kick_context(lua_State *) { suzu::ctxlink::kick(); return 0; }
 int l_edit_reset_context(lua_State *) { suzu::ctxlink::edit_reset(); return 0; }
+int l_invalidate_context(lua_State *) { suzu::ctxlink::invalidate(); return 0; }
 int l_fg_changed(lua_State * L) { lua_pushboolean(L, suzu::ctxlink::fg_changed() ? 1 : 0); return 1; }
 int l_click_happened(lua_State * L) { lua_pushboolean(L, suzu::ctxlink::click_happened() ? 1 : 0); return 1; }
 
@@ -195,7 +196,7 @@ SUZU_EXPORT int luaopen_rime_llm(lua_State * L) {
         {"score", l_score}, {"generate", l_generate}, {"get_scores", l_get_scores}, {"word_freq", l_word_freq}, {"prepare", l_prepare}, {"is_ready", l_is_ready},
         {"status", l_status}, {"touch", l_touch}, {"now_ms", sl::l_now_ms}, {"sleep_ms", sl::l_sleep_ms},
         {"match_code", sl::l_match_code}, {"llm_context", l_llm_context}, {"kick_context", l_kick_context},
-        {"edit_reset_context", l_edit_reset_context}, {"fg_changed", l_fg_changed},
+        {"edit_reset_context", l_edit_reset_context}, {"invalidate_context", l_invalidate_context}, {"fg_changed", l_fg_changed},
         {"click_happened", l_click_happened},
     };
     sl::set_functions(L, fns, sizeof fns / sizeof fns[0]);

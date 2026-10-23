@@ -128,11 +128,17 @@ local function processor(key, env)
     if ctx.input == "" and is_edit_key(key:repr()) and llm.edit_reset_context then
         pcall(llm.edit_reset_context)
     end
-    -- 英文模式下直接打进应用的字符不经过上屏，光标前的文字变了却没有 commit 通知：同样让快照失效并重读。
+    -- 英文模式下直接打进应用的字符不经过上屏，光标前的文字变了却没有 commit 通知：让快照失效。
+    -- 只作废、不重读：连续打英文时文字一直在变，每键都读会频繁打断前台应用（去掉周期读就是为了避免这一点）；
+    -- 切回中文后第一个键由 llm_context 补读，那时应用里的文字已经不再变。旧核心没有 invalidate_context，退回 edit_reset。
+    -- 英文模式也不做下面的预解码：没有中文要打，而预解码要取上文，会触发补读。
     -- 中文模式下打字母只是开始输入编码，应用里的文字没变，不算（Windows 不再周期读取，这类变化只能靠事件发现）
-    if ctx.input == "" and ctx:get_option("ascii_mode") and not key:ctrl() and not key:alt()
-       and key.keycode >= 0x20 and key.keycode < 0x7f and llm.edit_reset_context then
-        pcall(llm.edit_reset_context)
+    if ctx:get_option("ascii_mode") then
+        if ctx.input == "" and not key:ctrl() and not key:alt() and key.keycode >= 0x20 and key.keycode < 0x7f then
+            local f = llm.invalidate_context or llm.edit_reset_context
+            if f then pcall(f) end
+        end
+        return 2
     end
 
     -- 预解码以 filter 实际会用的上文为准

@@ -11,6 +11,7 @@ namespace suzu::ctxlink {
 bool pick(std::string & text, const char *& source);
 void kick();         // 上屏后：立刻刷新快照
 void edit_reset();   // 编辑键或点击后：快照作废并延迟重读
+void invalidate();   // 快照作废但不重读（英文模式直接打字：文字一直在变，等下次 pick 时再读）
 bool fg_changed();   // 前台窗口自上次询问以来是否切换过
 bool click_happened();   // 自上次询问以来是否有鼠标点击
 
