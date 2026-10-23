@@ -6,8 +6,8 @@
 -- 上文：本会话内上屏的词（由 ai_rerank_processor 维护），不读取任何应用里的文字。
 -- 隐私：不写任何含输入内容的文件。debug_latency: true 时只写 输入长度|毫秒|推理次数。
 -- 配置（方案里的 llm_rerank 节点）：
---   code_pattern            触发的编码正则（全串匹配），默认 [a-z]{3,}（避开单/双字母，保留置顶词与简拼）
---   max_candidates          参与重排的候选数，默认 5
+--   code_pattern            触发的编码正则（全串匹配），默认 [a-z]{2,}（2 个字母起，两字母简拼如 zm 也重排；单个字母不重排，避开置顶词）
+--   max_candidates          参与重排的候选数，默认 10（单字等同音词多的输入，正确的字常在词库第 6 到 8 位：5 个时约 77% 进得来，8 个约 95%）
 --   generate                候选生成（只在 ranker: unified 下），默认 true；核心没有生成接口或没有词典时自动不生成；gen_k 每次生成的词数，默认 10；
 --                           gen_beam 核心每层展开的节点数（processor 读取），默认 20。见 add_generated
 --   max_tokens              上文 token 数，默认 10
@@ -30,8 +30,8 @@
 --   model_path / cpu_cores  见 ai_rerank_processor
 
 local cfg = {
-    code_pattern = '[a-z]{3,}',
-    max_candidates = 5,
+    code_pattern = '[a-z]{2,}',
+    max_candidates = 10,
     expected_length_weight = 0,
     freq_beta = 1.5,
     pair_gamma = 1.5,

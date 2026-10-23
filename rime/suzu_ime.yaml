@@ -1,0 +1,27 @@
+# Suzu AI 重排的方案补丁：把 rime/lua 里的组件接到任意拼音方案上。
+# 用法：把本文件和 rime/lua/ 下的 Lua 文件放进 Rime 用户目录（Lua 放在 lua/ 子目录），
+# 然后在要用的方案的 <方案名>.custom.yaml 里加：
+#
+#   patch:
+#     __include: suzu_ime:/patch
+#
+# 重新部署即可。custom.yaml 的 patch 下原有的其他项照常写在同一层，不冲突。
+# 注意写法：放在 patch 下用 __include。写成 patch 下的 __patch 会把方案原有的 processors、filters、switches
+# 整个换掉（输入法会坏），写在文件顶层则不生效（2026-10-23 用 rime_deployer 实测）。调好的参数（统一排序 alpha 0.05、首位门控 2.5、2 个字母起重排、候选 10 个）已是 Lua 的默认值，
+# 这里不必再写；要改时在同一个 custom.yaml 的 patch 下写 llm_rerank/... 覆盖（可用的键见 ai_rerank_filter.lua 开头）。
+# 模型与推理核心（rime_llm.so / rime_llm.dll，手机为守护进程）的安装见各平台 README。
+
+patch:
+  # processor 放最前；光标上文接入层紧跟其后（"@before 0" 先生效，"@before 1" 插在它后面）
+  "engine/processors/@before 0": lua_processor@*ai_rerank_processor
+  "engine/processors/@before 1": lua_processor@*ai_rerank_app_ctx
+  # filter 放最后（去重之后）
+  "engine/filters/@after last": lua_filter@*ai_rerank_filter
+  # 两个开关一次追加（同名键写两次会被 YAML 覆盖）。reset: 1 表示默认开：
+  # 鼠须管的开关状态每个输入框各管各的，新输入框回到默认值
+  "switches/+":
+    - { name: ai_rerank, reset: 1, states: [ "AI 关", "AI 开" ], abbrev: [ "AI关", "AI开" ] }
+    - { name: ai_stage2, reset: 1, states: [ "单段", "两段" ], abbrev: [ "单", "两" ] }
+  # 快捷键临时开关 AI（追加，不覆盖方案原有的快捷键）
+  "key_binder/bindings/+":
+    - { when: always, toggle: ai_rerank, accept: "Control+Shift+5" }
