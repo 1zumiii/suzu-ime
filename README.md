@@ -60,6 +60,19 @@
    - Android：见 [android/README.md](android/README.md)。推理在常驻守护进程里，Trime 自己不加载模型，守护进程须借助 adb 或 Shizuku 启动，手机重启后要重新启动一次；没有启动时 AI 重排不生效，输入不受影响。准备好电脑上的 adb，或手机上的 Shizuku，再开始配置。
 4. 核心的构建与接口见 [core/README.md](core/README.md)。
 
+### 接入已有的 Rime 配置
+
+不用 rime-suzu 时，把 `rime/lua/` 下的 Lua 文件放进 Rime 用户目录的 `lua/`，把 `rime/suzu_ime.yaml` 放进用户目录，再在要用的方案的 `<方案名>.custom.yaml` 里加上：
+
+```yaml
+patch:
+  __include: suzu_ime:/patch
+```
+
+重新部署后，处理器、过滤器、AI 开关和快捷键（Control+Shift+5）即接入方案。要放在 `patch` 下、用 `__include`：写成 `__patch` 会把方案原有的处理器与过滤器列表整个换掉，写在文件顶层则不生效。
+
+调好的参数已经是 Lua 的默认值，不必照抄 rime-suzu 的配置：2 个字母起重排、参与重排的候选 10 个、统一排序的名次先验系数 0.05、首位门控 2.5。要改时在同一个 `patch` 下写 `llm_rerank/...` 覆盖，可用的键见 `rime/lua/ai_rerank_filter.lua` 与 `rank_unified.lua` 开头的说明。
+
 ## 文档
 
 | 文档 | 内容 |
@@ -76,6 +89,7 @@
 |---|---|
 | `core/` | 推理核心：推理层、调度层、Lua 模块、守护进程与客户端 |
 | `rime/lua/` | Rime 的 Lua 过滤器与处理器 |
+| `rime/suzu_ime.yaml` | 方案补丁：把上述组件接到任意拼音方案上 |
 | `android/` | 改版 Trime 补丁、APK 构建脚本、守护进程部署脚本 |
 | `macos/`、`windows/` | 各平台的安装、部署与回滚脚本 |
 | `tests/` | 全部测试，`tests/run_all.sh` 一键运行 |
