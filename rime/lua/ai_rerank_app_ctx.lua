@@ -128,6 +128,12 @@ local function processor(key, env)
     if ctx.input == "" and is_edit_key(key:repr()) and llm.edit_reset_context then
         pcall(llm.edit_reset_context)
     end
+    -- 英文模式下直接打进应用的字符不经过上屏，光标前的文字变了却没有 commit 通知：同样让快照失效并重读。
+    -- 中文模式下打字母只是开始输入编码，应用里的文字没变，不算（Windows 不再周期读取，这类变化只能靠事件发现）
+    if ctx.input == "" and ctx:get_option("ascii_mode") and not key:ctrl() and not key:alt()
+       and key.keycode >= 0x20 and key.keycode < 0x7f and llm.edit_reset_context then
+        pcall(llm.edit_reset_context)
+    end
 
     -- 预解码以 filter 实际会用的上文为准
     if llm.prepare then
