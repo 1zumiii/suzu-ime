@@ -19,8 +19,20 @@ end
 probe("call 1 (empty snapshot)")
 sleep_ms(200)
 local a = probe("call 2 (+200 ms)")
--- 保持进程，按驱动脚本的节奏再读：驱动脚本在 stdin 写一行就读一次
+-- 保持进程，按驱动脚本的节奏再读：驱动脚本在 stdin 写一行就读一次。
+-- 以 ! 开头的是命令（-Mode race 用）：
+--   !edit 标签  先 edit_reset_context 再 llm_context，与同一次按键里接入层的调用顺序相同（编辑键之后紧跟预解码取上文）
+--   !inv  标签  只调 invalidate_context（英文模式直接打字），不读
 for line in io.lines() do
     if line == "quit" then break end
-    probe(line)
+    local cmd, tag = line:match("^!(%a+)%s*(.*)$")
+    if cmd == "edit" then
+        m.edit_reset_context()
+        probe("edit+pick " .. tag)
+    elseif cmd == "inv" then
+        if m.invalidate_context then m.invalidate_context(); print("invalidate " .. tag)
+        else print("invalidate " .. tag .. ": core has no invalidate_context (old core)") end
+    else
+        probe(line)
+    end
 end
