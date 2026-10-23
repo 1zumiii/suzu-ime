@@ -43,6 +43,14 @@ check("path is cut", _G.ai_rerank_context_get() == "这是一段话")
 -- 4) 不足 2 个字当没有上文，退回历史
 state.text = "好"
 check("too short falls to history", _G.ai_rerank_context_get() == "上屏历史")
+-- 4b) 终端界面：光标前是边框、空格和英文提示，汉字不足 2 个，退回历史
+state.text = "╭────╮\n│ > 你 │\n│ ? for shortcuts │"
+check("terminal chrome falls to history", _G.ai_rerank_context_get() == "上屏历史")
+state.text = "Thinking about it ok"
+check("latin-only text falls to history", _G.ai_rerank_context_get() == "上屏历史")
+-- 4c) 框线之后（离光标更近）的中文照常用
+state.text = "│ > 今天我们一起"
+check("text after a box char is kept", _G.ai_rerank_context_get() == "今天我们一起")
 state.text = "今天天气很"
 -- 5) 预解码用 filter 实际会用的上文
 state.prepared = {}
