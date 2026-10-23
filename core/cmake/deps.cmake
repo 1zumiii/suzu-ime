@@ -27,6 +27,19 @@ if(ANDROID)
   # 交叉编译不能用 -mcpu=native；目标机为骁龙 8 Gen 2
   set(GGML_NATIVE OFF CACHE BOOL "" FORCE)
   set(GGML_CPU_ARM_ARCH "armv8.6-a+dotprod+i8mm+fp16" CACHE STRING "" FORCE)
+elseif(WIN32)
+  # 发给别人的 DLL 不能用 GGML_NATIVE：在 Ryzen 9700X 上会编出 AVX-512，
+  # 不支持的 CPU 上小狼毫服务进程直接崩溃。基线定为 AVX2（约 2013 年后的 Intel、2015 年后的 AMD），实测慢 3% 到 6%
+  set(GGML_NATIVE OFF CACHE BOOL "" FORCE)
+  set(GGML_AVX ON CACHE BOOL "" FORCE)
+  set(GGML_AVX2 ON CACHE BOOL "" FORCE)
+  set(GGML_FMA ON CACHE BOOL "" FORCE)
+  set(GGML_F16C ON CACHE BOOL "" FORCE)
+  set(GGML_AVX512 OFF CACHE BOOL "" FORCE)
+elseif(APPLE)
+  # 同理，-mcpu=native 换到更新的芯片上编会用上 M1 没有的指令（如 i8mm），基线定为 M1
+  set(GGML_NATIVE OFF CACHE BOOL "" FORCE)
+  set(GGML_CPU_ARM_ARCH "armv8.4-a+dotprod+fp16" CACHE STRING "" FORCE)
 endif()
 add_subdirectory(${SUZU_LLAMA_DIR} llama EXCLUDE_FROM_ALL)
 
