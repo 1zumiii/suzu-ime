@@ -6,6 +6,7 @@ namespace suzu::ctxlink {
 bool pick(std::string &, const char *&) { return false; }
 void kick() {}
 void edit_reset() {}
+void invalidate() {}
 bool fg_changed() { return false; }
 bool click_happened() { return false; }
 

@@ -61,7 +61,13 @@ static std::wstring g_uia_title;               // 发布时的前台标题（消
 static std::mutex g_cv_mu;
 static std::condition_variable g_cv;
 static std::atomic<bool> g_kick{false};
-static std::atomic<bool> g_kick_now{false};    // 按键时补读：应用文字没变，不用等它处理编辑，立即读
+// 最早可读的时刻：上屏、编辑键、点击的 kick 把它推到 50ms 之后（等应用处理完编辑）；按键时补读不动它。
+// 用时刻而不是“这次立即读”的标志：同一次按键里常是 edit_reset 之后紧跟补读，标志会让补读把编辑的等待抹掉，
+// 赶在应用处理退格之前读到旧文字（2026-10-24 审查发现）。
+static std::atomic<unsigned long long> g_settle_until{0};
+// 作废计数：edit_reset 与 invalidate 各加 1。读取开始时记下，发布时不一致就丢弃结果，
+// 免得作废之前开始的读取把旧文字带着新时间戳发布出去
+static std::atomic<unsigned> g_epoch{0};
 static std::atomic<bool> g_started{false};
 static std::atomic<unsigned long long> g_last_kick_ms{0};  // WPS 附着重试只在最近一次 kick 后的 3 秒内进行
 static const unsigned long long kSnapshotMs = 10000;       // 快照有效期：文字变化都有事件，10 秒只是兜底
@@ -483,12 +489,16 @@ static void thread_proc() {
                 g_cv.wait(lk, [] { return g_kick.load(); });
         }
         bool woken_by_kick = g_kick.exchange(false);
-        bool now_read = g_kick_now.exchange(false);
         com_pending = false;
         // 编辑键/点击/上屏的 kick 延迟 ~50ms 再读（2026-09-12 信号层统一）：立即读会赶在应用处理完
-        // 退格/点击之前拿到旧文本。下一键远晚于 100ms（人手速度），延迟无感。连续 kick 在 sleep 期间
-        // 再次置位 g_kick，下一轮即醒，自然合并不叠加。按键时补读（快照缺失或过期）不延迟。
-        if (woken_by_kick && !now_read) Sleep(50);
+        // 退格/点击之前拿到旧文本。下一键远晚于 100ms（人手速度），延迟无感。等待期间又来的编辑 kick
+        // 会把时刻往后推，这里一直等到最后那个时刻。按键时补读（快照缺失或过期）不推时刻，没有编辑在等时立即读。
+        for (;;) {
+            unsigned long long now = GetTickCount64(), until = g_settle_until.load();
+            if (now >= until) break;
+            Sleep((DWORD)(until - now));
+        }
+        unsigned epoch = g_epoch.load();
 
         // COM：前台 Office 才读（读端门控省后台空转；切标签/切窗由发布
         // 标题指纹在消费端即刻拦截，kick/周期兜住换新）
@@ -567,10 +577,11 @@ static void thread_proc() {
                         HWND fh = GetForegroundWindow();
                         if (fh) GetWindowTextW(fh, wt, 256);
                         std::lock_guard<std::mutex> lk(g_mu);
+                        published = true;
+                        if (g_epoch.load() != epoch) break;   // 读的期间快照被作废：丢弃，已排队的 kick 会重读
                         g_com_text = txt;
                         g_com_stamp = GetTickCount64();
                         g_com_title = wt;  // 消费端指纹：标题变=切标签/切窗
-                        published = true;
                     } else if (r == ComRead::DEAD) {
                         bool & logged = is_p ? logged_p : logged_w;
                         if (logged) {
@@ -608,6 +619,7 @@ static void thread_proc() {
                 HWND ufh = GetForegroundWindow();
                 if (ufh) GetWindowTextW(ufh, ut, 256);
                 std::lock_guard<std::mutex> lk(g_mu);
+                if (g_epoch.load() != epoch) continue;   // 读的期间快照被作废：丢弃，已排队的 kick 会重读
                 g_uia_text = txt;
                 g_uia_stamp = GetTickCount64();
                 g_uia_pid = pid;
@@ -628,9 +640,14 @@ static void ensure_started() {
     if (g_started.compare_exchange_strong(expect, true))
         std::thread(thread_proc).detach();
 }
-static void kick(bool now = false) {
-    g_last_kick_ms.store(GetTickCount64());
-    if (now) g_kick_now.store(true);
+// settle：上屏、编辑键、点击的 kick 要等应用处理完再读（推后最早可读时刻）；按键时补读传 false
+static void kick(bool settle = true) {
+    unsigned long long now = GetTickCount64();
+    g_last_kick_ms.store(now);
+    if (settle) {
+        unsigned long long until = now + 50, cur = g_settle_until.load();
+        while (cur < until && !g_settle_until.compare_exchange_weak(cur, until)) {}
+    }
     {
         std::lock_guard<std::mutex> lk(g_cv_mu);   // 与 wait 的谓词配对，避免置位与等待之间的唤醒丢失
         g_kick.store(true);
@@ -644,17 +661,19 @@ static void kick(bool now = false) {
 // 后读到新真文。缺失效则读早竞态冒充，缺 kick 则退格后首词无上文。
 // 点击候选窗选词场景：click 信号废掉 commit kick 刚刷新的正确快照，
 // 但随后的 kick 读回同样正确的文本（点击已处理完、含新上屏词），自愈。
+static void invalidate() {
+    std::lock_guard<std::mutex> lk(g_mu);
+    g_epoch.fetch_add(1);
+    g_com_text.clear();
+    g_com_stamp = 0;
+    g_com_title.clear();
+    g_uia_text.clear();
+    g_uia_stamp = 0;
+    g_uia_pid = 0;
+    g_uia_title.clear();
+}
 static void edit_reset() {
-    {
-        std::lock_guard<std::mutex> lk(g_mu);
-        g_com_text.clear();
-        g_com_stamp = 0;
-        g_com_title.clear();
-        g_uia_text.clear();
-        g_uia_stamp = 0;
-        g_uia_pid = 0;
-        g_uia_title.clear();
-    }
+    invalidate();
     kick();
 }
 
@@ -705,8 +724,9 @@ static bool pick(std::string & text, const char *& src) {
 
 // ---------------------------------------------------------------- 对外接口
 
-// 按键时快照缺失或过期（新窗口、停顿超过 10 秒、编辑后快照已失效）：立即补读一次（每秒最多一次），这一键回落到上屏历史，
+// 按键时快照缺失或过期（新窗口、停顿超过 10 秒、编辑后快照已失效）：补读一次（每秒最多一次），这一键回落到上屏历史，
 // 下一键（一般 100 ms 以后）就能拿到新快照。没有周期读之后，这是“停顿后第一个键”拿到上文的唯一途径。
+// 补读不推后最早可读时刻：没有编辑在等时立即读；刚有编辑键时仍等满它的 50ms（同一次按键里 edit_reset 之后紧跟补读是常态）。
 bool pick(std::string & text, const char *& source) {
     upstream::ensure_started();
     if (upstream::pick(text, source)) return true;
@@ -714,7 +734,7 @@ bool pick(std::string & text, const char *& source) {
     unsigned long long now = GetTickCount64();
     if (now - last_refresh.load() >= 1000) {
         last_refresh.store(now);
-        upstream::kick(true);
+        upstream::kick(false);
     }
     return false;
 }
@@ -725,6 +745,8 @@ void edit_reset() {
     upstream::ensure_started();
     upstream::edit_reset();
 }
+
+void invalidate() { upstream::invalidate(); }
 
 // 前台窗口切换（跨应用，以及同一应用的多窗口/多标签：pid 加 HWND 双比对）
 bool fg_changed() {

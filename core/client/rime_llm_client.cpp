@@ -267,7 +267,7 @@ extern "C" __attribute__((visibility("default"))) int luaopen_rime_llm(lua_State
     static const sl::Fn fns[] = {
         {"score", l_score}, {"generate", l_generate}, {"get_scores", l_get_scores}, {"prepare", l_prepare}, {"is_ready", l_is_ready},
         {"touch", l_touch}, {"screen_off", l_screen_off}, {"set_enabled", l_set_enabled}, {"set_lexicon", l_set_lexicon}, {"status", l_status},
-        {"connected", l_connected}, {"llm_context", l_llm_context}, {"kick_context", l_noop}, {"edit_reset_context", l_noop},
+        {"connected", l_connected}, {"llm_context", l_llm_context}, {"kick_context", l_noop}, {"edit_reset_context", l_noop}, {"invalidate_context", l_noop},
         {"fg_changed", l_false}, {"click_happened", l_false}, {"match_code", sl::l_match_code},
         {"now_ms", sl::l_now_ms}, {"sleep_ms", sl::l_sleep_ms},
     };
