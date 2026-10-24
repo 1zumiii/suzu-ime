@@ -14,7 +14,7 @@ Trime 的 nightly 构建（arm64，v3.3.12-73）：
 - 用户数据目录：`/sdcard/Android/data/com.osfans.trime/files/rime`。
 - 该数据目录挂载为 `noexec`，`.so` 不能放在其中加载。将其打包进 APK 的原生库目录，再用 `package.loadlib("librime_llm.so", ...)` 即可加载，后面的方案以此为基础。
 
-推理核心在手机上可运行（`rime_llm.so` 用 NDK r27d 交叉编译，arm64，`+dotprod+i8mm+fp16`）：
+推理核心在手机上可运行（`rime_llm.so` 用 NDK r27d 交叉编译，arm64，`+dotprod+i8mm+fp16`；现在默认按通用指令集编译，见下文“构建与测试”）：
 
 | 项目 | 结果 |
 | --- | --- |
@@ -142,7 +142,7 @@ Trime（改版 APK）                              rimellmd（shell 身份，由
 
 ## 构建与测试
 
-整套产物（改版 APK、客户端库、守护进程）由 `trime/build_apk.sh` 一次完成。前提：JDK 17、Android NDK r27d（`27.3.13750724`）、CMake 3.31.6，以及 llama.cpp 与 Lua 源码（布局见 [core/README.md](../core/README.md)）。
+整套产物（改版 APK、客户端库、守护进程）由 `trime/build_apk.sh` 一次完成。前提：JDK 17、Android NDK r27d（`27.3.13750724`）、CMake 3.31.6，以及 llama.cpp 与 Lua 源码（布局见 [core/README.md](../core/README.md)）。推理部分默认按通用指令集 `armv8.2-a+dotprod+fp16` 编译；只装支持 i8mm 的手机时，可用环境变量 `ARM_ARCH` 指定更高的指令集，如骁龙 8 Gen 2 用 `ARM_ARCH=armv8.6-a+dotprod+fp16+i8mm`。没有 i8mm 的芯片运行这种包会直接崩溃。
 
 单独编译守护进程和客户端的命令见 core/README.md 的 Android 一节。`SUZU_LUA_HOST_LIB` 指向 Trime 的 `librime_jni.so`，使加载器把客户端中的 `lua_*` 符号解析到它。
 
