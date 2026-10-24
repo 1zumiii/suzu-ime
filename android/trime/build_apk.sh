@@ -16,6 +16,9 @@ CMAKE_DIR="${CMAKE_DIR:-$W/cmake-dl/cmake-3.31.6-macos-universal/CMake.app/Conte
 OUT="${1:-$W/apk_work/trime-mod.apk}"
 SRC="$W/trime-src"
 STRIP="$NDK/toolchains/llvm/prebuilt/darwin-x86_64/bin/llvm-strip"
+# 推理部分的指令集：默认通用版（约 2018 年以后的 arm64）；只装自己手机时可换成更高的，
+# 如骁龙 8 Gen 2 用 ARM_ARCH=armv8.6-a+dotprod+fp16+i8mm（没有 i8mm 的芯片运行会直接崩溃）
+ARM_ARCH="${ARM_ARCH:-armv8.2-a+dotprod+fp16}"
 
 # 1. 源码：固定提交 + 补丁（已打过就跳过）
 [[ -d "$SRC/.git" ]] || git clone https://github.com/osfans/trime.git "$SRC"
@@ -43,7 +46,7 @@ JNI_HOST="$W/trime-built/lib/arm64-v8a/librime_jni.so"
 DEPS="${DEPS:-$HOME/Documents/rime-llm-mac-port}"     # llama.cpp 与 Lua 源码所在目录（布局见 core/README.md）
 cmake -S "$REPO/core" -B "$W/build_host" -G Ninja -DCMAKE_TOOLCHAIN_FILE="$NDK/build/cmake/android.toolchain.cmake" \
   -DANDROID_ABI=arm64-v8a -DANDROID_PLATFORM=android-30 -DCMAKE_BUILD_TYPE=Release \
-  -DSUZU_DEPS_ROOT="$DEPS" -DSUZU_BUILD_DAEMON=ON -DSUZU_BUILD_LUA_MODULE=OFF -DSUZU_LUA_HOST_LIB="$JNI_HOST" >/dev/null
+  -DSUZU_ANDROID_ARM_ARCH="$ARM_ARCH" -DSUZU_DEPS_ROOT="$DEPS" -DSUZU_BUILD_DAEMON=ON -DSUZU_BUILD_LUA_MODULE=OFF -DSUZU_LUA_HOST_LIB="$JNI_HOST" >/dev/null
 cmake --build "$W/build_host" --target rimellmd rime_llm_client -j8
 JL="$SRC/app/src/main/jniLibs/arm64-v8a"; mkdir -p "$JL"
 "$STRIP" --strip-unneeded -o "$JL/librime_llm.so" "$W/build_host/client/librime_llm.so"
