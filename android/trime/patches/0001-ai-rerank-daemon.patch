@@ -1401,7 +1401,7 @@ new file mode 100644
 index 00000000..45cbd37a
 --- /dev/null
 +++ b/app/src/main/java/com/osfans/trime/update/ConfigUpdater.kt
-@@ -0,0 +1,294 @@
+@@ -0,0 +1,287 @@
 +/*
 + * SPDX-FileCopyrightText: 2026 1zumiii
 + * SPDX-License-Identifier: GPL-3.0-or-later
@@ -1555,13 +1555,6 @@ index 00000000..45cbd37a
 +                        ?: continue
 +                    val sep = if (base.isNotEmpty() && base.last() != '\n'.code.toByte()) "\n".toByteArray() else ByteArray(0)
 +                    plan[target] = base + sep + ov
-+                }
-+                // 新装默认关闭 AI（手机上手动启停）
-+                plan["rime_ice.custom.yaml"]?.let {
-+                    plan["rime_ice.custom.yaml"] = String(it).replace("name: ai_rerank, reset: 1,", "name: ai_rerank, reset: 0,").toByteArray()
-+                } ?: entries["rime_ice.custom.yaml"]?.let { e ->
-+                    val s = String(zf.getInputStream(e).readBytes()).replace("name: ai_rerank, reset: 1,", "name: ai_rerank, reset: 0,")
-+                    plan["rime_ice.custom.yaml"] = s.toByteArray()
 +                }
 +                // 找出真正有变化的文件
 +                for ((rel, bytes) in plan) {
