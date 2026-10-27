@@ -173,13 +173,40 @@ local function load_llm(env)
         end)
     end
     -- Android：手动启停。方案开关 ai_rerank（工具栏的 AI 徽标点一下就是切它）同步给常驻推理进程：
-    -- 关 = 立刻卸载模型并拒绝一切推理（进程只剩待命，不占 CPU）；开 = 允许按需加载。启动时也同步一次当前状态。
+    -- 关 = 立刻卸载模型并拒绝一切推理（进程只剩待命，不占 CPU）；开 = 允许按需加载。
+    -- 守护进程把用户最后一次手动选择记在文件里，重启后恢复，所以它才是开关状态的准绳：会话启动时不向它推送开关，
+    -- 而是读它的状态来对齐方案开关；启动后 3 秒内方案开关因会话重置（回到默认值）产生的变化也不推送，按守护进程的状态改回去。
+    -- （此前每次 Trime 重建会话都把默认的“关”推给守护进程，模型就被卸载，要手动再开。）
     if cpp.set_enabled then
         local c = env.engine.context
+        local function daemon_enabled()
+            local ok, js = pcall(cpp.status)
+            local v = ok and type(js) == "string" and js:match('"enabled"%s*:%s*(%a+)')
+            if v == "true" then return true elseif v == "false" then return false end
+            return nil     -- 守护进程没起来或是旧版本，拿不到状态
+        end
+        local settle_until = os.time() + 3
         c.option_update_notifier:connect(function(cc, name)
-            if name == "ai_rerank" then pcall(cpp.set_enabled, cc:get_option("ai_rerank")) end
+            if name ~= "ai_rerank" then return end
+            local v = cc:get_option("ai_rerank")
+            if os.time() <= settle_until then
+                local s = daemon_enabled()
+                if s ~= nil then
+                    if s ~= v then cc:set_option("ai_rerank", s) end
+                    return
+                end
+            end
+            pcall(cpp.set_enabled, v)
         end)
-        pcall(cpp.set_enabled, c:get_option("ai_rerank"))
+        -- 对齐：方案开关改成守护进程的状态。守护进程还没起来时先不推送，等第一批按键里再试（最多 5 次，避免守护进程长期不在时拖慢按键）
+        env.switch_align = function()
+            local s = daemon_enabled()
+            if s == nil then return false end
+            if s ~= c:get_option("ai_rerank") then c:set_option("ai_rerank", s) end
+            return true
+        end
+        env.switch_align_pending = not env.switch_align()
+        env.switch_align_tries, env.switch_align_at = 0, 0
     end
     llm_prep = cpp
     _G.ai_rerank_llm = cpp
@@ -405,6 +432,14 @@ local function find_overlap(prev, curr)
 end
 
 local function processor(key, env)
+    if env.switch_align_pending then
+        local now = os.time()
+        if now ~= env.switch_align_at then
+            env.switch_align_at = now
+            env.switch_align_tries = env.switch_align_tries + 1
+            if env.switch_align() or env.switch_align_tries >= 5 then env.switch_align_pending = false end
+        end
+    end
     if key:release() then return 2 end
     if okilog and env.input_log then input_log.key(env, key) end   -- 输入事件流（默认关闭，与 AI 开关无关）
 
