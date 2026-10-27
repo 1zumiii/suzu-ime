@@ -306,6 +306,27 @@ try:
         check("new token issued on restart", env.token() != old_token)
         s = connect(); check("new worker serves requests", wait_ready(s) is not None); s.close()
 
+        # ---- 手动开关记在文件里，工作进程重启后恢复；会话启动时的同步不再覆盖它（客户端不再推送，见 ai_rerank_processor.lua）
+        def restart_worker():
+            old = str(status()["pid"])
+            env.kill(old, "KILL")
+            t0 = time.time()
+            while time.time() - t0 < 30:
+                try:
+                    st = status()
+                    if str(st["pid"]) != old: return st
+                except Exception:
+                    pass
+                time.sleep(0.3)
+            return None
+        s = connect(); rpc(s, ["C", "enabled", "1"]); s.close()
+        st = restart_worker()
+        check("manual enable survives a worker restart", st is not None and st["enabled"] is True, str(st and st.get("enabled")))
+        s = connect(); rpc(s, ["C", "enabled", "0"]); s.close()
+        st = restart_worker()
+        check("manual disable survives a worker restart", st is not None and st["enabled"] is False, str(st and st.get("enabled")))
+        s = connect(); rpc(s, ["C", "enabled", "1"]); check("worker is usable again after re-enabling", wait_ready(s) is not None); s.close()
+
         worker_pid = str(status()["pid"]); n_before = status()["restarts"]
         env.kill(worker_pid, "STOP")
         t0 = time.time(); st = None

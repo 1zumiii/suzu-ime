@@ -97,6 +97,8 @@ struct Worker {
             engine.set_enabled(v != 0);
             st.fast_status_until_ms.store(ipc::mono_ms() + 15000);
             log_event("AI %s (manual)", v ? "enabled" : "disabled");
+            std::string ep = enabled_path(opt);   // 记住最后一次手动选择，守护进程重启后恢复
+            if (!ep.empty()) write_file_atomic(ep, v ? "1" : "0", 0664);
             return;
         }
         if (key == "idle_unload_sec" && v >= 0 && v <= 86400) { idle_normal = (int)v; apply_idle(); return; }
@@ -262,8 +264,10 @@ int run_worker(const Options & opt) {
         c.gen_beam = opt.gen_beam;
     }
     engine.set_config(c);
-    // 默认关闭，与手机上方案开关 ai_rerank 的默认值一致；客户端同步开关后才加载
-    engine.set_enabled(false);
+    // 默认关闭，与手机上方案开关 ai_rerank 的默认值一致；之前有过手动选择就恢复它（文件由手动开关写入）
+    bool restored = false;
+    engine.set_enabled(read_enabled_state(opt, &restored) && restored);
+    if (restored) log_event("AI enabled (restored from last manual choice)");
     if (c.vocab_path.empty()) log_event("no student vocab: reranking stays off (only Suzu models are supported)");
 
     w.token = make_token();

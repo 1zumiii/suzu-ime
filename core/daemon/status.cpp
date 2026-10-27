@@ -14,6 +14,20 @@ namespace suzu::daemon {
 
 std::string status_path(const Options & o) { return o.rime_dir.empty() ? "" : o.rime_dir + "/ai_status.json"; }
 std::string token_path(const Options & o) { return o.rime_dir.empty() ? "" : o.rime_dir + "/llm_token"; }
+std::string enabled_path(const Options & o) { return o.rime_dir.empty() ? "" : o.rime_dir + "/ai_enabled.state"; }
+
+bool read_enabled_state(const Options & o, bool * enabled) {
+    std::string p = enabled_path(o);
+    if (p.empty()) return false;
+    FILE * f = fopen(p.c_str(), "rb");
+    if (!f) return false;
+    char buf[8] = {0};
+    size_t n = fread(buf, 1, sizeof buf - 1, f);
+    fclose(f);
+    if (n == 0 || (buf[0] != '0' && buf[0] != '1')) return false;
+    *enabled = buf[0] == '1';
+    return true;
+}
 
 void write_file_atomic(const std::string & path, const std::string & data, mode_t mode) {
     if (path.empty()) return;

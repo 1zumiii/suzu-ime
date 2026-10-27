@@ -32,6 +32,8 @@ std::string build_supervisor_status(const Options & opt, const char * state, int
 
 std::string status_path(const Options & opt);
 std::string token_path(const Options & opt);
+std::string enabled_path(const Options & opt);   // 记住用户最后一次手动开关（"1" 或 "0"）
+bool read_enabled_state(const Options & opt, bool * enabled);   // 文件不存在或内容不是 0/1 时返回 false
 void write_file_atomic(const std::string & path, const std::string & data, mode_t mode);
 std::string json_escape(const std::string & s);
 long read_rss_kb();
