@@ -218,6 +218,27 @@ int l_llm_context(lua_State * L) {
     lua_pushstring(L, "app");
     return 2;
 }
+
+// 选错修正建议（改版 Trime 的 SuzuFix）：Lua 在选了 AI 改过的首位时登记“所选词与同页候选”，Trime 上屏时按所选词领取。
+// 只在内存里，一次只留一条；其他选词时 Lua 清空，避免领到别的词的候选。
+std::mutex g_fix_mu;
+std::string g_fix_word;
+std::vector<std::string> g_fix_cands;
+
+// fix_note(所选词, 候选表)：登记；fix_note() 或参数不是表：清空
+int l_fix_note(lua_State * L) {
+    std::vector<std::string> cands;
+    size_t wl = 0;
+    const char * w = lua_isstring(L, 1) ? lua_tolstring(L, 1, &wl) : nullptr;
+    if (w && lua_istable(L, 2)) cands = sl::read_candidates(L, 2, 8);
+    std::string word = w ? std::string(w, wl) : std::string();
+    std::lock_guard<std::mutex> lk(g_fix_mu);
+    g_fix_word.swap(word);
+    g_fix_cands.swap(cands);
+    if (g_fix_cands.empty()) g_fix_word.clear();
+    return 0;
+}
+
 int l_noop(lua_State *) { return 0; }
 int l_false(lua_State * L) { lua_pushboolean(L, 0); return 1; }
 
@@ -269,7 +290,7 @@ extern "C" __attribute__((visibility("default"))) int luaopen_rime_llm(lua_State
         {"touch", l_touch}, {"screen_off", l_screen_off}, {"set_enabled", l_set_enabled}, {"set_lexicon", l_set_lexicon}, {"status", l_status},
         {"connected", l_connected}, {"llm_context", l_llm_context}, {"kick_context", l_noop}, {"edit_reset_context", l_noop}, {"invalidate_context", l_noop},
         {"fg_changed", l_false}, {"click_happened", l_false}, {"match_code", sl::l_match_code},
-        {"now_ms", sl::l_now_ms}, {"sleep_ms", sl::l_sleep_ms},
+        {"now_ms", sl::l_now_ms}, {"sleep_ms", sl::l_sleep_ms}, {"fix_note", l_fix_note},
     };
     sl::set_functions(L, fns, sizeof fns / sizeof fns[0]);
     lua_pushstring(L, sl::kDefaultCodePattern);
@@ -297,4 +318,84 @@ extern "C" JNIEXPORT void JNICALL Java_com_osfans_trime_ime_core_SuzuAppContext_
     }
     std::lock_guard<std::mutex> lk(g_app_ctx_mu);
     g_app_ctx.swap(t);
+}
+
+namespace {
+
+std::string bytes_of(JNIEnv * env, jbyteArray a) {
+    std::string t;
+    if (!a) return t;
+    jsize n = env->GetArrayLength(a);
+    t.resize((size_t)n);
+    if (n > 0) env->GetByteArrayRegion(a, 0, n, reinterpret_cast<jbyte *>(&t[0]));
+    return t;
+}
+
+jbyteArray to_bytes(JNIEnv * env, const std::string & s) {
+    jbyteArray a = env->NewByteArray((jsize)s.size());
+    if (a && !s.empty()) env->SetByteArrayRegion(a, 0, (jsize)s.size(), reinterpret_cast<const jbyte *>(s.data()));
+    return a;
+}
+
+// 修正建议的打分走单独的连接：停顿后才打分，不与输入法线程上 Lua 的打分抢同一把锁
+Connection & fix_conn() {
+    static Connection * c = new Connection;
+    return *c;
+}
+
+}  // namespace
+
+// SuzuFix.nativeTake(所选词 UTF-8)：登记的词与之相同时返回候选（UTF-8 字节数组的数组）并清空，否则返回 null
+extern "C" JNIEXPORT jobjectArray JNICALL Java_com_osfans_trime_ime_core_SuzuFix_nativeTake(JNIEnv * env, jclass, jbyteArray word) {
+    std::string w = bytes_of(env, word);
+    std::vector<std::string> cands;
+    {
+        std::lock_guard<std::mutex> lk(g_fix_mu);
+        if (w.empty() || w != g_fix_word) return nullptr;
+        cands.swap(g_fix_cands);
+        g_fix_word.clear();
+    }
+    jclass bc = env->FindClass("[B");
+    jobjectArray out = env->NewObjectArray((jsize)cands.size(), bc, nullptr);
+    for (size_t i = 0; i < cands.size(); i++) {
+        jbyteArray b = to_bytes(env, cands[i]);
+        env->SetObjectArrayElement(out, (jsize)i, b);
+        env->DeleteLocalRef(b);
+    }
+    return out;
+}
+
+// SuzuFix.nativeScore(上文, 候选[], 时限毫秒)：各候选在上文之后的分数（各字对数概率之和），与输入同序；
+// 不打分（上文不足、守护进程不在、超时、AI 关）时返回 null
+extern "C" JNIEXPORT jdoubleArray JNICALL Java_com_osfans_trime_ime_core_SuzuFix_nativeScore(JNIEnv * env, jclass, jbyteArray ctx,
+                                                                                            jobjectArray cands, jint budget) {
+    Connection & c = fix_conn();
+    if (c.token_dir().empty()) {
+        c.set_token_dir(conn().token_dir());
+        c.set_port(conn().port());
+    }
+    if (c.token_dir().empty()) return nullptr;   // Lua 还没初始化客户端
+    std::vector<std::string> req = {"Q", std::to_string(budget), bytes_of(env, ctx)};
+    jsize n = cands ? env->GetArrayLength(cands) : 0;
+    std::vector<std::string> cs;
+    for (jsize i = 0; i < n; i++) {
+        auto b = (jbyteArray)env->GetObjectArrayElement(cands, i);
+        cs.push_back(bytes_of(env, b));
+        env->DeleteLocalRef(b);
+    }
+    if (cs.size() < 2 || (int)cs.size() > kMaxCandidates) return nullptr;
+    req.insert(req.end(), cs.begin(), cs.end());
+    std::vector<std::string> rep;
+    if (!c.rpc(req, budget + kMarginMs, &rep) || rep.empty() || rep[0] != "R") return nullptr;
+    std::vector<double> v(cs.size(), 0.0);
+    std::vector<bool> got(cs.size(), false);
+    for (size_t i = 1; i + 1 < rep.size(); i += 2) {
+        for (size_t k = 0; k < cs.size(); k++) {
+            if (!got[k] && cs[k] == rep[i]) { v[k] = atof(rep[i + 1].c_str()); got[k] = true; }
+        }
+    }
+    for (bool g : got) if (!g) return nullptr;
+    jdoubleArray out = env->NewDoubleArray((jsize)v.size());
+    if (out) env->SetDoubleArrayRegion(out, 0, (jsize)v.size(), v.data());
+    return out;
 }

@@ -250,6 +250,40 @@ local function setup_choice_memory(env)
     end)
 end
 
+-- === 选错修正建议（只在改版 Trime 上，客户端库有 fix_note 时）===
+-- 选了 AI 改过的首位时，把所选词和同页候选（与它同一切分终点，按 Rime 原顺序前 4 个）登记到客户端库，
+-- Trime 上屏时领取，停顿后补上右侧文字给整句打分，分差够大才在工具栏提示“A → B”（见补丁 0006 的 SuzuFix）。
+-- 其他选词时清空登记，避免 Trime 领到别的词的候选。候选的终点来自过滤器的回放数据（rp.nat），没有时不登记。
+local function setup_fix_note(env)
+    local llm = _G.ai_rerank_llm
+    if not (llm and llm.fix_note) then return end
+    env.engine.context.select_notifier:connect(function(ctx)
+        pcall(function()
+            local s = select_info.resolve(ctx, "fix")
+            local info = s and s.info
+            local rp = info and info.rp
+            if not (s and s.whole and s.sel == 1 and rp and rp.nat and ctx:get_option("ai_rerank")
+                    and not ctx:get_option("ai_no_log") and info.ft ~= info.of and s.text == info.ft) then
+                llm.fix_note()
+                return
+            end
+            local e = nil
+            for _, x in ipairs(rp.nat) do
+                if x.t == s.text then e = x.e; break end
+            end
+            local cands, seen = {}, { [s.text] = true }
+            for _, x in ipairs(rp.nat) do
+                if #cands >= 4 then break end
+                if e and x.e == e and not seen[x.t] and x.t:find("[\228-\233][\128-\191][\128-\191]") then
+                    seen[x.t] = true
+                    cands[#cands + 1] = x.t
+                end
+            end
+            if #cands > 0 then llm.fix_note(s.text, cands) else llm.fix_note() end
+        end)
+    end)
+end
+
 -- === 选词统计与训练语料（默认关闭）===
 -- 一、select_stats.tsv（纯数字）：用真实输入评估重排有没有帮助。开关：用户目录里存在空文件 select_stats.enabled。
 --     每次选词一行：时间戳、AI 开关、模型（q = Qwen，s = 学生）、输入字母数、参与重排的候选数、所选候选在原顺序和最终顺序里的位次、
@@ -525,6 +559,7 @@ return setmetatable({
         pcall(load_llm, env); pcall(setup_ctx_reset, env); pcall(setup_choice_memory, env)
         -- 选词统计的初始化出错时记入诊断文件，不再静默失败
         xpcall(setup_select_stats, function(e) diag_line("setup_select_stats error: " .. tostring(e)) end, env)
+        pcall(setup_fix_note, env)
         if okilog then xpcall(input_log.attach, function(e) diag_line("input_log error: " .. tostring(e)) end, env) end
     end,
     func = processor,
