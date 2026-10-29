@@ -219,20 +219,23 @@ int l_llm_context(lua_State * L) {
     return 2;
 }
 
-// 选错修正建议（改版 Trime 的 SuzuFix）：Lua 在选了 AI 改过的首位时登记“所选词与同页候选”，Trime 上屏时按所选词领取。
-// 只在内存里，一次只留一条；其他选词时 Lua 清空，避免领到别的词的候选。
+// 选错修正建议（改版 Trime 的 SuzuFix）：Lua 在选词时登记“所选词与同页候选”，Trime 上屏时按所选词领取。
+// 只在内存里，一次只留一条；不登记时 Lua 清空，避免领到别的词的候选。
 std::mutex g_fix_mu;
 std::string g_fix_word;
 std::vector<std::string> g_fix_cands;
+bool g_fix_aichg = false;
 
-// fix_note(所选词, 候选表)：登记；fix_note() 或参数不是表：清空
+// fix_note(所选词, 候选表, 是否选了 AI 改过的首位)：登记；fix_note() 或参数不是表：清空
 int l_fix_note(lua_State * L) {
     std::vector<std::string> cands;
     size_t wl = 0;
     const char * w = lua_isstring(L, 1) ? lua_tolstring(L, 1, &wl) : nullptr;
     if (w && lua_istable(L, 2)) cands = sl::read_candidates(L, 2, 8);
     std::string word = w ? std::string(w, wl) : std::string();
+    bool aichg = lua_toboolean(L, 3) != 0;
     std::lock_guard<std::mutex> lk(g_fix_mu);
+    g_fix_aichg = aichg;
     g_fix_word.swap(word);
     g_fix_cands.swap(cands);
     if (g_fix_cands.empty()) g_fix_word.clear();
@@ -345,14 +348,17 @@ Connection & fix_conn() {
 
 }  // namespace
 
-// SuzuFix.nativeTake(所选词 UTF-8)：登记的词与之相同时返回候选（UTF-8 字节数组的数组）并清空，否则返回 null
+// SuzuFix.nativeTake(所选词 UTF-8)：登记的词与之相同时返回 [类别, 候选…]（UTF-8 字节数组的数组；类别 "1" 为选了
+// AI 改过的首位，"0" 为其他）并清空，否则返回 null
 extern "C" JNIEXPORT jobjectArray JNICALL Java_com_osfans_trime_ime_core_SuzuFix_nativeTake(JNIEnv * env, jclass, jbyteArray word) {
     std::string w = bytes_of(env, word);
     std::vector<std::string> cands;
     {
         std::lock_guard<std::mutex> lk(g_fix_mu);
         if (w.empty() || w != g_fix_word) return nullptr;
-        cands.swap(g_fix_cands);
+        cands.push_back(g_fix_aichg ? "1" : "0");
+        cands.insert(cands.end(), g_fix_cands.begin(), g_fix_cands.end());
+        g_fix_cands.clear();
         g_fix_word.clear();
     }
     jclass bc = env->FindClass("[B");

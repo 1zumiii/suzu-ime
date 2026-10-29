@@ -105,7 +105,7 @@ Trime（改版 APK）                              rimellmd（shell 身份，由
 | `tools/bench_daemon.py` | 真实打分延迟基准（每次更换新候选） |
 | `trime/patches/0001-ai-rerank-daemon.patch` | 对 Trime `ad5a14be` 的改动：`INTERNET` 权限、亮灭屏接收器、AI 徽标、Shizuku 启动、流式键盘布局 |
 | `trime/patches/0005-app-context.patch` | 光标上文：没有未上屏编码时用 `getTextBeforeCursor` 读光标前最多 60 个字，经 JNI 写进客户端库，Lua 的 `llm_context` 读取（`rime/lua/ai_rerank_app_ctx.lua`），读不到退回上屏历史；密码框、数字框、电话框和无痕模式不读，文字只在内存里 |
-| `trime/patches/0006-fix-suggestion.patch` | 选错修正建议（试验）：选了 AI 改过的首位后，Lua 把所选词和同页候选登记到客户端库（`fix_note`），上屏时由 `SuzuFix` 领取；停顿 1.5 秒后补上右侧已打的文字，给原词与候选打整句分（经单独的连接请求守护进程），某个候选高出 5 分时在工具栏提示“A → B”，点了才核对并替换。出现、采纳、忽略次数只记数字，写入用户目录的 `fix_stats.tsv`；密码框和无痕模式不查 |
+| `trime/patches/0006-fix-suggestion.patch` | 选错修正建议（试验）：每次整段选词，Lua 把所选词和同页候选登记到客户端库（`fix_note`），上屏时由 `SuzuFix` 领取；停顿 1.5 秒后补上右侧已打的文字，给句中最近的几个词与各自的候选打整句分（经单独的连接请求守护进程），某个候选高出门槛时在工具栏提示“A → B”，点了才核对并替换。门槛：选了 AI 改过的首位为 5，其他为 8。领取、定位、打分、出现、采纳、忽略等事件只记数字，写入用户目录的 `fix_stats.tsv`；密码框和无痕模式不查 |
 | `trime/build_apk.sh` | 从源码到签名 APK 的完整流程；`trime/sign_apk.sh` 仅负责对齐和签名 |
 | `trime/*.overlay.yaml` | 手机端专属配置，部署时追加到对应的 `*.custom.yaml` |
 | `trime/gen_tongwenfeng_patch.py` | 生成 `trime/tongwenfeng.trime.custom.yaml`（GBoard 风格布局补丁），不要手工编辑生成结果 |
