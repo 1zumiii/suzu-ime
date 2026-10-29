@@ -121,10 +121,10 @@ index 2f11ec2a..5bc20b1e 100644
          }
 diff --git a/app/src/main/java/com/osfans/trime/ime/core/SuzuFix.kt b/app/src/main/java/com/osfans/trime/ime/core/SuzuFix.kt
 new file mode 100644
-index 00000000..409eb07f
+index 00000000..88a2715a
 --- /dev/null
 +++ b/app/src/main/java/com/osfans/trime/ime/core/SuzuFix.kt
-@@ -0,0 +1,212 @@
+@@ -0,0 +1,224 @@
 +/*
 + * SPDX-FileCopyrightText: 2026 1zumiii
 + * SPDX-License-Identifier: GPL-3.0-or-later
@@ -140,23 +140,27 @@ index 00000000..409eb07f
 +import java.io.File
 +import java.util.concurrent.Executors
 +
-+// 选错修正建议（试验）：选了 AI 改过的首位后，停顿时补上右侧已打的文字，给原词与同页候选打整句分，
-+// 某个候选比原词高出 THRESHOLD 时在工具栏提示“A → B”，点了才替换。
++// 选错修正建议（试验）：句子里每个整段选的词，停顿时补上右侧已打的文字，给原词与同页候选打整句分，
++// 某个候选比原词高出门槛时在工具栏提示“A → B”，点了才替换。选了 AI 改过的首位的词选错率高，用较低的门槛。
 +// 记录来源：Lua 在选词时把“所选词与同页候选”登记到 librime_llm.so（fix_note），这里在上屏时按上屏文字领取（nativeTake）。
 +// 打分：nativeScore 经单独的连接请求守护进程，各字对数概率之和；整句分 = score(左文 → X) + score(左文 + X → 右文)。
-+// 文字只在内存里；统计只写数字（fix_stats.tsv：时间、事件、分差 ×10、原词字数、右文字数），不写日志。
++// 文字只在内存里；统计只写数字（fix_stats.tsv：时间、事件、分差 ×10、原词字数、右文字数、类别 1 = AI 改过的首位），
++// 不写日志。
 +// 事件：take 上屏时领到候选，pick 在输入框里定位到原词，check 打完分（不论是否过门槛），fail 打分失败，
 +//       shown 显示提示，accepted 采纳，ignored 忽略，stale 点了但文字已变。
 +object SuzuFix {
 +    const val PAUSE_MS = 1500L
-+    const val THRESHOLD = 5.0
++    const val THRESHOLD = 8.0
++    const val THRESHOLD_AI = 5.0          // 选了 AI 改过的首位
 +    private const val BUDGET_MS = 300
 +    private const val LEFT_MAX = 30
 +    private const val RIGHT_MAX = 20
 +    private const val SPAN_MAX = 40       // 原词起点到光标最多这么多字，再远就不查了
-+    private const val KEEP = 4            // 最多记最近这么多个可查的选词
++    private const val KEEP = 8            // 最多记最近这么多个可查的选词
++    private const val PER_PAUSE = 4       // 每次停顿最多查这么多个（从最近的起）
 +
-+    class Pick(val start: Int, val word: String, val cands: List<String>) {
++    class Pick(val start: Int, val word: String, val cands: List<String>, val aiChanged: Boolean) {
++        val threshold get() = if (aiChanged) THRESHOLD_AI else THRESHOLD
 +        var scoredRight: String? = null   // 上次打分时的右文：没变就不再打分
 +        var dismissed = false             // 提示过而没采纳：不再提示
 +    }
@@ -177,7 +181,7 @@ index 00000000..409eb07f
 +    private val main = Handler(Looper.getMainLooper())
 +    private val worker = Executors.newSingleThreadExecutor()
 +    private val picks = ArrayDeque<Pick>()
-+    private var pendingCommit: Pair<String, List<String>>? = null
++    private var pendingCommit: Pair<String, List<String>>? = null   // 第一项为类别 "1"/"0"，其后为候选
 +    private var blocked = false
 +    private var cursor = -1
 +    private var gen = 0                   // 任何变化（光标、打字、换输入框）都加一，打分结果回来时不一致就丢弃
@@ -205,8 +209,9 @@ index 00000000..409eb07f
 +        pendingCommit = null
 +        if (!loaded || blocked || text.isEmpty()) return
 +        val cs = runCatching { nativeTake(text.toByteArray()) }.getOrNull() ?: return
++        if (cs.size < 2) return
 +        pendingCommit = text to cs.map { String(it) }
-+        diag("take", 0.0, text.length, 0)
++        diag("take", 0.0, text.length, 0, cs[0].contentEquals("1".toByteArray()))
 +    }
 +
 +    // 开始打字（出现候选）：收起提示、取消计时
@@ -224,8 +229,9 @@ index 00000000..409eb07f
 +            val ic = inputConnection()
 +            val before = runCatching { ic?.getTextBeforeCursor(w.length, 0)?.toString() }.getOrNull()
 +            if (start >= 0 && before == w) {
-+                picks.addLast(Pick(start, w, cs))
-+                diag("pick", 0.0, w.length, 0)
++                val p = Pick(start, w, cs.drop(1), cs[0] == "1")
++                picks.addLast(p)
++                diag("pick", 0.0, w.length, 0, p.aiChanged)
 +                while (picks.size > KEEP) picks.removeFirst()
 +            }
 +        }
@@ -264,7 +270,7 @@ index 00000000..409eb07f
 +            if (right.isEmpty() || right == p.scoredRight) continue
 +            p.scoredRight = right
 +            jobs += Job(p, before.substring(maxOf(0, off - LEFT_MAX), off), right)
-+            if (jobs.size >= 3) break
++            if (jobs.size >= PER_PAUSE) break
 +        }
 +        if (jobs.isEmpty()) return
 +        worker.execute {
@@ -273,11 +279,16 @@ index 00000000..409eb07f
 +                if (gen != g) return@execute
 +                val s = score(j, cur) { gen == g }
 +                if (s == null) {
-+                    if (gen == g) diag("fail", 0.0, j.pick.word.length, j.right.length)
++                    if (gen == g) diag("fail", 0.0, j.pick.word.length, j.right.length, j.pick.aiChanged)
 +                    continue
 +                }
-+                diag("check", s.margin, j.pick.word.length, j.right.length)
-+                if (s.margin > THRESHOLD && (best == null || s.margin > best.margin)) best = s
++                diag("check", s.margin, j.pick.word.length, j.right.length, j.pick.aiChanged)
++                // 多个都过门槛时取超出门槛最多的
++                if (s.margin > j.pick.threshold &&
++                    (best == null || s.margin - j.pick.threshold > best.margin - best.pick.threshold)
++                ) {
++                    best = s
++                }
 +            }
 +            val found = best ?: return@execute
 +            main.post {
@@ -328,10 +339,11 @@ index 00000000..409eb07f
 +    /** 点了关闭 */
 +    fun dismiss() = cancel()
 +
-+    private fun stat(event: String, s: Suggestion) = diag(event, s.margin, s.pick.word.length, s.right.length)
++    private fun stat(event: String, s: Suggestion) = diag(event, s.margin, s.pick.word.length, s.right.length, s.pick.aiChanged)
 +
-+    private fun diag(event: String, margin: Double, wordLen: Int, rightLen: Int) {
-+        val line = "${System.currentTimeMillis() / 1000}\t$event\t${Math.round(margin * 10)}\t$wordLen\t$rightLen\n"
++    private fun diag(event: String, margin: Double, wordLen: Int, rightLen: Int, aiChanged: Boolean) {
++        val cls = if (aiChanged) 1 else 0
++        val line = "${System.currentTimeMillis() / 1000}\t$event\t${Math.round(margin * 10)}\t$wordLen\t$rightLen\t$cls\n"
 +        worker.execute {
 +            runCatching { File(DataManager.userDataDir, "fix_stats.tsv").appendText(line) }
 +        }

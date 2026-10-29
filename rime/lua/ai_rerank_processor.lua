@@ -251,9 +251,10 @@ local function setup_choice_memory(env)
 end
 
 -- === 选错修正建议（只在改版 Trime 上，客户端库有 fix_note 时）===
--- 选了 AI 改过的首位时，把所选词和同页候选（与它同一切分终点，按 Rime 原顺序前 4 个）登记到客户端库，
--- Trime 上屏时领取，停顿后补上右侧文字给整句打分，分差够大才在工具栏提示“A → B”（见补丁 0006 的 SuzuFix）。
--- 其他选词时清空登记，避免 Trime 领到别的词的候选。候选的终点来自过滤器的回放数据（rp.nat），没有时不登记。
+-- 每次整段选词都把所选词和同页候选（与它同一切分终点，按 Rime 原顺序前 4 个）登记到客户端库，并标明是否选了
+-- AI 改过的首位（这类选错率高，Trime 用较低的门槛）。Trime 上屏时领取，停顿后补上右侧文字给整句打分，
+-- 分差够大才在工具栏提示“A → B”（见补丁 0006 的 SuzuFix）。不登记时清空，避免 Trime 领到别的词的候选。
+-- 候选的终点来自过滤器的回放数据（rp.nat），没有时不登记。
 local function setup_fix_note(env)
     local llm = _G.ai_rerank_llm
     if not (llm and llm.fix_note) then return end
@@ -262,8 +263,8 @@ local function setup_fix_note(env)
             local s = select_info.resolve(ctx, "fix")
             local info = s and s.info
             local rp = info and info.rp
-            if not (s and s.whole and s.sel == 1 and rp and rp.nat and ctx:get_option("ai_rerank")
-                    and not ctx:get_option("ai_no_log") and info.ft ~= info.of and s.text == info.ft) then
+            if not (s and s.whole and rp and rp.nat and ctx:get_option("ai_rerank")
+                    and not ctx:get_option("ai_no_log")) then
                 llm.fix_note()
                 return
             end
@@ -279,7 +280,8 @@ local function setup_fix_note(env)
                     cands[#cands + 1] = x.t
                 end
             end
-            if #cands > 0 then llm.fix_note(s.text, cands) else llm.fix_note() end
+            local aichg = s.sel == 1 and info.ft ~= info.of and s.text == info.ft
+            if #cands > 0 then llm.fix_note(s.text, cands, aichg) else llm.fix_note() end
         end)
     end)
 end
