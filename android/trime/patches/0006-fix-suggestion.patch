@@ -121,10 +121,10 @@ index 2f11ec2a..5bc20b1e 100644
          }
 diff --git a/app/src/main/java/com/osfans/trime/ime/core/SuzuFix.kt b/app/src/main/java/com/osfans/trime/ime/core/SuzuFix.kt
 new file mode 100644
-index 00000000..88a2715a
+index 00000000..0eebaa8f
 --- /dev/null
 +++ b/app/src/main/java/com/osfans/trime/ime/core/SuzuFix.kt
-@@ -0,0 +1,224 @@
+@@ -0,0 +1,258 @@
 +/*
 + * SPDX-FileCopyrightText: 2026 1zumiii
 + * SPDX-License-Identifier: GPL-3.0-or-later
@@ -194,6 +194,37 @@ index 00000000..88a2715a
 +    var inputConnection: () -> InputConnection? = { null }
 +
 +    private val check = Runnable { runCheck() }
++
++    // Suzu 词表里的字符。词表外的字符（句号、问号、数字、英文等）会让守护进程把整段记成无效分（-1e12），
++    // 所以右文截到第一个词表外的字符为止，原词与候选含词表外字符的不比较。读不到词表时不截，靠分数检查兜底。
++    private val vocab: Set<String>? by lazy {
++        runCatching {
++            File(DataManager.userDataDir, "suzu.vocab.txt").readLines().map { it.substringBefore('\t') }.toHashSet()
++        }.getOrNull()
++    }
++    private const val INVALID = -1e11
++
++    private fun inVocab(t: String): Boolean {
++        val v = vocab ?: return true
++        var i = 0
++        while (i < t.length) {
++            val n = Character.charCount(t.codePointAt(i))
++            if (t.substring(i, i + n) !in v) return false
++            i += n
++        }
++        return true
++    }
++
++    private fun vocabPrefix(t: String): String {
++        val v = vocab ?: return t
++        var i = 0
++        while (i < t.length) {
++            val n = Character.charCount(t.codePointAt(i))
++            if (t.substring(i, i + n) !in v) break
++            i += n
++        }
++        return t.substring(0, i)
++    }
 +
 +    // 进入一个输入框（密码框、无痕模式等不查）或离开
 +    fun reset(block: Boolean) {
@@ -266,8 +297,8 @@ index 00000000..88a2715a
 +                picks.remove(p)   // 前面的文字改过了，位置对不上
 +                continue
 +            }
-+            val right = before.substring(off + p.word.length).take(RIGHT_MAX)
-+            if (right.isEmpty() || right == p.scoredRight) continue
++            val right = vocabPrefix(before.substring(off + p.word.length).take(RIGHT_MAX))
++            if (right.isEmpty() || right == p.scoredRight || !inVocab(p.word)) continue
 +            p.scoredRight = right
 +            jobs += Job(p, before.substring(maxOf(0, off - LEFT_MAX), off), right)
 +            if (jobs.size >= PER_PAUSE) break
@@ -302,19 +333,22 @@ index 00000000..88a2715a
 +
 +    // 后台线程：原词与候选的整句分，返回最高的候选（分差可能为负）
 +    private fun score(j: Job, cur: Int, alive: () -> Boolean): Suggestion? {
-+        val all = listOf(j.pick.word) + j.pick.cands.filter { it != j.pick.word }
++        val all = listOf(j.pick.word) + j.pick.cands.filter { it != j.pick.word && inVocab(it) }
 +        if (all.size < 2) return null
 +        val s0 = nativeScore(j.left.toByteArray(), all.map { it.toByteArray() }.toTypedArray(), BUDGET_MS) ?: return null
++        if (s0[0] <= INVALID) return null
 +        val pad = if (j.right == "的") "了" else "的"
 +        val tot = DoubleArray(all.size)
 +        for (i in all.indices) {
 +            if (!alive()) return null
 +            val r = nativeScore((j.left + all[i]).toByteArray(), arrayOf(j.right.toByteArray(), pad.toByteArray()), BUDGET_MS)
 +                ?: return null
-+            tot[i] = s0[i] + r[0]
++            if (r[0] <= INVALID) return null
++            tot[i] = if (s0[i] <= INVALID) Double.NEGATIVE_INFINITY else s0[i] + r[0]
 +        }
 +        var bi = 1
 +        for (i in 2 until all.size) if (tot[i] > tot[bi]) bi = i
++        if (tot[bi] == Double.NEGATIVE_INFINITY) return null
 +        return Suggestion(j.pick, all[bi], j.right, cur, tot[bi] - tot[0])
 +    }
 +
