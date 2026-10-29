@@ -121,10 +121,10 @@ index 2f11ec2a..5bc20b1e 100644
          }
 diff --git a/app/src/main/java/com/osfans/trime/ime/core/SuzuFix.kt b/app/src/main/java/com/osfans/trime/ime/core/SuzuFix.kt
 new file mode 100644
-index 00000000..ddad45f1
+index 00000000..409eb07f
 --- /dev/null
 +++ b/app/src/main/java/com/osfans/trime/ime/core/SuzuFix.kt
-@@ -0,0 +1,201 @@
+@@ -0,0 +1,212 @@
 +/*
 + * SPDX-FileCopyrightText: 2026 1zumiii
 + * SPDX-License-Identifier: GPL-3.0-or-later
@@ -145,6 +145,8 @@ index 00000000..ddad45f1
 +// 记录来源：Lua 在选词时把“所选词与同页候选”登记到 librime_llm.so（fix_note），这里在上屏时按上屏文字领取（nativeTake）。
 +// 打分：nativeScore 经单独的连接请求守护进程，各字对数概率之和；整句分 = score(左文 → X) + score(左文 + X → 右文)。
 +// 文字只在内存里；统计只写数字（fix_stats.tsv：时间、事件、分差 ×10、原词字数、右文字数），不写日志。
++// 事件：take 上屏时领到候选，pick 在输入框里定位到原词，check 打完分（不论是否过门槛），fail 打分失败，
++//       shown 显示提示，accepted 采纳，ignored 忽略，stale 点了但文字已变。
 +object SuzuFix {
 +    const val PAUSE_MS = 1500L
 +    const val THRESHOLD = 5.0
@@ -204,6 +206,7 @@ index 00000000..ddad45f1
 +        if (!loaded || blocked || text.isEmpty()) return
 +        val cs = runCatching { nativeTake(text.toByteArray()) }.getOrNull() ?: return
 +        pendingCommit = text to cs.map { String(it) }
++        diag("take", 0.0, text.length, 0)
 +    }
 +
 +    // 开始打字（出现候选）：收起提示、取消计时
@@ -222,6 +225,7 @@ index 00000000..ddad45f1
 +            val before = runCatching { ic?.getTextBeforeCursor(w.length, 0)?.toString() }.getOrNull()
 +            if (start >= 0 && before == w) {
 +                picks.addLast(Pick(start, w, cs))
++                diag("pick", 0.0, w.length, 0)
 +                while (picks.size > KEEP) picks.removeFirst()
 +            }
 +        }
@@ -267,7 +271,12 @@ index 00000000..ddad45f1
 +            var best: Suggestion? = null
 +            for (j in jobs) {
 +                if (gen != g) return@execute
-+                val s = score(j, cur) { gen == g } ?: continue
++                val s = score(j, cur) { gen == g }
++                if (s == null) {
++                    if (gen == g) diag("fail", 0.0, j.pick.word.length, j.right.length)
++                    continue
++                }
++                diag("check", s.margin, j.pick.word.length, j.right.length)
 +                if (s.margin > THRESHOLD && (best == null || s.margin > best.margin)) best = s
 +            }
 +            val found = best ?: return@execute
@@ -319,8 +328,10 @@ index 00000000..ddad45f1
 +    /** 点了关闭 */
 +    fun dismiss() = cancel()
 +
-+    private fun stat(event: String, s: Suggestion) {
-+        val line = "${System.currentTimeMillis() / 1000}\t$event\t${Math.round(s.margin * 10)}\t${s.pick.word.length}\t${s.right.length}\n"
++    private fun stat(event: String, s: Suggestion) = diag(event, s.margin, s.pick.word.length, s.right.length)
++
++    private fun diag(event: String, margin: Double, wordLen: Int, rightLen: Int) {
++        val line = "${System.currentTimeMillis() / 1000}\t$event\t${Math.round(margin * 10)}\t$wordLen\t$rightLen\n"
 +        worker.execute {
 +            runCatching { File(DataManager.userDataDir, "fix_stats.tsv").appendText(line) }
 +        }
