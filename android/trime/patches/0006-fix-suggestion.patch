@@ -268,10 +268,10 @@ index 00000000..15f30c55
 +}
 diff --git a/app/src/main/java/com/osfans/trime/ime/core/SuzuFix.kt b/app/src/main/java/com/osfans/trime/ime/core/SuzuFix.kt
 new file mode 100644
-index 00000000..4e23e00e
+index 00000000..7498bb5d
 --- /dev/null
 +++ b/app/src/main/java/com/osfans/trime/ime/core/SuzuFix.kt
-@@ -0,0 +1,457 @@
+@@ -0,0 +1,479 @@
 +/*
 + * SPDX-FileCopyrightText: 2026 1zumiii
 + * SPDX-License-Identifier: GPL-3.0-or-later
@@ -288,7 +288,7 @@ index 00000000..4e23e00e
 +import java.util.concurrent.Executors
 +
 +// 选错修正（试验），两种入口：
-+// 1. 光标换词：用户把光标点到一个词上（词中或词尾），候选栏列出它的同音候选，按整句分从高到低排，
++// 1. 光标换词：用户把光标点到一个词上（词首或词中，即光标后的词），候选栏列出它的同音候选，按整句分从高到低排，
 +//    点哪个就把原词整段换成哪个。判断“是不是选错了”交给用户，模型只负责排序，所以没有门槛。
 +//    最近整段选过的词用选词时记下的同页候选；其他文字（以前打的、粘贴的）由 Lua 查词库找出词和同音词。
 +// 2. 自动提示：句子里每个整段选的词，停顿时补上右侧已打的文字，给原词与同页候选打整句分，
@@ -364,6 +364,7 @@ index 00000000..4e23e00e
 +    var choices: Choices? = null
 +        private set
 +    var choicesListener: ((Choices?) -> Unit)? = null
++    private var viewShown = false         // 候选栏正显示换词候选（光标跳动后可能已作废，等新结果替换）
 +
 +    var inputConnection: () -> InputConnection? = { null }
 +
@@ -429,9 +430,13 @@ index 00000000..4e23e00e
 +    fun onSelection(selStart: Int, selEnd: Int, composing: Boolean, jumped: Boolean) {
 +        // 有的应用会重复报告同一个光标位置：什么都没变，就别收起刚列出的候选
 +        if (!jumped && !composing && selStart == selEnd && selStart == cursor && pendingCommit == null) return
-+        cancel()
++        // 光标跳动时先不收起候选栏：等新的候选出来直接替换，没有可列的再收起（先收起会露出一帧工具栏，看着像闪）
++        cancel(keepView = jumped)
 +        cursor = if (selStart == selEnd && !composing) selStart else -1
-+        if (cursor < 0 || !loaded || blocked) return
++        if (cursor < 0 || !loaded || blocked) {
++            hideStale()
++            return
++        }
 +        pendingCommit?.let { (w, cs) ->
 +            pendingCommit = null
 +            val start = cursor - w.length
@@ -446,14 +451,17 @@ index 00000000..4e23e00e
 +                while (picks.size > KEEP) picks.removeFirst()
 +            }
 +        }
-+        if (jumped && offerChoices()) return
++        if (jumped) {
++            if (offerChoices()) return
++            hideStale()
++        }
 +        // 位置可能已经不对（之前的文字改过），打分前按文字核对；这里只决定要不要等停顿
 +        if (picks.any { !it.dismissed && it.end <= cursor && cursor - it.start <= SPAN_MAX }) {
 +            main.postDelayed(check, PAUSE_MS)
 +        }
 +    }
 +
-+    private fun cancel() {
++    private fun cancel(keepView: Boolean = false) {
 +        gen++
 +        main.removeCallbacks(check)
 +        if (current != null) {
@@ -464,7 +472,23 @@ index 00000000..4e23e00e
 +        if (choices != null) {
 +            choices?.let { diag("unchosen", 0.0, it.pick.word.length, it.rightLen, it.pick.aiChanged) }
 +            choices = null
++        }
++        if (!keepView) hideStale()
++    }
++
++    // 候选栏还显示着已经作废的换词候选：收起
++    private fun hideStale() {
++        if (choices == null && viewShown) {
++            viewShown = false
 +            choicesListener?.invoke(null)
++        }
++    }
++
++    // 异步打分或查词库的结果回到主线程：还是同一次光标位置才显示，没有可列的就收起旧的
++    private fun finish(g: Int, cur: Int, result: Choices?, t0: Long) {
++        main.post {
++            if (gen != g || cursor != cur) return@post
++            if (result != null) showChoices(result, System.currentTimeMillis() - t0) else hideStale()
 +        }
 +    }
 +
@@ -480,17 +504,17 @@ index 00000000..4e23e00e
 +        return off >= 0 && off + p.word.length <= text.length && text.regionMatches(off, p.word, 0, p.word.length)
 +    }
 +
-+    // 光标点到最近选过的词上：词尾正好在光标处的优先，其次光标在词中，最后词首在光标处
++    // 光标点到最近选过的词上：词首正好在光标处（光标后的词）优先，其次光标在词中；光标前的词不算，
++    // 免得在句末接着打字时被打扰
 +    // 没有选词记录（以前打的、粘贴的文字）时改查词库，见 lookupChoices
 +    private fun offerChoices(): Boolean {
 +        val cur = cursor
 +        val ic = inputConnection() ?: return false
 +        val (text, base) = around(ic, cur, READ_MAX, READ_MAX) ?: return false
-+        val near = picks.filter { it.start <= cur && cur <= it.end }
++        val near = picks.filter { it.start <= cur && cur < it.end }
 +        val valid = near.filter { matches(it, text, base) }
 +        picks.removeAll { it in near && it !in valid }
-+        val p = valid.lastOrNull { it.end == cur } ?: valid.lastOrNull { it.start < cur } ?: valid.lastOrNull()
-+            ?: return lookupChoices(text, base, cur)
++        val p = valid.lastOrNull { it.start == cur } ?: valid.lastOrNull() ?: return lookupChoices(text, base, cur)
 +        val off = p.start - base
 +        val left = text.substring(maxOf(0, off - LEFT_MAX), off)
 +        val right = vocabPrefix(text.substring(off + p.word.length).take(RIGHT_MAX))
@@ -508,11 +532,7 @@ index 00000000..4e23e00e
 +        worker.execute {
 +            val tot = if (inVocab(p.word)) scoreAll(left, right, all) { gen == g } else null
 +            if (tot != null) p.cache = key to all.indices.associate { all[it] to tot[it] }
-+            val result = rank(p, others, tot, right.length, cur)
-+            main.post {
-+                if (gen != g || cursor != cur) return@post
-+                showChoices(result, System.currentTimeMillis() - t0)
-+            }
++            finish(g, cur, rank(p, others, tot, right.length, cur), t0)
 +        }
 +        return true
 +    }
@@ -531,34 +551,35 @@ index 00000000..4e23e00e
 +        val kc = win.codePointCount(0, k - ws)
 +        val g = gen
 +        val t0 = System.currentTimeMillis()
-+        worker.execute {
-+            if (gen != g) return@execute
-+            val id = runCatching { nativeLookupPut(win.toByteArray(), kc) }.getOrNull() ?: return@execute
++        worker.execute { finish(g, cur, lookupWork(win, kc, text, base, ws, cur, g, t0), t0) }
++        return true
++    }
++
++    // 后台线程：查词库、打分；查不到或作废时返回 null
++    private fun lookupWork(win: String, kc: Int, text: String, base: Int, ws: Int, cur: Int, g: Int, t0: Long): Choices? {
++        run {
++            if (gen != g) return null
++            val id = runCatching { nativeLookupPut(win.toByteArray(), kc) }.getOrNull() ?: return null
 +            requestLookup()
 +            val r = runCatching { nativeLookupWait(id, LOOKUP_WAIT_MS) }.getOrNull()
 +            if (r == null || r.size < 4) {
 +                diag(if (r == null) "lookup_timeout" else "lookup_none", 0.0, 0, 0, false, ms = System.currentTimeMillis() - t0)
-+                return@execute
++                return null
 +            }
-+            val s = runCatching { win.offsetByCodePoints(0, String(r[0]).toInt()) }.getOrNull() ?: return@execute
-+            val e = runCatching { win.offsetByCodePoints(0, String(r[1]).toInt()) }.getOrNull() ?: return@execute
++            val s = runCatching { win.offsetByCodePoints(0, String(r[0]).toInt()) }.getOrNull() ?: return null
++            val e = runCatching { win.offsetByCodePoints(0, String(r[1]).toInt()) }.getOrNull() ?: return null
 +            val word = String(r[2])
-+            if (win.substring(s, e) != word) return@execute
++            if (win.substring(s, e) != word) return null
 +            val others = r.drop(3).map { String(it) }.filter { it != word }
-+            if (others.isEmpty()) return@execute
++            if (others.isEmpty()) return null
 +            diag("lookup", 0.0, word.length, 0, false, ms = System.currentTimeMillis() - t0)
 +            val p = Pick(base + ws + s, word, others, false).apply { dismissed = true }
 +            val off = ws + s
 +            val left = text.substring(maxOf(0, off - LEFT_MAX), off)
 +            val right = vocabPrefix(text.substring(ws + e).take(RIGHT_MAX))
 +            val tot = if (inVocab(word)) scoreAll(left, right, listOf(word) + others) { gen == g } else null
-+            val result = rank(p, others, tot, right.length, cur)
-+            main.post {
-+                if (gen != g || cursor != cur) return@post
-+                showChoices(result, System.currentTimeMillis() - t0)
-+            }
++            return rank(p, others, tot, right.length, cur)
 +        }
-+        return true
 +    }
 +
 +    private fun cacheKey(left: String, right: String) = left + "\u0001" + right
@@ -574,6 +595,7 @@ index 00000000..4e23e00e
 +
 +    private fun showChoices(c: Choices, waitMs: Long) {
 +        choices = c
++        viewShown = true
 +        diag("offer", c.margins?.firstOrNull() ?: 0.0, c.pick.word.length, c.rightLen, c.pick.aiChanged, ms = waitMs)
 +        choicesListener?.invoke(c)
 +    }
@@ -582,7 +604,7 @@ index 00000000..4e23e00e
 +    fun choose(i: Int, replace: (Int, Int, String) -> Boolean): Boolean {
 +        val c = choices ?: return false
 +        choices = null
-+        choicesListener?.invoke(null)
++        hideStale()
 +        val p = c.pick
 +        val word = c.options.getOrNull(i) ?: return false
 +        val ic = inputConnection() ?: return false

@@ -288,8 +288,8 @@ end
 
 -- === 光标换词的词库查询（只在改版 Trime 上，客户端库有 lookup_take 时）===
 -- 光标点到没有选词记录的文字上（以前打的、粘贴的）时，Trime 把光标附近的文字放进客户端库，再设运行时开关
--- suzu_fix_lookup 通知这里。找光标处的词：依次试光标前结束的词（4、3、2 字）、跨过光标的词、光标后开始的词，
--- 最后才试单字。每段逐字用 ReverseDb（build/rime_ice.reverse.bin，只收单字）取读音，多音字的组合逐个拼成拼音交给
+-- suzu_fix_lookup 通知这里。找光标后的词：依次试从光标处开始的词（4、3、2 字）、跨过光标的词，最后才试光标后的单字；
+-- 光标前的词不试（句末接着打字时不该弹出来）。每段逐字用 ReverseDb（build/rime_ice.reverse.bin，只收单字）取读音，多音字的组合逐个拼成拼音交给
 -- 翻译器查；结果里有原词，说明这段确实是个词、读音也对，取同样字数的前 8 个同音词写回。都不成立时写回“没找到”。
 -- 文字只在内存里，不写文件。
 local FIX_LOOKUP_QUERIES = 40   -- 每次最多查这么多次翻译器
@@ -370,10 +370,8 @@ local function fix_lookup(env, text, cur)
         return walk(1)
     end
     local spans = {}
-    for n = 4, 2, -1 do spans[#spans + 1] = { cur - n, cur } end
-    for n = 4, 2, -1 do for s = cur - n + 1, cur - 1 do spans[#spans + 1] = { s, s + n } end end
     for n = 4, 2, -1 do spans[#spans + 1] = { cur, cur + n } end
-    spans[#spans + 1] = { cur - 1, cur }
+    for n = 4, 2, -1 do for s = cur - 1, cur - n + 1, -1 do spans[#spans + 1] = { s, s + n } end end
     spans[#spans + 1] = { cur, cur + 1 }
     for _, sp in ipairs(spans) do
         local list = try(sp[1], sp[2])
