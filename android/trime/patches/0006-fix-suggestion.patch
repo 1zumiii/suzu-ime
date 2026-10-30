@@ -12,36 +12,36 @@ index 179522e4..1c831a1a 100644
  # remove kotlin null checks
  -assumenosideeffects class kotlin.jvm.internal.Intrinsics {
 diff --git a/app/src/main/java/com/osfans/trime/ime/bar/InputBarDelegate.kt b/app/src/main/java/com/osfans/trime/ime/bar/InputBarDelegate.kt
-index ae9e5194..039029df 100644
+index ae9e5194..fe5a6872 100644
 --- a/app/src/main/java/com/osfans/trime/ime/bar/InputBarDelegate.kt
 +++ b/app/src/main/java/com/osfans/trime/ime/bar/InputBarDelegate.kt
-@@ -30,6 +30,7 @@ import com.osfans.trime.data.theme.Theme
+@@ -30,7 +30,9 @@ import com.osfans.trime.data.theme.Theme
  import com.osfans.trime.data.theme.ThemeScope
  import com.osfans.trime.ime.bar.ui.AiStatusButtonAction
  import com.osfans.trime.ime.bar.ui.AlwaysUi
 +import com.osfans.trime.ime.core.SuzuFix
  import com.osfans.trime.ime.bar.ui.CandidateUi
++import com.osfans.trime.ime.bar.ui.FixChoicesUi
  import com.osfans.trime.ime.bar.ui.TabUi
  import com.osfans.trime.ime.broadcast.InputBroadcastReceiver
-@@ -86,6 +87,8 @@ class InputBarDelegate(override val di: DI) :
+ import com.osfans.trime.ime.candidates.compact.CompactCandidateDelegate
+@@ -86,6 +88,7 @@ class InputBarDelegate(override val di: DI) :
  
      private var isClipboardFresh: Boolean = false
      private var isInlineSuggestionPresent: Boolean = false
 +    private var isFixPresent: Boolean = false
-+    private var isFixChoicesPresent: Boolean = false
  
      @Keep
      private val onClipboardUpdateListener = ClipboardHelper.OnClipboardUpdateListener {
-@@ -117,6 +120,8 @@ class InputBarDelegate(override val di: DI) :
+@@ -117,6 +120,7 @@ class InputBarDelegate(override val di: DI) :
      private fun evalAlwaysUiState() {
          val newState =
              when {
-+                isFixChoicesPresent -> AlwaysUi.State.FixChoices
 +                isFixPresent -> AlwaysUi.State.FixSuggestion
                  isClipboardFresh -> AlwaysUi.State.Clipboard
                  isInlineSuggestionPresent -> AlwaysUi.State.InlineSuggestion
                  else -> AlwaysUi.State.Toolbar
-@@ -165,6 +170,22 @@ class InputBarDelegate(override val di: DI) :
+@@ -165,6 +169,15 @@ class InputBarDelegate(override val di: DI) :
              clipboardUi.dismiss.setOnClickListener {
                  dismissClipboardSuggestion()
              }
@@ -54,17 +54,26 @@ index ae9e5194..039029df 100644
 +                if (s != null) fixUi.text.text = "${s.pick.word} → ${s.best}"
 +                evalAlwaysUiState()
 +            }
-+            fixChoicesUi.onChoose = { i -> SuzuFix.choose(i) { start, end, text -> service.replaceRange(start, end, text) } }
-+            fixChoicesUi.dismiss.setOnClickListener { SuzuFix.dismiss() }
-+            SuzuFix.choicesListener = { c ->
-+                isFixChoicesPresent = c != null
-+                if (c != null) fixChoicesUi.show(c.options)
-+                evalAlwaysUiState()
-+            }
          }
      }
  
-@@ -230,6 +251,7 @@ class InputBarDelegate(override val di: DI) :
+@@ -187,6 +200,15 @@ class InputBarDelegate(override val di: DI) :
+         TabUi(context, scope)
+     }
+ 
++    // 光标换词（SuzuFix）：没在打字时占用候选栏，像普通候选一样列出光标所在词的同页候选
++    private val fixChoicesUi by lazy {
++        FixChoicesUi(context, scope).apply {
++            onChoose = { i -> SuzuFix.choose(i) { start, end, text -> service.replaceRange(start, end, text) } }
++            dismiss.setOnClickListener { SuzuFix.dismiss() }
++        }
++    }
++    private var isFixChoicesPresent = false
++
+     private val barStateMachine =
+         QuickBarStateMachine.new {
+             switchUiByState(it)
+@@ -230,6 +252,7 @@ class InputBarDelegate(override val di: DI) :
      }
  
      override fun onCandidateListUpdate(data: Candidates.Bulk) {
@@ -72,47 +81,80 @@ index ae9e5194..039029df 100644
          barStateMachine.push(
              QuickBarStateMachine.TransitionEvent.CandidatesUpdated,
              QuickBarStateMachine.BooleanKey.CandidateEmpty to data.candidates.isEmpty(),
+@@ -237,7 +260,7 @@ class InputBarDelegate(override val di: DI) :
+     }
+ 
+     private fun switchUiByState(state: QuickBarStateMachine.State) {
+-        val index = state.ordinal
++        val index = if (isFixChoicesPresent && state == QuickBarStateMachine.State.Always) FIX_CHOICES_INDEX else state.ordinal
+         if (view.displayedChild == index) return
+         val new = view.getChildAt(index)
+         if (new != tabUi.root) {
+@@ -266,6 +289,12 @@ class InputBarDelegate(override val di: DI) :
+             add(alwaysUi.root, lParams(matchParent, matchParent))
+             add(candidateUi.root, lParams(matchParent, matchParent))
+             add(tabUi.root, lParams(matchParent, matchParent))
++            add(fixChoicesUi.root, lParams(matchParent, matchParent))
++            SuzuFix.choicesListener = { c ->
++                isFixChoicesPresent = c != null
++                if (c != null) fixChoicesUi.show(c.options)
++                switchUiByState(barStateMachine.currentState)
++            }
+ 
+             evalAlwaysUiState()
+             ClipboardHelper.addOnUpdateListener(onClipboardUpdateListener)
+@@ -287,6 +316,7 @@ class InputBarDelegate(override val di: DI) :
+         // the compact candidate rows live inside candidateUi and re-bind via the delegate
+         candidate.refreshColors()
+         tabUi.refreshColors()
++        fixChoicesUi.refreshColors()
+     }
+ 
+     override fun onStartInput(info: EditorInfo) {
+@@ -384,4 +414,8 @@ class InputBarDelegate(override val di: DI) :
+     override fun onRimeOptionUpdated(value: RimeMessage.OptionMessage.Data) {
+         alwaysUi.updateButtonsStyle(value.option, value.value)
+     }
++
++    companion object {
++        private const val FIX_CHOICES_INDEX = 3   // view 里的第四个子视图
++    }
+ }
 diff --git a/app/src/main/java/com/osfans/trime/ime/bar/ui/AlwaysUi.kt b/app/src/main/java/com/osfans/trime/ime/bar/ui/AlwaysUi.kt
-index 46f0368c..1e597a69 100644
+index 46f0368c..3540b3fb 100644
 --- a/app/src/main/java/com/osfans/trime/ime/bar/ui/AlwaysUi.kt
 +++ b/app/src/main/java/com/osfans/trime/ime/bar/ui/AlwaysUi.kt
-@@ -40,6 +40,8 @@ class AlwaysUi(
+@@ -40,6 +40,7 @@ class AlwaysUi(
          Toolbar,
          Clipboard,
          InlineSuggestion,
 +        FixSuggestion,
-+        FixChoices,
      }
  
      var currentState = State.Toolbar
-@@ -71,6 +73,12 @@ class AlwaysUi(
+@@ -71,6 +72,9 @@ class AlwaysUi(
  
      val inlineSuggestionsUi = InlineSuggestionsUi(ctx)
  
 +    // 选错修正建议“A → B”（SuzuFix）
 +    val fixUi = ClipboardSuggestionUi(ctx, scope, R.drawable.ic_baseline_edit_24)
 +
-+    // 光标换词：光标所在词的同页候选（SuzuFix）
-+    val fixChoicesUi = FixChoicesUi(ctx, scope)
-+
      val hideKeyboardButton = ToolButton(ctx, R.drawable.ic_baseline_arrow_drop_down_24, scope)
      private val rightMostButton =
          ViewAnimator(ctx).apply {
-@@ -92,6 +100,8 @@ class AlwaysUi(
+@@ -92,6 +96,7 @@ class AlwaysUi(
              add(buttonsUi.root, lParams(matchParent, matchParent))
              add(clipboardUi.root, lParams(matchParent, matchParent))
              add(inlineSuggestionsUi.root, lParams(matchParent, matchParent))
 +            add(fixUi.root, lParams(matchParent, matchParent))
-+            add(fixChoicesUi.root, lParams(matchParent, matchParent))
          }
  
      override val root: ConstraintLayout = constraintLayout {
-@@ -158,6 +168,8 @@ class AlwaysUi(
+@@ -158,6 +163,7 @@ class AlwaysUi(
          hideKeyboardButton.refreshColors()
          buttonsUi.refreshColors()
          clipboardUi.refreshColors()
 +        fixUi.refreshColors()
-+        fixChoicesUi.refreshColors()
      }
  
      private fun updateRightMostButton(state: State) {
@@ -136,10 +178,10 @@ index 2f11ec2a..5bc20b1e 100644
          }
 diff --git a/app/src/main/java/com/osfans/trime/ime/bar/ui/FixChoicesUi.kt b/app/src/main/java/com/osfans/trime/ime/bar/ui/FixChoicesUi.kt
 new file mode 100644
-index 00000000..9b4ea748
+index 00000000..15f30c55
 --- /dev/null
 +++ b/app/src/main/java/com/osfans/trime/ime/bar/ui/FixChoicesUi.kt
-@@ -0,0 +1,86 @@
+@@ -0,0 +1,84 @@
 +/*
 + * SPDX-FileCopyrightText: 2026 1zumiii
 + * SPDX-License-Identifier: GPL-3.0-or-later
@@ -147,83 +189,81 @@ index 00000000..9b4ea748
 +package com.osfans.trime.ime.bar.ui
 +
 +import android.content.Context
-+import android.view.Gravity
++import android.widget.HorizontalScrollView
 +import android.widget.LinearLayout
-+import android.widget.TextView
 +import com.osfans.trime.R
++import com.osfans.trime.core.CandidateProto
 +import com.osfans.trime.data.theme.ThemeScope
-+import com.osfans.trime.util.rippleDrawable
++import com.osfans.trime.ime.candidates.CandidateItemUi
 +import splitties.dimensions.dp
-+import splitties.resources.drawable
++import splitties.views.dsl.constraintlayout.before
++import splitties.views.dsl.constraintlayout.centerVertically
++import splitties.views.dsl.constraintlayout.constraintLayout
++import splitties.views.dsl.constraintlayout.endOfParent
++import splitties.views.dsl.constraintlayout.lParams
++import splitties.views.dsl.constraintlayout.matchConstraints
++import splitties.views.dsl.constraintlayout.startOfParent
 +import splitties.views.dsl.core.Ui
 +import splitties.views.dsl.core.add
 +import splitties.views.dsl.core.horizontalLayout
-+import splitties.views.dsl.core.imageView
-+import splitties.views.dsl.core.lParams
 +import splitties.views.dsl.core.matchParent
-+import splitties.views.dsl.core.textView
-+import splitties.views.imageDrawable
++import splitties.views.dsl.core.view
 +
-+// 光标换词：编辑图标、一排候选（已按整句分排好）、关闭按钮
++// 光标换词：占用候选栏，候选（已按整句分排好）的样子与普通候选相同，第一个高亮；右侧是关闭按钮
 +class FixChoicesUi(
 +    override val ctx: Context,
 +    private val scope: ThemeScope,
 +) : Ui {
 +    var onChoose: ((Int) -> Unit)? = null
 +
-+    private val icon =
-+        imageView {
-+            imageDrawable =
-+                drawable(R.drawable.ic_baseline_edit_24)!!.mutate().apply {
-+                    setTint(scope.colors.candidateTextColor)
-+                }
-+        }
++    private var options: List<String> = emptyList()
 +
-+    private val row = horizontalLayout { gravity = Gravity.CENTER_VERTICAL }
++    private val row = horizontalLayout { }
 +
-+    val dismiss =
-+        imageView {
-+            isFocusable = false
-+            imageDrawable = drawable(R.drawable.ic_outline_cancel_24)!!.mutate().apply {
-+                setTint(scope.colors.candidateTextColor)
-+            }
-+        }
++    private val scroll = view(::HorizontalScrollView) {
++        isHorizontalScrollBarEnabled = false
++        addView(row, LinearLayout.LayoutParams.WRAP_CONTENT, LinearLayout.LayoutParams.MATCH_PARENT)
++    }
 +
-+    override val root =
-+        horizontalLayout {
-+            gravity = Gravity.CENTER_VERTICAL
-+            add(icon, lParams(dp(20), dp(20)) { marginStart = dp(4); marginEnd = dp(4) })
-+            add(row, lParams(0, matchParent) { weight = 1f })
-+            add(dismiss, lParams(dp(20), dp(20)) { marginStart = dp(4); marginEnd = dp(4) })
-+        }
++    val dismiss = ToolButton(ctx, R.drawable.ic_outline_cancel_24, scope)
 +
-+    private fun item(i: Int, word: String): TextView =
-+        textView {
-+            text = word
-+            isSingleLine = true
-+            textSize = 17f
-+            gravity = Gravity.CENTER
-+            setPadding(dp(12), 0, dp(12), 0)
-+            setTextColor(scope.colors.candidateTextColor)
-+            background = rippleDrawable(scope.colors.hilitedCandidateBackColor)
-+            setOnClickListener { onChoose?.invoke(i) }
-+        }
++    override val root = constraintLayout {
++        add(
++            scroll,
++            lParams(matchConstraints, matchParent) {
++                startOfParent()
++                before(dismiss)
++                centerVertically()
++            },
++        )
++        add(
++            dismiss,
++            lParams(dp(40), matchParent) {
++                endOfParent()
++                centerVertically()
++            },
++        )
++    }
 +
 +    fun show(options: List<String>) {
++        this.options = options
 +        row.removeAllViews()
-+        options.forEachIndexed { i, w -> row.addView(item(i, w), LinearLayout.LayoutParams(LinearLayout.LayoutParams.WRAP_CONTENT, LinearLayout.LayoutParams.MATCH_PARENT)) }
++        options.forEachIndexed { i, w ->
++            val item = CandidateItemUi(ctx, scope)
++            item.update(CandidateProto(w, "", ""), i == 0)
++            item.root.setOnClickListener { onChoose?.invoke(i) }
++            row.addView(
++                item.root,
++                LinearLayout.LayoutParams(LinearLayout.LayoutParams.WRAP_CONTENT, LinearLayout.LayoutParams.MATCH_PARENT),
++            )
++        }
++        scroll.scrollTo(0, 0)
 +    }
 +
 +    /** Re-applies the colors that were set once at construction. */
 +    fun refreshColors() {
-+        icon.imageDrawable?.setTint(scope.colors.candidateTextColor)
-+        dismiss.imageDrawable?.setTint(scope.colors.candidateTextColor)
-+        for (i in 0 until row.childCount) {
-+            (row.getChildAt(i) as? TextView)?.apply {
-+                setTextColor(scope.colors.candidateTextColor)
-+                background = rippleDrawable(scope.colors.hilitedCandidateBackColor)
-+            }
-+        }
++        dismiss.refreshColors()
++        if (options.isNotEmpty()) show(options)
 +    }
 +}
 diff --git a/app/src/main/java/com/osfans/trime/ime/core/SuzuFix.kt b/app/src/main/java/com/osfans/trime/ime/core/SuzuFix.kt
