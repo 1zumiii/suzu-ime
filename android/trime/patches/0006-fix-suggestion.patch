@@ -268,10 +268,10 @@ index 00000000..15f30c55
 +}
 diff --git a/app/src/main/java/com/osfans/trime/ime/core/SuzuFix.kt b/app/src/main/java/com/osfans/trime/ime/core/SuzuFix.kt
 new file mode 100644
-index 00000000..da2dccbd
+index 00000000..4e23e00e
 --- /dev/null
 +++ b/app/src/main/java/com/osfans/trime/ime/core/SuzuFix.kt
-@@ -0,0 +1,400 @@
+@@ -0,0 +1,457 @@
 +/*
 + * SPDX-FileCopyrightText: 2026 1zumiii
 + * SPDX-License-Identifier: GPL-3.0-or-later
@@ -288,8 +288,9 @@ index 00000000..da2dccbd
 +import java.util.concurrent.Executors
 +
 +// 选错修正（试验），两种入口：
-+// 1. 光标换词：用户把光标点到最近整段选过的词上（词中或词尾），工具栏列出这个词的同页候选，按整句分从高到低排，
++// 1. 光标换词：用户把光标点到一个词上（词中或词尾），候选栏列出它的同音候选，按整句分从高到低排，
 +//    点哪个就把原词整段换成哪个。判断“是不是选错了”交给用户，模型只负责排序，所以没有门槛。
++//    最近整段选过的词用选词时记下的同页候选；其他文字（以前打的、粘贴的）由 Lua 查词库找出词和同音词。
 +// 2. 自动提示：句子里每个整段选的词，停顿时补上右侧已打的文字，给原词与同页候选打整句分，
 +//    某个候选比原词高出门槛时在工具栏提示“A → B”，点了才替换。选了 AI 改过的首位的词选错率高，用较低的门槛。
 +// 记录来源：Lua 在选词时把“所选词与同页候选”登记到 librime_llm.so（fix_note），这里在上屏时按上屏文字领取（nativeTake）。
@@ -299,7 +300,7 @@ index 00000000..da2dccbd
 +// 事件：take 上屏时领到候选，pick 在输入框里定位到原词，check 打完分（不论是否过门槛），fail 打分失败，
 +//       shown 显示提示，accepted 采纳，ignored 忽略，stale 点了但文字已变；
 +//       offer 光标换词列出候选（分差为排第一的候选比原词），chose 换了词（分差为所选比原词，名次从 0 起），
-+//       unchosen 列出后没换。
++//       unchosen 列出后没换；lookup 词库查到了光标处的词，lookup_none 没查到，lookup_timeout Lua 没有及时回应。
 +object SuzuFix {
 +    const val PAUSE_MS = 1500L
 +    const val THRESHOLD = 8.0
@@ -311,6 +312,8 @@ index 00000000..da2dccbd
 +    private const val KEEP = 8            // 最多记最近这么多个选词
 +    private const val PER_PAUSE = 4       // 每次停顿最多查这么多个（从最近的起）
 +    private const val READ_MAX = 200      // 光标换词：光标前后各读这么多字来核对位置
++    private const val LOOKUP_SPAN = 6     // 词库查询：光标前后各交给 Lua 这么多字
++    private const val LOOKUP_WAIT_MS = 300
 +
 +    class Pick(var start: Int, var word: String, var cands: List<String>, val aiChanged: Boolean) {
 +        val threshold get() = if (aiChanged) THRESHOLD_AI else THRESHOLD
@@ -336,6 +339,12 @@ index 00000000..da2dccbd
 +    private external fun nativeTake(word: ByteArray): Array<ByteArray>?
 +
 +    @JvmStatic
++    private external fun nativeLookupPut(text: ByteArray, cursor: Int): Long
++
++    @JvmStatic
++    private external fun nativeLookupWait(id: Long, timeoutMs: Int): Array<ByteArray>?
++
++    @JvmStatic
 +    private external fun nativeScore(ctx: ByteArray, cands: Array<ByteArray>, budgetMs: Int): DoubleArray?
 +
 +    private val main = Handler(Looper.getMainLooper())
@@ -357,6 +366,9 @@ index 00000000..da2dccbd
 +    var choicesListener: ((Choices?) -> Unit)? = null
 +
 +    var inputConnection: () -> InputConnection? = { null }
++
++    /** 通知 Lua 处理词库查询（由输入法服务设为在 Rime 线程上设运行时开关 suzu_fix_lookup） */
++    var requestLookup: () -> Unit = {}
 +
 +    private val check = Runnable { runCheck() }
 +
@@ -469,15 +481,16 @@ index 00000000..da2dccbd
 +    }
 +
 +    // 光标点到最近选过的词上：词尾正好在光标处的优先，其次光标在词中，最后词首在光标处
++    // 没有选词记录（以前打的、粘贴的文字）时改查词库，见 lookupChoices
 +    private fun offerChoices(): Boolean {
 +        val cur = cursor
-+        val near = picks.filter { it.start <= cur && cur <= it.end }
-+        if (near.isEmpty()) return false
 +        val ic = inputConnection() ?: return false
 +        val (text, base) = around(ic, cur, READ_MAX, READ_MAX) ?: return false
++        val near = picks.filter { it.start <= cur && cur <= it.end }
 +        val valid = near.filter { matches(it, text, base) }
 +        picks.removeAll { it in near && it !in valid }
-+        val p = valid.lastOrNull { it.end == cur } ?: valid.lastOrNull { it.start < cur } ?: valid.lastOrNull() ?: return false
++        val p = valid.lastOrNull { it.end == cur } ?: valid.lastOrNull { it.start < cur } ?: valid.lastOrNull()
++            ?: return lookupChoices(text, base, cur)
 +        val off = p.start - base
 +        val left = text.substring(maxOf(0, off - LEFT_MAX), off)
 +        val right = vocabPrefix(text.substring(off + p.word.length).take(RIGHT_MAX))
@@ -495,6 +508,50 @@ index 00000000..da2dccbd
 +        worker.execute {
 +            val tot = if (inVocab(p.word)) scoreAll(left, right, all) { gen == g } else null
 +            if (tot != null) p.cache = key to all.indices.associate { all[it] to tot[it] }
++            val result = rank(p, others, tot, right.length, cur)
++            main.post {
++                if (gen != g || cursor != cur) return@post
++                showChoices(result, System.currentTimeMillis() - t0)
++            }
++        }
++        return true
++    }
++
++    // 词库查询：把光标前后各几个字交给 Lua（客户端库转交，运行时开关通知），由它找出光标处的词和同音词，
++    // 再与选词记录一样打整句分、排序。这样的词不记进 picks，也不自动提示。
++    private fun lookupChoices(text: String, base: Int, cur: Int): Boolean {
++        val k = cur - base
++        if (k < 0 || k > text.length) return false
++        var ws = maxOf(0, k - LOOKUP_SPAN)
++        var we = minOf(text.length, k + LOOKUP_SPAN)
++        if (ws > 0 && Character.isLowSurrogate(text[ws])) ws++   // 别切开代理对
++        if (we < text.length && Character.isLowSurrogate(text[we])) we--
++        val win = text.substring(ws, we)
++        if (win.none { it in '\u4e00'..'\u9fff' }) return false
++        val kc = win.codePointCount(0, k - ws)
++        val g = gen
++        val t0 = System.currentTimeMillis()
++        worker.execute {
++            if (gen != g) return@execute
++            val id = runCatching { nativeLookupPut(win.toByteArray(), kc) }.getOrNull() ?: return@execute
++            requestLookup()
++            val r = runCatching { nativeLookupWait(id, LOOKUP_WAIT_MS) }.getOrNull()
++            if (r == null || r.size < 4) {
++                diag(if (r == null) "lookup_timeout" else "lookup_none", 0.0, 0, 0, false, ms = System.currentTimeMillis() - t0)
++                return@execute
++            }
++            val s = runCatching { win.offsetByCodePoints(0, String(r[0]).toInt()) }.getOrNull() ?: return@execute
++            val e = runCatching { win.offsetByCodePoints(0, String(r[1]).toInt()) }.getOrNull() ?: return@execute
++            val word = String(r[2])
++            if (win.substring(s, e) != word) return@execute
++            val others = r.drop(3).map { String(it) }.filter { it != word }
++            if (others.isEmpty()) return@execute
++            diag("lookup", 0.0, word.length, 0, false, ms = System.currentTimeMillis() - t0)
++            val p = Pick(base + ws + s, word, others, false).apply { dismissed = true }
++            val off = ws + s
++            val left = text.substring(maxOf(0, off - LEFT_MAX), off)
++            val right = vocabPrefix(text.substring(ws + e).take(RIGHT_MAX))
++            val tot = if (inVocab(word)) scoreAll(left, right, listOf(word) + others) { gen == g } else null
 +            val result = rank(p, others, tot, right.length, cur)
 +            main.post {
 +                if (gen != g || cursor != cur) return@post
@@ -673,7 +730,7 @@ index 00000000..da2dccbd
 +    }
 +}
 diff --git a/app/src/main/java/com/osfans/trime/ime/core/TrimeInputMethodService.kt b/app/src/main/java/com/osfans/trime/ime/core/TrimeInputMethodService.kt
-index 6f101d7d..0d7bcd7d 100644
+index 6f101d7d..71f9d377 100644
 --- a/app/src/main/java/com/osfans/trime/ime/core/TrimeInputMethodService.kt
 +++ b/app/src/main/java/com/osfans/trime/ime/core/TrimeInputMethodService.kt
 @@ -487,11 +487,13 @@ open class TrimeInputMethodService : LifecycleInputMethodService() {
@@ -691,16 +748,17 @@ index 6f101d7d..0d7bcd7d 100644
          handleCursorUpdate(newSelStart, newSelEnd, candidatesStart, candidatesEnd, cursorUpdateIndex)
          inputView?.updateSelection(newSelStart, newSelEnd)
      }
-@@ -603,6 +605,8 @@ open class TrimeInputMethodService : LifecycleInputMethodService() {
+@@ -603,6 +605,9 @@ open class TrimeInputMethodService : LifecycleInputMethodService() {
                  )
          // 光标上文：上面这些框和应用的无痕模式（IME_FLAG_NO_PERSONALIZED_LEARNING）都不读
          SuzuAppContext.start(noLog || attribute.imeOptions and EditorInfo.IME_FLAG_NO_PERSONALIZED_LEARNING != 0)
 +        SuzuFix.inputConnection = { currentInputConnection }
++        SuzuFix.requestLookup = { postRimeJob { setRuntimeOption("suzu_fix_lookup", true) } }
 +        SuzuFix.reset(noLog || attribute.imeOptions and EditorInfo.IME_FLAG_NO_PERSONALIZED_LEARNING != 0)
          refreshAppContext()
          postRimeJob {
              setRuntimeOption("ai_no_log", noLog)
-@@ -667,6 +671,7 @@ open class TrimeInputMethodService : LifecycleInputMethodService() {
+@@ -667,6 +672,7 @@ open class TrimeInputMethodService : LifecycleInputMethodService() {
          }
          composingText = ""
          SuzuAppContext.clear()
@@ -708,7 +766,7 @@ index 6f101d7d..0d7bcd7d 100644
          postRimeJob {
              clearComposition()
          }
-@@ -678,6 +683,26 @@ open class TrimeInputMethodService : LifecycleInputMethodService() {
+@@ -678,6 +684,26 @@ open class TrimeInputMethodService : LifecycleInputMethodService() {
          SuzuAppContext.set(runCatching { ic.getTextBeforeCursor(SuzuAppContext.MAX_CHARS, 0) }.getOrNull())
      }
  
@@ -735,7 +793,7 @@ index 6f101d7d..0d7bcd7d 100644
      fun commitText(text: String) {
          val ic = currentInputConnection ?: return
          lastOwnEditAt = SystemClock.uptimeMillis()
-@@ -690,6 +715,7 @@ open class TrimeInputMethodService : LifecycleInputMethodService() {
+@@ -690,6 +716,7 @@ open class TrimeInputMethodService : LifecycleInputMethodService() {
          }
          lastCommittedText = text
          SuzuAppContext.append(text)

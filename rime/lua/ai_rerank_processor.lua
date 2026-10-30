@@ -286,6 +286,121 @@ local function setup_fix_note(env)
     end)
 end
 
+-- === 光标换词的词库查询（只在改版 Trime 上，客户端库有 lookup_take 时）===
+-- 光标点到没有选词记录的文字上（以前打的、粘贴的）时，Trime 把光标附近的文字放进客户端库，再设运行时开关
+-- suzu_fix_lookup 通知这里。找光标处的词：依次试光标前结束的词（4、3、2 字）、跨过光标的词、光标后开始的词，
+-- 最后才试单字。每段逐字用 ReverseDb（build/rime_ice.reverse.bin，只收单字）取读音，多音字的组合逐个拼成拼音交给
+-- 翻译器查；结果里有原词，说明这段确实是个词、读音也对，取同样字数的前 8 个同音词写回。都不成立时写回“没找到”。
+-- 文字只在内存里，不写文件。
+local FIX_LOOKUP_QUERIES = 40   -- 每次最多查这么多次翻译器
+local function fix_lookup(env, text, cur)
+    local chars = {}
+    for _, c in utf8.codes(text) do chars[#chars + 1] = utf8.char(c) end
+    if not env.fix_rev_tried then
+        env.fix_rev_tried = true
+        local ok, db = pcall(function() return ReverseDb("build/rime_ice.reverse.bin") end)
+        env.fix_rev = ok and db or nil
+    end
+    if not env.fix_tr then
+        pcall(function() env.fix_tr = Component.Translator(env.engine, "", "script_translator@translator") end)
+    end
+    local rev, tr = env.fix_rev, env.fix_tr
+    if not (rev and tr) then return nil end
+    local queries = 0
+    local function readings(ch)
+        if not ch:find("^[\228-\233][\128-\191][\128-\191]$") then return nil end
+        local ok, v = pcall(function() return rev:lookup(ch) end)
+        if not ok or type(v) ~= "string" or v == "" then return nil end
+        local list, seen = {}, {}
+        for r in v:lower():gmatch("[a-z]+") do
+            if not seen[r] then seen[r] = true; list[#list + 1] = r end
+            if #list >= 3 then break end
+        end
+        return #list > 0 and list or nil
+    end
+    local function query(input, n)
+        queries = queries + 1
+        local out = {}
+        pcall(function()
+            local seg = Segment(0, #input)
+            seg.tags = Set({ "abc" })
+            local t = tr:query(input, seg)
+            if not t then return end
+            local k = 0
+            for cand in t:iter() do
+                k = k + 1
+                if k > 80 then break end
+                local txt = cand.text
+                if cand._end == #input and txt and utf8.len(txt) == n then out[#out + 1] = txt end
+            end
+        end)
+        return out
+    end
+    -- chars[s+1 .. e] 这一段：是词就返回 原词 + 同音词（最多 8 个）
+    local function try(s, e)
+        if s < 0 or e > #chars or e <= s then return nil end
+        local rds = {}
+        for i = s + 1, e do
+            rds[#rds + 1] = readings(chars[i])
+            if not rds[#rds] then return nil end
+        end
+        local word = table.concat(chars, "", s + 1, e)
+        local pick = {}
+        local function walk(i)
+            if queries >= FIX_LOOKUP_QUERIES then return nil end
+            if i > #rds then
+                local res = query(table.concat(pick), #rds)
+                local found = false
+                for _, w in ipairs(res) do if w == word then found = true; break end end
+                if not found then return nil end
+                local list, seen = { word }, { [word] = true }
+                for _, w in ipairs(res) do
+                    if not seen[w] then seen[w] = true; list[#list + 1] = w end
+                    if #list >= 9 then break end
+                end
+                return #list > 1 and list or nil
+            end
+            for _, r in ipairs(rds[i]) do
+                pick[i] = r
+                local got = walk(i + 1)
+                if got then return got end
+            end
+            return nil
+        end
+        return walk(1)
+    end
+    local spans = {}
+    for n = 4, 2, -1 do spans[#spans + 1] = { cur - n, cur } end
+    for n = 4, 2, -1 do for s = cur - n + 1, cur - 1 do spans[#spans + 1] = { s, s + n } end end
+    for n = 4, 2, -1 do spans[#spans + 1] = { cur, cur + n } end
+    spans[#spans + 1] = { cur - 1, cur }
+    spans[#spans + 1] = { cur, cur + 1 }
+    for _, sp in ipairs(spans) do
+        local list = try(sp[1], sp[2])
+        if list then return sp[1], sp[2], list end
+        if queries >= FIX_LOOKUP_QUERIES then break end
+    end
+    return nil
+end
+
+local function setup_fix_lookup(env)
+    local llm = _G.ai_rerank_llm
+    if not (llm and llm.lookup_take) then return end
+    env.engine.context.option_update_notifier:connect(function(ctx, name)
+        if name ~= "suzu_fix_lookup" then return end
+        pcall(function()
+            local id, text, cur = llm.lookup_take()
+            if not id then return end
+            local s, e, list = nil, nil, nil
+            if not ctx:get_option("ai_no_log") then
+                local ok, a, b, c = pcall(fix_lookup, env, text, cur)
+                if ok then s, e, list = a, b, c end
+            end
+            if s then llm.lookup_put(id, s, e, list) else llm.lookup_put(id) end
+        end)
+    end)
+end
+
 -- === 选词统计与训练语料（默认关闭）===
 -- 一、select_stats.tsv（纯数字）：用真实输入评估重排有没有帮助。开关：用户目录里存在空文件 select_stats.enabled。
 --     每次选词一行：时间戳、AI 开关、模型（q = Qwen，s = 学生）、输入字母数、参与重排的候选数、所选候选在原顺序和最终顺序里的位次、
@@ -561,7 +676,7 @@ return setmetatable({
         pcall(load_llm, env); pcall(setup_ctx_reset, env); pcall(setup_choice_memory, env)
         -- 选词统计的初始化出错时记入诊断文件，不再静默失败
         xpcall(setup_select_stats, function(e) diag_line("setup_select_stats error: " .. tostring(e)) end, env)
-        pcall(setup_fix_note, env)
+        pcall(setup_fix_note, env); pcall(setup_fix_lookup, env)
         if okilog then xpcall(input_log.attach, function(e) diag_line("input_log error: " .. tostring(e)) end, env) end
     end,
     func = processor,
