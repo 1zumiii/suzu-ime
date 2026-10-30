@@ -251,9 +251,9 @@ local function setup_choice_memory(env)
 end
 
 -- === 选错修正建议（只在改版 Trime 上，客户端库有 fix_note 时）===
--- 每次整段选词都把所选词和同页候选（与它同一切分终点，按 Rime 原顺序前 4 个）登记到客户端库，并标明是否选了
+-- 每次整段选词都把所选词和同页候选（与它同一切分终点，按 Rime 原顺序前 8 个）登记到客户端库，并标明是否选了
 -- AI 改过的首位（这类选错率高，Trime 用较低的门槛）。Trime 上屏时领取，停顿后补上右侧文字给整句打分，
--- 分差够大才在工具栏提示“A → B”（见补丁 0006 的 SuzuFix）。不登记时清空，避免 Trime 领到别的词的候选。
+-- 分差够大才在工具栏提示“A → B”；光标点回这个词时在候选栏列出这些候选供换词（见补丁 0006 的 SuzuFix）。不登记时清空，避免 Trime 领到别的词的候选。
 -- 候选的终点来自过滤器的回放数据（rp.nat），没有时不登记。
 local function setup_fix_note(env)
     local llm = _G.ai_rerank_llm
@@ -274,7 +274,7 @@ local function setup_fix_note(env)
             end
             local cands, seen = {}, { [s.text] = true }
             for _, x in ipairs(rp.nat) do
-                if #cands >= 4 then break end
+                if #cands >= 8 then break end
                 if e and x.e == e and not seen[x.t] and x.t:find("[\228-\233][\128-\191][\128-\191]") then
                     seen[x.t] = true
                     cands[#cands + 1] = x.t
