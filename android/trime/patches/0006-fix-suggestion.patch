@@ -12,7 +12,7 @@ index 179522e4..1c831a1a 100644
  # remove kotlin null checks
  -assumenosideeffects class kotlin.jvm.internal.Intrinsics {
 diff --git a/app/src/main/java/com/osfans/trime/ime/bar/InputBarDelegate.kt b/app/src/main/java/com/osfans/trime/ime/bar/InputBarDelegate.kt
-index ae9e5194..edc89920 100644
+index ae9e5194..039029df 100644
 --- a/app/src/main/java/com/osfans/trime/ime/bar/InputBarDelegate.kt
 +++ b/app/src/main/java/com/osfans/trime/ime/bar/InputBarDelegate.kt
 @@ -30,6 +30,7 @@ import com.osfans.trime.data.theme.Theme
@@ -23,23 +23,25 @@ index ae9e5194..edc89920 100644
  import com.osfans.trime.ime.bar.ui.CandidateUi
  import com.osfans.trime.ime.bar.ui.TabUi
  import com.osfans.trime.ime.broadcast.InputBroadcastReceiver
-@@ -86,6 +87,7 @@ class InputBarDelegate(override val di: DI) :
+@@ -86,6 +87,8 @@ class InputBarDelegate(override val di: DI) :
  
      private var isClipboardFresh: Boolean = false
      private var isInlineSuggestionPresent: Boolean = false
 +    private var isFixPresent: Boolean = false
++    private var isFixChoicesPresent: Boolean = false
  
      @Keep
      private val onClipboardUpdateListener = ClipboardHelper.OnClipboardUpdateListener {
-@@ -117,6 +119,7 @@ class InputBarDelegate(override val di: DI) :
+@@ -117,6 +120,8 @@ class InputBarDelegate(override val di: DI) :
      private fun evalAlwaysUiState() {
          val newState =
              when {
++                isFixChoicesPresent -> AlwaysUi.State.FixChoices
 +                isFixPresent -> AlwaysUi.State.FixSuggestion
                  isClipboardFresh -> AlwaysUi.State.Clipboard
                  isInlineSuggestionPresent -> AlwaysUi.State.InlineSuggestion
                  else -> AlwaysUi.State.Toolbar
-@@ -165,6 +168,15 @@ class InputBarDelegate(override val di: DI) :
+@@ -165,6 +170,22 @@ class InputBarDelegate(override val di: DI) :
              clipboardUi.dismiss.setOnClickListener {
                  dismissClipboardSuggestion()
              }
@@ -52,10 +54,17 @@ index ae9e5194..edc89920 100644
 +                if (s != null) fixUi.text.text = "${s.pick.word} → ${s.best}"
 +                evalAlwaysUiState()
 +            }
++            fixChoicesUi.onChoose = { i -> SuzuFix.choose(i) { start, end, text -> service.replaceRange(start, end, text) } }
++            fixChoicesUi.dismiss.setOnClickListener { SuzuFix.dismiss() }
++            SuzuFix.choicesListener = { c ->
++                isFixChoicesPresent = c != null
++                if (c != null) fixChoicesUi.show(c.options)
++                evalAlwaysUiState()
++            }
          }
      }
  
-@@ -230,6 +242,7 @@ class InputBarDelegate(override val di: DI) :
+@@ -230,6 +251,7 @@ class InputBarDelegate(override val di: DI) :
      }
  
      override fun onCandidateListUpdate(data: Candidates.Bulk) {
@@ -64,40 +73,46 @@ index ae9e5194..edc89920 100644
              QuickBarStateMachine.TransitionEvent.CandidatesUpdated,
              QuickBarStateMachine.BooleanKey.CandidateEmpty to data.candidates.isEmpty(),
 diff --git a/app/src/main/java/com/osfans/trime/ime/bar/ui/AlwaysUi.kt b/app/src/main/java/com/osfans/trime/ime/bar/ui/AlwaysUi.kt
-index 46f0368c..3540b3fb 100644
+index 46f0368c..1e597a69 100644
 --- a/app/src/main/java/com/osfans/trime/ime/bar/ui/AlwaysUi.kt
 +++ b/app/src/main/java/com/osfans/trime/ime/bar/ui/AlwaysUi.kt
-@@ -40,6 +40,7 @@ class AlwaysUi(
+@@ -40,6 +40,8 @@ class AlwaysUi(
          Toolbar,
          Clipboard,
          InlineSuggestion,
 +        FixSuggestion,
++        FixChoices,
      }
  
      var currentState = State.Toolbar
-@@ -71,6 +72,9 @@ class AlwaysUi(
+@@ -71,6 +73,12 @@ class AlwaysUi(
  
      val inlineSuggestionsUi = InlineSuggestionsUi(ctx)
  
 +    // 选错修正建议“A → B”（SuzuFix）
 +    val fixUi = ClipboardSuggestionUi(ctx, scope, R.drawable.ic_baseline_edit_24)
 +
++    // 光标换词：光标所在词的同页候选（SuzuFix）
++    val fixChoicesUi = FixChoicesUi(ctx, scope)
++
      val hideKeyboardButton = ToolButton(ctx, R.drawable.ic_baseline_arrow_drop_down_24, scope)
      private val rightMostButton =
          ViewAnimator(ctx).apply {
-@@ -92,6 +96,7 @@ class AlwaysUi(
+@@ -92,6 +100,8 @@ class AlwaysUi(
              add(buttonsUi.root, lParams(matchParent, matchParent))
              add(clipboardUi.root, lParams(matchParent, matchParent))
              add(inlineSuggestionsUi.root, lParams(matchParent, matchParent))
 +            add(fixUi.root, lParams(matchParent, matchParent))
++            add(fixChoicesUi.root, lParams(matchParent, matchParent))
          }
  
      override val root: ConstraintLayout = constraintLayout {
-@@ -158,6 +163,7 @@ class AlwaysUi(
+@@ -158,6 +168,8 @@ class AlwaysUi(
          hideKeyboardButton.refreshColors()
          buttonsUi.refreshColors()
          clipboardUi.refreshColors()
 +        fixUi.refreshColors()
++        fixChoicesUi.refreshColors()
      }
  
      private fun updateRightMostButton(state: State) {
@@ -119,12 +134,104 @@ index 2f11ec2a..5bc20b1e 100644
                      setTint(scope.colors.candidateTextColor)
                  }
          }
+diff --git a/app/src/main/java/com/osfans/trime/ime/bar/ui/FixChoicesUi.kt b/app/src/main/java/com/osfans/trime/ime/bar/ui/FixChoicesUi.kt
+new file mode 100644
+index 00000000..9b4ea748
+--- /dev/null
++++ b/app/src/main/java/com/osfans/trime/ime/bar/ui/FixChoicesUi.kt
+@@ -0,0 +1,86 @@
++/*
++ * SPDX-FileCopyrightText: 2026 1zumiii
++ * SPDX-License-Identifier: GPL-3.0-or-later
++ */
++package com.osfans.trime.ime.bar.ui
++
++import android.content.Context
++import android.view.Gravity
++import android.widget.LinearLayout
++import android.widget.TextView
++import com.osfans.trime.R
++import com.osfans.trime.data.theme.ThemeScope
++import com.osfans.trime.util.rippleDrawable
++import splitties.dimensions.dp
++import splitties.resources.drawable
++import splitties.views.dsl.core.Ui
++import splitties.views.dsl.core.add
++import splitties.views.dsl.core.horizontalLayout
++import splitties.views.dsl.core.imageView
++import splitties.views.dsl.core.lParams
++import splitties.views.dsl.core.matchParent
++import splitties.views.dsl.core.textView
++import splitties.views.imageDrawable
++
++// 光标换词：编辑图标、一排候选（已按整句分排好）、关闭按钮
++class FixChoicesUi(
++    override val ctx: Context,
++    private val scope: ThemeScope,
++) : Ui {
++    var onChoose: ((Int) -> Unit)? = null
++
++    private val icon =
++        imageView {
++            imageDrawable =
++                drawable(R.drawable.ic_baseline_edit_24)!!.mutate().apply {
++                    setTint(scope.colors.candidateTextColor)
++                }
++        }
++
++    private val row = horizontalLayout { gravity = Gravity.CENTER_VERTICAL }
++
++    val dismiss =
++        imageView {
++            isFocusable = false
++            imageDrawable = drawable(R.drawable.ic_outline_cancel_24)!!.mutate().apply {
++                setTint(scope.colors.candidateTextColor)
++            }
++        }
++
++    override val root =
++        horizontalLayout {
++            gravity = Gravity.CENTER_VERTICAL
++            add(icon, lParams(dp(20), dp(20)) { marginStart = dp(4); marginEnd = dp(4) })
++            add(row, lParams(0, matchParent) { weight = 1f })
++            add(dismiss, lParams(dp(20), dp(20)) { marginStart = dp(4); marginEnd = dp(4) })
++        }
++
++    private fun item(i: Int, word: String): TextView =
++        textView {
++            text = word
++            isSingleLine = true
++            textSize = 17f
++            gravity = Gravity.CENTER
++            setPadding(dp(12), 0, dp(12), 0)
++            setTextColor(scope.colors.candidateTextColor)
++            background = rippleDrawable(scope.colors.hilitedCandidateBackColor)
++            setOnClickListener { onChoose?.invoke(i) }
++        }
++
++    fun show(options: List<String>) {
++        row.removeAllViews()
++        options.forEachIndexed { i, w -> row.addView(item(i, w), LinearLayout.LayoutParams(LinearLayout.LayoutParams.WRAP_CONTENT, LinearLayout.LayoutParams.MATCH_PARENT)) }
++    }
++
++    /** Re-applies the colors that were set once at construction. */
++    fun refreshColors() {
++        icon.imageDrawable?.setTint(scope.colors.candidateTextColor)
++        dismiss.imageDrawable?.setTint(scope.colors.candidateTextColor)
++        for (i in 0 until row.childCount) {
++            (row.getChildAt(i) as? TextView)?.apply {
++                setTextColor(scope.colors.candidateTextColor)
++                background = rippleDrawable(scope.colors.hilitedCandidateBackColor)
++            }
++        }
++    }
++}
 diff --git a/app/src/main/java/com/osfans/trime/ime/core/SuzuFix.kt b/app/src/main/java/com/osfans/trime/ime/core/SuzuFix.kt
 new file mode 100644
-index 00000000..0eebaa8f
+index 00000000..1a0b4d1c
 --- /dev/null
 +++ b/app/src/main/java/com/osfans/trime/ime/core/SuzuFix.kt
-@@ -0,0 +1,258 @@
+@@ -0,0 +1,376 @@
 +/*
 + * SPDX-FileCopyrightText: 2026 1zumiii
 + * SPDX-License-Identifier: GPL-3.0-or-later
@@ -140,14 +247,19 @@ index 00000000..0eebaa8f
 +import java.io.File
 +import java.util.concurrent.Executors
 +
-+// 选错修正建议（试验）：句子里每个整段选的词，停顿时补上右侧已打的文字，给原词与同页候选打整句分，
-+// 某个候选比原词高出门槛时在工具栏提示“A → B”，点了才替换。选了 AI 改过的首位的词选错率高，用较低的门槛。
++// 选错修正（试验），两种入口：
++// 1. 光标换词：用户把光标点到最近整段选过的词上（词中或词尾），工具栏列出这个词的同页候选，按整句分从高到低排，
++//    点哪个就把原词整段换成哪个。判断“是不是选错了”交给用户，模型只负责排序，所以没有门槛。
++// 2. 自动提示：句子里每个整段选的词，停顿时补上右侧已打的文字，给原词与同页候选打整句分，
++//    某个候选比原词高出门槛时在工具栏提示“A → B”，点了才替换。选了 AI 改过的首位的词选错率高，用较低的门槛。
 +// 记录来源：Lua 在选词时把“所选词与同页候选”登记到 librime_llm.so（fix_note），这里在上屏时按上屏文字领取（nativeTake）。
 +// 打分：nativeScore 经单独的连接请求守护进程，各字对数概率之和；整句分 = score(左文 → X) + score(左文 + X → 右文)。
-+// 文字只在内存里；统计只写数字（fix_stats.tsv：时间、事件、分差 ×10、原词字数、右文字数、类别 1 = AI 改过的首位），
-+// 不写日志。
++// 文字只在内存里；统计只写数字（fix_stats.tsv：时间、事件、分差 ×10、原词字数、右文字数、类别 1 = AI 改过的首位、
++// 名次），不写日志。
 +// 事件：take 上屏时领到候选，pick 在输入框里定位到原词，check 打完分（不论是否过门槛），fail 打分失败，
-+//       shown 显示提示，accepted 采纳，ignored 忽略，stale 点了但文字已变。
++//       shown 显示提示，accepted 采纳，ignored 忽略，stale 点了但文字已变；
++//       offer 光标换词列出候选（分差为排第一的候选比原词），chose 换了词（分差为所选比原词，名次从 0 起），
++//       unchosen 列出后没换。
 +object SuzuFix {
 +    const val PAUSE_MS = 1500L
 +    const val THRESHOLD = 8.0
@@ -155,17 +267,22 @@ index 00000000..0eebaa8f
 +    private const val BUDGET_MS = 300
 +    private const val LEFT_MAX = 30
 +    private const val RIGHT_MAX = 20
-+    private const val SPAN_MAX = 40       // 原词起点到光标最多这么多字，再远就不查了
-+    private const val KEEP = 8            // 最多记最近这么多个可查的选词
++    private const val SPAN_MAX = 40       // 自动提示：原词起点到光标最多这么多字，再远就不查了
++    private const val KEEP = 8            // 最多记最近这么多个选词
 +    private const val PER_PAUSE = 4       // 每次停顿最多查这么多个（从最近的起）
++    private const val READ_MAX = 200      // 光标换词：光标前后各读这么多字来核对位置
 +
-+    class Pick(val start: Int, val word: String, val cands: List<String>, val aiChanged: Boolean) {
++    class Pick(var start: Int, var word: String, var cands: List<String>, val aiChanged: Boolean) {
 +        val threshold get() = if (aiChanged) THRESHOLD_AI else THRESHOLD
 +        var scoredRight: String? = null   // 上次打分时的右文：没变就不再打分
-+        var dismissed = false             // 提示过而没采纳：不再提示
++        var dismissed = false             // 提示过而没采纳、或已换过词：不再自动提示
++        val end get() = start + word.length
 +    }
 +
 +    class Suggestion(val pick: Pick, val best: String, val right: String, val cursor: Int, val margin: Double)
++
++    /** 光标换词：options 已按整句分从高到低排好；margins 为各候选比原词高多少（打不了分时为 null） */
++    class Choices(val pick: Pick, val options: List<String>, val margins: List<Double>?, val rightLen: Int, val cursor: Int)
 +
 +    private val loaded =
 +        runCatching { System.loadLibrary("rime_llm") }
@@ -190,6 +307,11 @@ index 00000000..0eebaa8f
 +    var current: Suggestion? = null
 +        private set
 +    var listener: ((Suggestion?) -> Unit)? = null
++
++    /** 当前列出的光标换词候选；变化时在主线程回调（null 表示收起） */
++    var choices: Choices? = null
++        private set
++    var choicesListener: ((Choices?) -> Unit)? = null
 +
 +    var inputConnection: () -> InputConnection? = { null }
 +
@@ -248,10 +370,11 @@ index 00000000..0eebaa8f
 +    // 开始打字（出现候选）：收起提示、取消计时
 +    fun onTyping() = cancel()
 +
-+    // 光标更新（主线程）。jumped：用户点击或拖动了光标，之前记的位置都作废
++    // 光标更新（主线程）。jumped：用户点击或拖动了光标（不是输入法自己的编辑）
 +    fun onSelection(selStart: Int, selEnd: Int, composing: Boolean, jumped: Boolean) {
++        // 有的应用会重复报告同一个光标位置：什么都没变，就别收起刚列出的候选
++        if (!jumped && !composing && selStart == selEnd && selStart == cursor && pendingCommit == null) return
 +        cancel()
-+        if (jumped) picks.clear()
 +        cursor = if (selStart == selEnd && !composing) selStart else -1
 +        if (cursor < 0 || !loaded || blocked) return
 +        pendingCommit?.let { (w, cs) ->
@@ -260,14 +383,19 @@ index 00000000..0eebaa8f
 +            val ic = inputConnection()
 +            val before = runCatching { ic?.getTextBeforeCursor(w.length, 0)?.toString() }.getOrNull()
 +            if (start >= 0 && before == w) {
++                // 在中间补字时，同一位置可能还留着旧记录
++                picks.removeAll { it.start < cursor && it.end > start }
 +                val p = Pick(start, w, cs.drop(1), cs[0] == "1")
 +                picks.addLast(p)
 +                diag("pick", 0.0, w.length, 0, p.aiChanged)
 +                while (picks.size > KEEP) picks.removeFirst()
 +            }
 +        }
-+        picks.removeAll { it.start >= cursor || cursor - it.start > SPAN_MAX }
-+        if (picks.any { !it.dismissed }) main.postDelayed(check, PAUSE_MS)
++        if (jumped && offerChoices()) return
++        // 位置可能已经不对（之前的文字改过），打分前按文字核对；这里只决定要不要等停顿
++        if (picks.any { !it.dismissed && it.end <= cursor && cursor - it.start <= SPAN_MAX }) {
++            main.postDelayed(check, PAUSE_MS)
++        }
 +    }
 +
 +    private fun cancel() {
@@ -278,6 +406,90 @@ index 00000000..0eebaa8f
 +            current = null
 +            listener?.invoke(null)
 +        }
++        if (choices != null) {
++            choices?.let { diag("unchosen", 0.0, it.pick.word.length, it.rightLen, it.pick.aiChanged) }
++            choices = null
++            choicesListener?.invoke(null)
++        }
++    }
++
++    // 读光标前后的文字，返回 (文字, 文字起点在输入框里的位置)
++    private fun around(ic: InputConnection, cur: Int, before: Int, after: Int): Pair<String, Int>? {
++        val b = runCatching { ic.getTextBeforeCursor(before, 0)?.toString() }.getOrNull() ?: return null
++        val a = if (after > 0) runCatching { ic.getTextAfterCursor(after, 0)?.toString() }.getOrNull() ?: "" else ""
++        return (b + a) to (cur - b.length)
++    }
++
++    private fun matches(p: Pick, text: String, base: Int): Boolean {
++        val off = p.start - base
++        return off >= 0 && off + p.word.length <= text.length && text.regionMatches(off, p.word, 0, p.word.length)
++    }
++
++    // 光标点到最近选过的词上：词尾正好在光标处的优先，其次光标在词中，最后词首在光标处
++    private fun offerChoices(): Boolean {
++        val cur = cursor
++        val near = picks.filter { it.start <= cur && cur <= it.end }
++        if (near.isEmpty()) return false
++        val ic = inputConnection() ?: return false
++        val (text, base) = around(ic, cur, READ_MAX, READ_MAX) ?: return false
++        val valid = near.filter { matches(it, text, base) }
++        picks.removeAll { it in near && it !in valid }
++        val p = valid.lastOrNull { it.end == cur } ?: valid.lastOrNull { it.start < cur } ?: valid.lastOrNull() ?: return false
++        val off = p.start - base
++        val left = text.substring(maxOf(0, off - LEFT_MAX), off)
++        val right = vocabPrefix(text.substring(off + p.word.length).take(RIGHT_MAX))
++        val others = p.cands.filter { it != p.word }
++        if (others.isEmpty()) return false
++        val g = gen
++        worker.execute {
++            val tot = if (inVocab(p.word)) scoreAll(left, right, listOf(p.word) + others) { gen == g } else null
++            val result =
++                if (tot == null || tot[0] == Double.NEGATIVE_INFINITY) {
++                    Choices(p, others, null, right.length, cur)   // 打不了分：按原来的页内顺序
++                } else {
++                    val order = others.indices.sortedByDescending { tot[it + 1] }
++                    Choices(p, order.map { others[it] }, order.map { tot[it + 1] - tot[0] }, right.length, cur)
++                }
++            main.post {
++                if (gen != g || cursor != cur) return@post
++                choices = result
++                diag("offer", result.margins?.firstOrNull() ?: 0.0, p.word.length, right.length, p.aiChanged)
++                choicesListener?.invoke(result)
++            }
++        }
++        return true
++    }
++
++    /** 点了光标换词的第 i 个候选：核对原词还在原处，再整段替换（replace(起点, 终点, 新词)）。返回是否替换了 */
++    fun choose(i: Int, replace: (Int, Int, String) -> Boolean): Boolean {
++        val c = choices ?: return false
++        choices = null
++        choicesListener?.invoke(null)
++        val p = c.pick
++        val word = c.options.getOrNull(i) ?: return false
++        val ic = inputConnection() ?: return false
++        val (text, base) = around(ic, cursor, READ_MAX, READ_MAX) ?: return false
++        val margin = c.margins?.getOrNull(i) ?: 0.0
++        if (cursor != c.cursor || !matches(p, text, base)) {
++            picks.remove(p)
++            diag("stale", margin, p.word.length, c.rightLen, p.aiChanged, i)
++            return false
++        }
++        val old = p.word
++        val oldEnd = p.end
++        if (!replace(p.start, oldEnd, word)) {
++            diag("stale", margin, p.word.length, c.rightLen, p.aiChanged, i)
++            return false
++        }
++        // 换过的词仍然可以再换（原词放回候选里），后面记录的位置跟着移动
++        val delta = word.length - old.length
++        for (q in picks) if (q !== p && q.start >= oldEnd) q.start += delta
++        p.word = word
++        p.cands = p.cands.map { if (it == word) old else it }
++        p.dismissed = true
++        p.scoredRight = null
++        diag("chose", margin, old.length, c.rightLen, p.aiChanged, i)
++        return true
 +    }
 +
 +    private class Job(val pick: Pick, val left: String, val right: String)
@@ -291,9 +503,9 @@ index 00000000..0eebaa8f
 +        val base = cur - before.length
 +        val jobs = mutableListOf<Job>()
 +        for (p in picks.toList().asReversed()) {
-+            if (p.dismissed) continue
++            if (p.dismissed || p.end > cur || p.start < base) continue   // 光标后面的、太远的不查（也不删，光标换词还要用）
 +            val off = p.start - base
-+            if (off < 0 || off + p.word.length > before.length || before.substring(off, off + p.word.length) != p.word) {
++            if (!matches(p, before, base)) {
 +                picks.remove(p)   // 前面的文字改过了，位置对不上
 +                continue
 +            }
@@ -331,21 +543,34 @@ index 00000000..0eebaa8f
 +        }
 +    }
 +
++    // 后台线程：各词的整句分（右文为空时只有左文这一段）。词表外或无效的记为负无穷；整体失败返回 null
++    private fun scoreAll(left: String, right: String, all: List<String>, alive: () -> Boolean): DoubleArray? {
++        val ok = all.map { inVocab(it) }
++        val idx = all.indices.filter { ok[it] }
++        if (idx.size < 2) return null
++        val s0 = nativeScore(left.toByteArray(), idx.map { all[it].toByteArray() }.toTypedArray(), BUDGET_MS) ?: return null
++        val tot = DoubleArray(all.size) { Double.NEGATIVE_INFINITY }
++        val pad = if (right == "的") "了" else "的"
++        for ((k, i) in idx.withIndex()) {
++            if (!alive()) return null
++            if (s0[k] <= INVALID) continue
++            var r = 0.0
++            if (right.isNotEmpty()) {
++                val rs = nativeScore((left + all[i]).toByteArray(), arrayOf(right.toByteArray(), pad.toByteArray()), BUDGET_MS)
++                    ?: return null
++                if (rs[0] <= INVALID) return null
++                r = rs[0]
++            }
++            tot[i] = s0[k] + r
++        }
++        return tot
++    }
++
 +    // 后台线程：原词与候选的整句分，返回最高的候选（分差可能为负）
 +    private fun score(j: Job, cur: Int, alive: () -> Boolean): Suggestion? {
 +        val all = listOf(j.pick.word) + j.pick.cands.filter { it != j.pick.word && inVocab(it) }
-+        if (all.size < 2) return null
-+        val s0 = nativeScore(j.left.toByteArray(), all.map { it.toByteArray() }.toTypedArray(), BUDGET_MS) ?: return null
-+        if (s0[0] <= INVALID) return null
-+        val pad = if (j.right == "的") "了" else "的"
-+        val tot = DoubleArray(all.size)
-+        for (i in all.indices) {
-+            if (!alive()) return null
-+            val r = nativeScore((j.left + all[i]).toByteArray(), arrayOf(j.right.toByteArray(), pad.toByteArray()), BUDGET_MS)
-+                ?: return null
-+            if (r[0] <= INVALID) return null
-+            tot[i] = if (s0[i] <= INVALID) Double.NEGATIVE_INFINITY else s0[i] + r[0]
-+        }
++        val tot = scoreAll(j.left, j.right, all, alive) ?: return null
++        if (tot[0] == Double.NEGATIVE_INFINITY) return null
 +        var bi = 1
 +        for (i in 2 until all.size) if (tot[i] > tot[bi]) bi = i
 +        if (tot[bi] == Double.NEGATIVE_INFINITY) return null
@@ -375,16 +600,16 @@ index 00000000..0eebaa8f
 +
 +    private fun stat(event: String, s: Suggestion) = diag(event, s.margin, s.pick.word.length, s.right.length, s.pick.aiChanged)
 +
-+    private fun diag(event: String, margin: Double, wordLen: Int, rightLen: Int, aiChanged: Boolean) {
++    private fun diag(event: String, margin: Double, wordLen: Int, rightLen: Int, aiChanged: Boolean, rank: Int = -1) {
 +        val cls = if (aiChanged) 1 else 0
-+        val line = "${System.currentTimeMillis() / 1000}\t$event\t${Math.round(margin * 10)}\t$wordLen\t$rightLen\t$cls\n"
++        val line = "${System.currentTimeMillis() / 1000}\t$event\t${Math.round(margin * 10)}\t$wordLen\t$rightLen\t$cls\t$rank\n"
 +        worker.execute {
 +            runCatching { File(DataManager.userDataDir, "fix_stats.tsv").appendText(line) }
 +        }
 +    }
 +}
 diff --git a/app/src/main/java/com/osfans/trime/ime/core/TrimeInputMethodService.kt b/app/src/main/java/com/osfans/trime/ime/core/TrimeInputMethodService.kt
-index 6f101d7d..565ab967 100644
+index 6f101d7d..0d7bcd7d 100644
 --- a/app/src/main/java/com/osfans/trime/ime/core/TrimeInputMethodService.kt
 +++ b/app/src/main/java/com/osfans/trime/ime/core/TrimeInputMethodService.kt
 @@ -487,11 +487,13 @@ open class TrimeInputMethodService : LifecycleInputMethodService() {
@@ -419,7 +644,7 @@ index 6f101d7d..565ab967 100644
          postRimeJob {
              clearComposition()
          }
-@@ -678,6 +683,16 @@ open class TrimeInputMethodService : LifecycleInputMethodService() {
+@@ -678,6 +683,26 @@ open class TrimeInputMethodService : LifecycleInputMethodService() {
          SuzuAppContext.set(runCatching { ic.getTextBeforeCursor(SuzuAppContext.MAX_CHARS, 0) }.getOrNull())
      }
  
@@ -433,10 +658,20 @@ index 6f101d7d..565ab967 100644
 +        return ok
 +    }
 +
++    // 光标换词：把 [start, end) 整段换成 text，光标停在新词之后
++    fun replaceRange(start: Int, end: Int, text: String): Boolean {
++        val ic = currentInputConnection ?: return false
++        lastOwnEditAt = SystemClock.uptimeMillis()
++        ic.beginBatchEdit()
++        val ok = ic.setComposingRegion(start, end) && ic.commitText(text, 1)
++        ic.endBatchEdit()
++        return ok
++    }
++
      fun commitText(text: String) {
          val ic = currentInputConnection ?: return
          lastOwnEditAt = SystemClock.uptimeMillis()
-@@ -690,6 +705,7 @@ open class TrimeInputMethodService : LifecycleInputMethodService() {
+@@ -690,6 +715,7 @@ open class TrimeInputMethodService : LifecycleInputMethodService() {
          }
          lastCommittedText = text
          SuzuAppContext.append(text)
