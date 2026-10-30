@@ -24,6 +24,7 @@ local a = probe("call 2 (+200 ms)")
 --   !edit 标签  先 edit_reset_context 再 llm_context，与同一次按键里接入层的调用顺序相同（编辑键之后紧跟预解码取上文）
 --   !inv  标签  只调 invalidate_context（英文模式直接打字），不读
 for line in io.lines() do
+    line = line:gsub("^\239\187\191", "") -- Windows PowerShell 写标准输入时第一行带 BOM，不去掉 !edit 就匹配不上
     if line == "quit" then break end
     local cmd, tag = line:match("^!(%a+)%s*(.*)$")
     if cmd == "edit" then
