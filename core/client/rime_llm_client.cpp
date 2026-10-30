@@ -8,6 +8,8 @@
 //   连不上       立即返回（指数退避 0.5 s → 10 s 后才再试），候选保持原顺序。
 #include <jni.h>
 
+#include <chrono>
+#include <condition_variable>
 #include <cstring>
 #include <mutex>
 #include <string>
@@ -242,6 +244,51 @@ int l_fix_note(lua_State * L) {
     return 0;
 }
 
+// 光标换词的词库查询（改版 Trime 的 SuzuFix → Lua）：光标点到没有选词记录的文字上时，Trime 放入光标附近的文字和
+// 光标位置，再用运行时开关 suzu_fix_lookup 通知 Lua；Lua 在输入法线程上找出光标处的词和它的同音词，写回这里。
+// 只在内存里，一次只留一条；编号不符的结果（Trime 已经发了新请求）丢弃。
+std::mutex g_lk_mu;
+std::condition_variable g_lk_cv;
+long long g_lk_id = 0;
+std::string g_lk_text;
+long long g_lk_cursor = 0;
+bool g_lk_pending = false;   // Lua 还没取走
+bool g_lk_done = false;      // Lua 已写回
+std::vector<std::string> g_lk_res;
+
+// lookup_take()：有待处理的请求时返回 编号、文字、光标位置（字数，从 0 起），否则返回 nil
+int l_lookup_take(lua_State * L) {
+    std::lock_guard<std::mutex> lk(g_lk_mu);
+    if (!g_lk_pending) {
+        lua_pushnil(L);
+        return 1;
+    }
+    g_lk_pending = false;
+    lua_pushinteger(L, g_lk_id);
+    lua_pushlstring(L, g_lk_text.data(), g_lk_text.size());
+    lua_pushinteger(L, g_lk_cursor);
+    return 3;
+}
+
+// lookup_put(编号, 起点, 终点, 词表)：起点、终点为字数（从 0 起，不含终点），词表第一个是原词，其后是同音词；
+// 只传编号表示没找到
+int l_lookup_put(lua_State * L) {
+    long long id = (long long)luaL_checkinteger(L, 1);
+    std::vector<std::string> res;
+    if (lua_isinteger(L, 2) && lua_isinteger(L, 3) && lua_istable(L, 4)) {
+        res.push_back(std::to_string((long long)lua_tointeger(L, 2)));
+        res.push_back(std::to_string((long long)lua_tointeger(L, 3)));
+        std::vector<std::string> ws = sl::read_candidates(L, 4, 9);
+        res.insert(res.end(), ws.begin(), ws.end());
+    }
+    std::lock_guard<std::mutex> lk(g_lk_mu);
+    if (id != g_lk_id) return 0;
+    g_lk_res.swap(res);
+    g_lk_done = true;
+    g_lk_cv.notify_all();
+    return 0;
+}
+
 int l_noop(lua_State *) { return 0; }
 int l_false(lua_State * L) { lua_pushboolean(L, 0); return 1; }
 
@@ -294,6 +341,7 @@ extern "C" __attribute__((visibility("default"))) int luaopen_rime_llm(lua_State
         {"connected", l_connected}, {"llm_context", l_llm_context}, {"kick_context", l_noop}, {"edit_reset_context", l_noop}, {"invalidate_context", l_noop},
         {"fg_changed", l_false}, {"click_happened", l_false}, {"match_code", sl::l_match_code},
         {"now_ms", sl::l_now_ms}, {"sleep_ms", sl::l_sleep_ms}, {"fix_note", l_fix_note},
+        {"lookup_take", l_lookup_take}, {"lookup_put", l_lookup_put},
     };
     sl::set_functions(L, fns, sizeof fns / sizeof fns[0]);
     lua_pushstring(L, sl::kDefaultCodePattern);
@@ -403,5 +451,40 @@ extern "C" JNIEXPORT jdoubleArray JNICALL Java_com_osfans_trime_ime_core_SuzuFix
     for (bool g : got) if (!g) return nullptr;
     jdoubleArray out = env->NewDoubleArray((jsize)v.size());
     if (out) env->SetDoubleArrayRegion(out, 0, (jsize)v.size(), v.data());
+    return out;
+}
+
+// SuzuFix.nativeLookupPut(文字 UTF-8, 光标位置)：放入一条词库查询，返回编号（之前没取走的请求作废）
+extern "C" JNIEXPORT jlong JNICALL Java_com_osfans_trime_ime_core_SuzuFix_nativeLookupPut(JNIEnv * env, jclass, jbyteArray text,
+                                                                                          jint cursor) {
+    std::string t = bytes_of(env, text);
+    std::lock_guard<std::mutex> lk(g_lk_mu);
+    g_lk_id++;
+    g_lk_text.swap(t);
+    g_lk_cursor = cursor;
+    g_lk_pending = true;
+    g_lk_done = false;
+    g_lk_res.clear();
+    return (jlong)g_lk_id;
+}
+
+// SuzuFix.nativeLookupWait(编号, 时限毫秒)：等 Lua 写回。返回 [起点, 终点, 原词, 同音词…]（UTF-8 字节数组的数组），
+// 没找到时返回空数组，超时或编号已过时返回 null
+extern "C" JNIEXPORT jobjectArray JNICALL Java_com_osfans_trime_ime_core_SuzuFix_nativeLookupWait(JNIEnv * env, jclass, jlong id,
+                                                                                                  jint timeoutMs) {
+    std::vector<std::string> res;
+    {
+        std::unique_lock<std::mutex> lk(g_lk_mu);
+        bool ok = g_lk_cv.wait_for(lk, std::chrono::milliseconds(timeoutMs), [&] { return g_lk_id != id || g_lk_done; });
+        if (!ok || g_lk_id != id) return nullptr;
+        res = g_lk_res;
+    }
+    jclass bc = env->FindClass("[B");
+    jobjectArray out = env->NewObjectArray((jsize)res.size(), bc, nullptr);
+    for (size_t i = 0; i < res.size(); i++) {
+        jbyteArray b = to_bytes(env, res[i]);
+        env->SetObjectArrayElement(out, (jsize)i, b);
+        env->DeleteLocalRef(b);
+    }
     return out;
 }
