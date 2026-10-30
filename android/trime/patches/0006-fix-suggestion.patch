@@ -268,10 +268,10 @@ index 00000000..15f30c55
 +}
 diff --git a/app/src/main/java/com/osfans/trime/ime/core/SuzuFix.kt b/app/src/main/java/com/osfans/trime/ime/core/SuzuFix.kt
 new file mode 100644
-index 00000000..1a0b4d1c
+index 00000000..da2dccbd
 --- /dev/null
 +++ b/app/src/main/java/com/osfans/trime/ime/core/SuzuFix.kt
-@@ -0,0 +1,376 @@
+@@ -0,0 +1,400 @@
 +/*
 + * SPDX-FileCopyrightText: 2026 1zumiii
 + * SPDX-License-Identifier: GPL-3.0-or-later
@@ -295,7 +295,7 @@ index 00000000..1a0b4d1c
 +// 记录来源：Lua 在选词时把“所选词与同页候选”登记到 librime_llm.so（fix_note），这里在上屏时按上屏文字领取（nativeTake）。
 +// 打分：nativeScore 经单独的连接请求守护进程，各字对数概率之和；整句分 = score(左文 → X) + score(左文 + X → 右文)。
 +// 文字只在内存里；统计只写数字（fix_stats.tsv：时间、事件、分差 ×10、原词字数、右文字数、类别 1 = AI 改过的首位、
-+// 名次），不写日志。
++// 名次、列出候选前等打分的毫秒数），不写日志。
 +// 事件：take 上屏时领到候选，pick 在输入框里定位到原词，check 打完分（不论是否过门槛），fail 打分失败，
 +//       shown 显示提示，accepted 采纳，ignored 忽略，stale 点了但文字已变；
 +//       offer 光标换词列出候选（分差为排第一的候选比原词），chose 换了词（分差为所选比原词，名次从 0 起），
@@ -317,6 +317,9 @@ index 00000000..1a0b4d1c
 +        var scoredRight: String? = null   // 上次打分时的右文：没变就不再打分
 +        var dismissed = false             // 提示过而没采纳、或已换过词：不再自动提示
 +        val end get() = start + word.length
++
++        // 停顿时打过的整句分（键为左文与右文）：光标点回这个词时直接用，不用等打分
++        @Volatile var cache: Pair<String, Map<String, Double>>? = null
 +    }
 +
 +    class Suggestion(val pick: Pick, val best: String, val right: String, val cursor: Int, val margin: Double)
@@ -480,24 +483,42 @@ index 00000000..1a0b4d1c
 +        val right = vocabPrefix(text.substring(off + p.word.length).take(RIGHT_MAX))
 +        val others = p.cands.filter { it != p.word }
 +        if (others.isEmpty()) return false
++        val all = listOf(p.word) + others
++        val key = cacheKey(left, right)
++        val hit = p.cache?.takeIf { it.first == key }?.second?.takeIf { m -> all.all { it in m } }
++        if (hit != null) {
++            showChoices(rank(p, others, DoubleArray(all.size) { hit.getValue(all[it]) }, right.length, cur), 0)
++            return true
++        }
 +        val g = gen
++        val t0 = System.currentTimeMillis()
 +        worker.execute {
-+            val tot = if (inVocab(p.word)) scoreAll(left, right, listOf(p.word) + others) { gen == g } else null
-+            val result =
-+                if (tot == null || tot[0] == Double.NEGATIVE_INFINITY) {
-+                    Choices(p, others, null, right.length, cur)   // 打不了分：按原来的页内顺序
-+                } else {
-+                    val order = others.indices.sortedByDescending { tot[it + 1] }
-+                    Choices(p, order.map { others[it] }, order.map { tot[it + 1] - tot[0] }, right.length, cur)
-+                }
++            val tot = if (inVocab(p.word)) scoreAll(left, right, all) { gen == g } else null
++            if (tot != null) p.cache = key to all.indices.associate { all[it] to tot[it] }
++            val result = rank(p, others, tot, right.length, cur)
 +            main.post {
 +                if (gen != g || cursor != cur) return@post
-+                choices = result
-+                diag("offer", result.margins?.firstOrNull() ?: 0.0, p.word.length, right.length, p.aiChanged)
-+                choicesListener?.invoke(result)
++                showChoices(result, System.currentTimeMillis() - t0)
 +            }
 +        }
 +        return true
++    }
++
++    private fun cacheKey(left: String, right: String) = left + "\u0001" + right
++
++    // tot 的第 0 项是原词，其后与 others 同序
++    private fun rank(p: Pick, others: List<String>, tot: DoubleArray?, rightLen: Int, cur: Int): Choices =
++        if (tot == null || tot[0] == Double.NEGATIVE_INFINITY) {
++            Choices(p, others, null, rightLen, cur)   // 打不了分：按原来的页内顺序
++        } else {
++            val order = others.indices.sortedByDescending { tot[it + 1] }
++            Choices(p, order.map { others[it] }, order.map { tot[it + 1] - tot[0] }, rightLen, cur)
++        }
++
++    private fun showChoices(c: Choices, waitMs: Long) {
++        choices = c
++        diag("offer", c.margins?.firstOrNull() ?: 0.0, c.pick.word.length, c.rightLen, c.pick.aiChanged, ms = waitMs)
++        choicesListener?.invoke(c)
 +    }
 +
 +    /** 点了光标换词的第 i 个候选：核对原词还在原处，再整段替换（replace(起点, 终点, 新词)）。返回是否替换了 */
@@ -610,9 +631,11 @@ index 00000000..1a0b4d1c
 +    private fun score(j: Job, cur: Int, alive: () -> Boolean): Suggestion? {
 +        val all = listOf(j.pick.word) + j.pick.cands.filter { it != j.pick.word && inVocab(it) }
 +        val tot = scoreAll(j.left, j.right, all, alive) ?: return null
++        j.pick.cache = cacheKey(j.left, j.right) to all.indices.associate { all[it] to tot[it] }
 +        if (tot[0] == Double.NEGATIVE_INFINITY) return null
++        // 自动提示只比前 4 个候选（离线评估就是这么定的门槛），8 个全打分是为了光标换词的缓存
 +        var bi = 1
-+        for (i in 2 until all.size) if (tot[i] > tot[bi]) bi = i
++        for (i in 2 until minOf(all.size, 5)) if (tot[i] > tot[bi]) bi = i
 +        if (tot[bi] == Double.NEGATIVE_INFINITY) return null
 +        return Suggestion(j.pick, all[bi], j.right, cur, tot[bi] - tot[0])
 +    }
@@ -640,9 +663,10 @@ index 00000000..1a0b4d1c
 +
 +    private fun stat(event: String, s: Suggestion) = diag(event, s.margin, s.pick.word.length, s.right.length, s.pick.aiChanged)
 +
-+    private fun diag(event: String, margin: Double, wordLen: Int, rightLen: Int, aiChanged: Boolean, rank: Int = -1) {
++    private fun diag(event: String, margin: Double, wordLen: Int, rightLen: Int, aiChanged: Boolean, rank: Int = -1, ms: Long = -1) {
 +        val cls = if (aiChanged) 1 else 0
-+        val line = "${System.currentTimeMillis() / 1000}\t$event\t${Math.round(margin * 10)}\t$wordLen\t$rightLen\t$cls\t$rank\n"
++        val m = if (margin.isFinite()) Math.round(margin * 10) else -9999
++        val line = "${System.currentTimeMillis() / 1000}\t$event\t$m\t$wordLen\t$rightLen\t$cls\t$rank\t$ms\n"
 +        worker.execute {
 +            runCatching { File(DataManager.userDataDir, "fix_stats.tsv").appendText(line) }
 +        }
