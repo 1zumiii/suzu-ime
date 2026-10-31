@@ -288,11 +288,11 @@ end
 
 -- === 光标换词的词库查询（只在改版 Trime 上，客户端库有 lookup_take 时）===
 -- 光标点到没有选词记录的文字上（以前打的、粘贴的）时，Trime 把光标附近的文字放进客户端库，再设运行时开关
--- suzu_fix_lookup 通知这里。找光标后的词：依次试从光标处开始的词（4、3、2 字）、跨过光标的词，最后才试光标后的单字；
+-- suzu_fix_lookup 通知这里。找从光标处开始和跨过光标的各段；
 -- 光标前的词不试（句末接着打字时不该弹出来）。每段逐字用 ReverseDb（build/rime_ice.reverse.bin，只收单字）取读音，多音字的组合逐个拼成拼音交给
 -- 翻译器查；结果里有原词，说明这段确实是个词、读音也对，取同样字数的前 8 个同音词写回。都不成立时写回“没找到”。
--- 词库连“了吗”“去吃”这样的组合也收，分不清光标处是词还是单字，所以找到词时把光标后单字的同音字（最多 7 个，带前缀 \1）
--- 也写回，由 Trime 混排，点哪个就替换哪一段。
+-- 词库连“了吗”“去吃”这样的组合也收，而且要改的文字本身可能就是错的，所以不判断光标处是词还是单字：
+-- 光标处各种长度的段都查，其他段的候选带前缀 \1起点:终点:，由 Trime 统一打整句分，点哪个就替换哪一段。
 -- 文字只在内存里，不写文件。
 local FIX_LOOKUP_QUERIES = 40   -- 每次最多查这么多次翻译器
 local function fix_lookup(env, text, cur)
@@ -371,21 +371,26 @@ local function fix_lookup(env, text, cur)
         end
         return walk(1)
     end
-    local spans = {}
-    for n = 4, 2, -1 do spans[#spans + 1] = { cur, cur + n } end
-    for n = 4, 2, -1 do for s = cur - 1, cur - n + 1, -1 do spans[#spans + 1] = { s, s + n } end end
-    local single = try(cur, cur + 1)   -- 先查单字：多音词组合可能把查询次数用完
+    -- { 起点, 终点, 最多几个同音词 }：长度越大同音词越少、也越不常要改。总数不超过客户端库的上限
+    local spans = {
+        { cur, cur + 1, 6 }, { cur, cur + 2, 6 }, { cur - 1, cur + 1, 6 },
+        { cur, cur + 3, 3 }, { cur - 1, cur + 2, 3 }, { cur - 2, cur + 1, 3 }, { cur, cur + 4, 3 },
+    }
+    local fs, fe, out = nil, nil, nil
     for _, sp in ipairs(spans) do
         local list = try(sp[1], sp[2])
         if list then
-            if single then
-                for i = 2, math.min(#single, 8) do list[#list + 1] = "\1" .. single[i] end
+            local n = math.min(#list, sp[3] + 1)
+            if not out then
+                fs, fe, out = sp[1], sp[2], {}
+                for i = 1, n do out[i] = list[i] end
+            else
+                for i = 2, n do out[#out + 1] = "\1" .. sp[1] .. ":" .. sp[2] .. ":" .. list[i] end
             end
-            return sp[1], sp[2], list
         end
         if queries >= FIX_LOOKUP_QUERIES then break end
     end
-    if single then return cur, cur + 1, single end
+    if out then return fs, fe, out end
     return nil
 end
 
