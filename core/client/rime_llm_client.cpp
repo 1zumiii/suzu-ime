@@ -270,7 +270,8 @@ int l_lookup_take(lua_State * L) {
     return 3;
 }
 
-// lookup_put(编号, 起点, 终点, 词表)：起点、终点为字数（从 0 起，不含终点），词表第一个是原词，其后是同音词；
+// lookup_put(编号, 起点, 终点, 词表)：起点、终点为字数（从 0 起，不含终点），词表第一个是原词，其后是同音词，
+// 最后可以跟光标处单字的同音字（带前缀 \x01，混排用）；
 // 只传编号表示没找到
 int l_lookup_put(lua_State * L) {
     long long id = (long long)luaL_checkinteger(L, 1);
@@ -278,7 +279,7 @@ int l_lookup_put(lua_State * L) {
     if (lua_isinteger(L, 2) && lua_isinteger(L, 3) && lua_istable(L, 4)) {
         res.push_back(std::to_string((long long)lua_tointeger(L, 2)));
         res.push_back(std::to_string((long long)lua_tointeger(L, 3)));
-        std::vector<std::string> ws = sl::read_candidates(L, 4, 9);
+        std::vector<std::string> ws = sl::read_candidates(L, 4, 16);
         res.insert(res.end(), ws.begin(), ws.end());
     }
     std::lock_guard<std::mutex> lk(g_lk_mu);
