@@ -10,7 +10,9 @@
 macos/install_llm.sh core/build/rime_llm.so <suzu.gguf> <suzu.vocab.txt>
 ```
 
-脚本把 `rime_llm.so` 放进 `~/Library/Rime/lua/`，把模型与词表以 `suzu.gguf`、`suzu.vocab.txt` 的名字放进 `~/Library/Rime/`。处理器在用户目录里看到这两个文件就启用 Suzu；没有这两个文件时不重排，输入不受影响。也可用 `llm_rerank/student_model`、`llm_rerank/student_vocab` 指定路径，`llm_rerank/student: false` 关闭。Lua 脚本与方案配置由配置仓库的 `install.sh` 安装。
+脚本将 `rime_llm.so` 安装到 `~/Library/Rime/lua/`，将模型与词表分别以 `suzu.gguf`、`suzu.vocab.txt` 命名，放入 `~/Library/Rime/`。处理器检测到这两个文件后即启用 Suzu；文件缺失时不重排，输入不受影响。
+
+也可用 `llm_rerank/student_model`、`llm_rerank/student_vocab` 指定路径，或用 `llm_rerank/student: false` 关闭。Lua 脚本与方案配置由配置仓库的 `install.sh` 安装。
 
 重启鼠须管后生效。AI 重排默认开启，`Control+Shift+5` 在当前输入框临时开关，也可在方案菜单（F4 或 ``Control+` ``）中选择“AI 关/开”。
 
@@ -26,7 +28,7 @@ macos/install_llm.sh core/build/rime_llm.so <suzu.gguf> <suzu.vocab.txt>
 
 ## 退出时的清理
 
-核心在第一次加载模型之后注册进程退出时的清理函数：先停工作线程、释放模型，再让 ggml 的静态对象析构。模块被回收（`__gc`）时同样停止工作线程并释放模型。否则退出时若工作线程正在解码，进程会在 ggml 析构之后访问已释放的对象而崩溃。
+核心首次加载模型后，会注册进程退出时的清理函数：先停止工作线程、释放模型，再析构 ggml 的静态对象。模块回收（`__gc`）时也按此顺序停止线程并释放模型。若退出时工作线程仍在解码，便可能在 ggml 析构后访问已释放的对象，导致崩溃。
 
 ## 排查
 

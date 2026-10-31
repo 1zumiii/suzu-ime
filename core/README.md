@@ -1,6 +1,6 @@
 # core：推理核心
 
-本目录是输入法候选重排的推理核心，只服务 Suzu 模型。它给 Rime 的 Lua 脚本提供 `rime_llm` 模块：macOS 鼠须管与 Windows 小狼毫在进程内加载，Android 同文输入法通过守护进程 `rimellmd` 与客户端库 `librime_llm.so` 使用。三端是同一份推理与调度代码。
+本目录包含输入法候选重排的推理核心，仅支持 Suzu 模型，并为 Rime 的 Lua 脚本提供 `rime_llm` 模块。macOS 鼠须管与 Windows 小狼毫在进程内加载模块；Android 同文输入法通过守护进程 `rimellmd` 与客户端库 `librime_llm.so` 调用。三端共用同一份推理与调度代码。
 
 设计说明见 [docs/design/core-design.md](../docs/design/core-design.md)，测量报告见 [docs/design/core-measurements.md](../docs/design/core-measurements.md)。
 
@@ -58,7 +58,7 @@
 
 ### 属性
 
-可写属性走 `__index`、`__newindex`，不能预先放进模块表。
+可写属性通过 `__index`、`__newindex` 访问，不能预先写入模块表。
 
 | 属性 | 含义 |
 |---|---|
@@ -138,7 +138,9 @@ cmake --build core\build --target rime_llm
 
 产物为 `core\build\rime_llm.dll`。小狼毫不导出 `lua_*`，因此与原项目做法相同，Lua 源码编进 DLL。光标上文读取的代码在 `platform/windows/ctxlink_win.cpp`，移自原项目。Lua 脚本使用原项目的 `llm_filter.lua`、`llm_processor.lua` 加本仓库的 [windows/rime-llm-rerank-windows.patch](../windows/rime-llm-rerank-windows.patch)。
 
-指令集基线固定为 AVX2（另开 FMA、F16C，关闭 AVX-512），不用 `GGML_NATIVE`。原因是在支持 AVX-512 的 CPU 上用 `GGML_NATIVE` 编出的 DLL 会带 AVX-512 指令，在不支持的 CPU 上，小狼毫服务进程一加载就崩溃，表现为每打开一个窗口就卡死一个。AVX2 覆盖约 2013 年以后的 Intel 与 2015 年以后的 AMD CPU，在 Ryzen 9700X 上比 `GGML_NATIVE` 慢 3% 到 6%。发布前可以用 `dumpbin /disasm rime_llm.dll | findstr zmm` 检查，不应有输出。
+指令集基线固定为 AVX2，另启用 FMA、F16C，关闭 AVX-512，不使用 `GGML_NATIVE`。在支持 AVX-512 的 CPU 上，`GGML_NATIVE` 构建的 DLL 会包含 AVX-512 指令。若在不支持的 CPU 上加载，小狼毫服务进程会立即崩溃，导致新打开的窗口无响应。
+
+AVX2 覆盖约 2013 年以后的 Intel 与 2015 年以后的 AMD CPU，在 Ryzen 9700X 上比 `GGML_NATIVE` 慢 3% 到 6%。发布前可用 `dumpbin /disasm rime_llm.dll | findstr zmm` 检查，不应有输出。
 
 ### Android（同文输入法）
 
