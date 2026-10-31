@@ -291,6 +291,8 @@ end
 -- suzu_fix_lookup 通知这里。找光标后的词：依次试从光标处开始的词（4、3、2 字）、跨过光标的词，最后才试光标后的单字；
 -- 光标前的词不试（句末接着打字时不该弹出来）。每段逐字用 ReverseDb（build/rime_ice.reverse.bin，只收单字）取读音，多音字的组合逐个拼成拼音交给
 -- 翻译器查；结果里有原词，说明这段确实是个词、读音也对，取同样字数的前 8 个同音词写回。都不成立时写回“没找到”。
+-- 词库连“了吗”“去吃”这样的组合也收，分不清光标处是词还是单字，所以找到词时把光标后单字的同音字（最多 7 个，带前缀 \1）
+-- 也写回，由 Trime 混排，点哪个就替换哪一段。
 -- 文字只在内存里，不写文件。
 local FIX_LOOKUP_QUERIES = 40   -- 每次最多查这么多次翻译器
 local function fix_lookup(env, text, cur)
@@ -372,12 +374,18 @@ local function fix_lookup(env, text, cur)
     local spans = {}
     for n = 4, 2, -1 do spans[#spans + 1] = { cur, cur + n } end
     for n = 4, 2, -1 do for s = cur - 1, cur - n + 1, -1 do spans[#spans + 1] = { s, s + n } end end
-    spans[#spans + 1] = { cur, cur + 1 }
+    local single = try(cur, cur + 1)   -- 先查单字：多音词组合可能把查询次数用完
     for _, sp in ipairs(spans) do
         local list = try(sp[1], sp[2])
-        if list then return sp[1], sp[2], list end
+        if list then
+            if single then
+                for i = 2, math.min(#single, 8) do list[#list + 1] = "\1" .. single[i] end
+            end
+            return sp[1], sp[2], list
+        end
         if queries >= FIX_LOOKUP_QUERIES then break end
     end
+    if single then return cur, cur + 1, single end
     return nil
 end
 

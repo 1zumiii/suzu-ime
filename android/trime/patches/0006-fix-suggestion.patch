@@ -268,10 +268,10 @@ index 00000000..15f30c55
 +}
 diff --git a/app/src/main/java/com/osfans/trime/ime/core/SuzuFix.kt b/app/src/main/java/com/osfans/trime/ime/core/SuzuFix.kt
 new file mode 100644
-index 00000000..7498bb5d
+index 00000000..8c8aaf92
 --- /dev/null
 +++ b/app/src/main/java/com/osfans/trime/ime/core/SuzuFix.kt
-@@ -0,0 +1,479 @@
+@@ -0,0 +1,547 @@
 +/*
 + * SPDX-FileCopyrightText: 2026 1zumiii
 + * SPDX-License-Identifier: GPL-3.0-or-later
@@ -314,6 +314,9 @@ index 00000000..7498bb5d
 +    private const val READ_MAX = 200      // 光标换词：光标前后各读这么多字来核对位置
 +    private const val LOOKUP_SPAN = 6     // 词库查询：光标前后各交给 Lua 这么多字
 +    private const val LOOKUP_WAIT_MS = 300
++    private const val SINGLE_MARK = '\u0001' // Lua 写回的词表里，带这个前缀的是光标处单字的同音字
++    private const val OPTIONS_MAX = 8     // 候选栏最多列这么多个
++    private const val SINGLES_MIN = 3     // 词和单字混排时给单字留的位置
 +
 +    class Pick(var start: Int, var word: String, var cands: List<String>, val aiChanged: Boolean) {
 +        val threshold get() = if (aiChanged) THRESHOLD_AI else THRESHOLD
@@ -327,8 +330,18 @@ index 00000000..7498bb5d
 +
 +    class Suggestion(val pick: Pick, val best: String, val right: String, val cursor: Int, val margin: Double)
 +
-+    /** 光标换词：options 已按整句分从高到低排好；margins 为各候选比原词高多少（打不了分时为 null） */
-+    class Choices(val pick: Pick, val options: List<String>, val margins: List<Double>?, val rightLen: Int, val cursor: Int)
++    /**
++     * 光标换词：options 已按整句分从高到低排好；margins 为各候选比原词高多少（打不了分时为 null）。
++     * 词和单字混排时 optPicks 给出每个候选替换的范围，为空表示都替换 pick。
++     */
++    class Choices(
++        val pick: Pick,
++        val options: List<String>,
++        val margins: List<Double>?,
++        val rightLen: Int,
++        val cursor: Int,
++        val optPicks: List<Pick> = emptyList(),
++    )
 +
 +    private val loaded =
 +        runCatching { System.loadLibrary("rime_llm") }
@@ -519,67 +532,122 @@ index 00000000..7498bb5d
 +        val left = text.substring(maxOf(0, off - LEFT_MAX), off)
 +        val right = vocabPrefix(text.substring(off + p.word.length).take(RIGHT_MAX))
 +        val others = p.cands.filter { it != p.word }
-+        if (others.isEmpty()) return false
++        val splittable = p.word.length > 1   // 词里的一个字也能单独换，要多查一次词库
++        if (others.isEmpty() && !splittable) return false
 +        val all = listOf(p.word) + others
 +        val key = cacheKey(left, right)
 +        val hit = p.cache?.takeIf { it.first == key }?.second?.takeIf { m -> all.all { it in m } }
-+        if (hit != null) {
++        if (hit != null && !splittable) {
 +            showChoices(rank(p, others, DoubleArray(all.size) { hit.getValue(all[it]) }, right.length, cur), 0)
 +            return true
 +        }
 +        val g = gen
 +        val t0 = System.currentTimeMillis()
 +        worker.execute {
-+            val tot = if (inVocab(p.word)) scoreAll(left, right, all) { gen == g } else null
++            val tot = hit?.let { m -> DoubleArray(all.size) { m.getValue(all[it]) } }
++                ?: if (inVocab(p.word)) scoreAll(left, right, all) { gen == g } else null
 +            if (tot != null) p.cache = key to all.indices.associate { all[it] to tot[it] }
-+            finish(g, cur, rank(p, others, tot, right.length, cur), t0)
++            var c = rank(p, others, tot, right.length, cur)
++            if (splittable) {
++                val w = lookupWindow(text, base, cur)
++                c = withSingles(c, singlesOf(w?.let { lookup(it.first, it.second) }), text, base, cur, g)
++            }
++            finish(g, cur, c.takeIf { it.options.isNotEmpty() }, t0)
 +        }
 +        return true
 +    }
 +
 +    // 词库查询：把光标前后各几个字交给 Lua（客户端库转交，运行时开关通知），由它找出光标处的词和同音词，
-+    // 再与选词记录一样打整句分、排序。这样的词不记进 picks，也不自动提示。
++    // 再与选词记录一样打整句分、排序。Lua 还返回光标处单字的同音字，两者混排。这样的词不记进 picks，也不自动提示。
 +    private fun lookupChoices(text: String, base: Int, cur: Int): Boolean {
++        val w = lookupWindow(text, base, cur) ?: return false
++        val g = gen
++        val t0 = System.currentTimeMillis()
++        worker.execute { finish(g, cur, lookupWork(w.first, w.second, text, base, w.third, cur, g, t0), t0) }
++        return true
++    }
++
++    // 光标前后各 LOOKUP_SPAN 个字：(文字, 光标在其中的字数位置, 文字在 text 里的起点)；没有汉字时返回 null
++    private fun lookupWindow(text: String, base: Int, cur: Int): Triple<String, Int, Int>? {
 +        val k = cur - base
-+        if (k < 0 || k > text.length) return false
++        if (k < 0 || k > text.length) return null
 +        var ws = maxOf(0, k - LOOKUP_SPAN)
 +        var we = minOf(text.length, k + LOOKUP_SPAN)
 +        if (ws > 0 && Character.isLowSurrogate(text[ws])) ws++   // 别切开代理对
 +        if (we < text.length && Character.isLowSurrogate(text[we])) we--
 +        val win = text.substring(ws, we)
-+        if (win.none { it in '\u4e00'..'\u9fff' }) return false
-+        val kc = win.codePointCount(0, k - ws)
-+        val g = gen
-+        val t0 = System.currentTimeMillis()
-+        worker.execute { finish(g, cur, lookupWork(win, kc, text, base, ws, cur, g, t0), t0) }
-+        return true
++        if (win.none { it in '\u4e00'..'\u9fff' }) return null
++        return Triple(win, win.codePointCount(0, k - ws), ws)
++    }
++
++    // 后台线程：交给 Lua 查，返回 [起点, 终点, 原词, 同音词…]；没找到时为空，超时返回 null
++    private fun lookup(win: String, kc: Int): List<String>? {
++        val id = runCatching { nativeLookupPut(win.toByteArray(), kc) }.getOrNull() ?: return null
++        requestLookup()
++        return runCatching { nativeLookupWait(id, LOOKUP_WAIT_MS) }.getOrNull()?.map { String(it) }
++    }
++
++    // 查询结果里光标处单字的同音字：单字自成一段时就是同音词本身，否则是带前缀的那些
++    private fun singlesOf(r: List<String>?): List<String> {
++        if (r == null || r.size < 4) return emptyList()
++        val marked = r.drop(3).filter { it.startsWith(SINGLE_MARK) }.map { it.substring(1) }
++        if (marked.isNotEmpty()) return marked
++        return if (r[2].length == 1) r.drop(3) else emptyList()
 +    }
 +
 +    // 后台线程：查词库、打分；查不到或作废时返回 null
 +    private fun lookupWork(win: String, kc: Int, text: String, base: Int, ws: Int, cur: Int, g: Int, t0: Long): Choices? {
 +        run {
 +            if (gen != g) return null
-+            val id = runCatching { nativeLookupPut(win.toByteArray(), kc) }.getOrNull() ?: return null
-+            requestLookup()
-+            val r = runCatching { nativeLookupWait(id, LOOKUP_WAIT_MS) }.getOrNull()
++            val r = lookup(win, kc)
 +            if (r == null || r.size < 4) {
 +                diag(if (r == null) "lookup_timeout" else "lookup_none", 0.0, 0, 0, false, ms = System.currentTimeMillis() - t0)
 +                return null
 +            }
-+            val s = runCatching { win.offsetByCodePoints(0, String(r[0]).toInt()) }.getOrNull() ?: return null
-+            val e = runCatching { win.offsetByCodePoints(0, String(r[1]).toInt()) }.getOrNull() ?: return null
-+            val word = String(r[2])
++            val s = runCatching { win.offsetByCodePoints(0, r[0].toInt()) }.getOrNull() ?: return null
++            val e = runCatching { win.offsetByCodePoints(0, r[1].toInt()) }.getOrNull() ?: return null
++            val word = r[2]
 +            if (win.substring(s, e) != word) return null
-+            val others = r.drop(3).map { String(it) }.filter { it != word }
-+            if (others.isEmpty()) return null
++            val others = r.drop(3).filter { it != word && !it.startsWith(SINGLE_MARK) }
++            val singles = if (word.length > 1) singlesOf(r) else emptyList()
++            if (others.isEmpty() && singles.isEmpty()) return null
 +            diag("lookup", 0.0, word.length, 0, false, ms = System.currentTimeMillis() - t0)
 +            val p = Pick(base + ws + s, word, others, false).apply { dismissed = true }
 +            val off = ws + s
 +            val left = text.substring(maxOf(0, off - LEFT_MAX), off)
 +            val right = vocabPrefix(text.substring(ws + e).take(RIGHT_MAX))
 +            val tot = if (inVocab(word)) scoreAll(left, right, listOf(word) + others) { gen == g } else null
-+            return rank(p, others, tot, right.length, cur)
++            return withSingles(rank(p, others, tot, right.length, cur), singles, text, base, cur, g)
++                .takeIf { it.options.isNotEmpty() }
 +        }
++    }
++
++    // 把光标处单字的同音字并进候选：各自打整句分，按比原文高多少统一排序，单字至少留 SINGLES_MIN 个位置
++    private fun withSingles(c: Choices, singles: List<String>, text: String, base: Int, cur: Int, g: Int): Choices {
++        val off = cur - base
++        if (singles.isEmpty() || off >= text.length) return c
++        val ch = text.substring(off, off + 1)
++        val sp = Pick(cur, ch, singles, false).apply { dismissed = true }
++        val left = text.substring(maxOf(0, off - LEFT_MAX), off)
++        val right = vocabPrefix(text.substring(off + 1).take(RIGHT_MAX))
++        val tot = if (inVocab(ch)) scoreAll(left, right, listOf(ch) + singles) { gen == g } else null
++        val sc = rank(sp, singles, tot, right.length, cur)
++        val nS = minOf(sc.options.size, maxOf(SINGLES_MIN, OPTIONS_MAX - c.options.size))
++        val nW = minOf(c.options.size, OPTIONS_MAX - nS)
++        class Opt(val word: String, val pick: Pick, val margin: Double?)
++        val opts = c.options.take(nW).mapIndexed { i, w -> Opt(w, c.pick, c.margins?.get(i)) } +
++            sc.options.take(nS).mapIndexed { i, w -> Opt(w, sp, sc.margins?.get(i)) }
++        // 有一边打不了分时不比较分数：词在前，单字在后
++        val scored = opts.all { it.margin != null }
++        val sorted = if (scored) opts.sortedByDescending { it.margin!! } else opts
++        return Choices(
++            c.pick,
++            sorted.map { it.word },
++            if (scored) sorted.map { it.margin!! } else null,
++            c.rightLen,
++            cur,
++            sorted.map { it.pick },
++        )
 +    }
 +
 +    private fun cacheKey(left: String, right: String) = left + "\u0001" + right
@@ -605,7 +673,7 @@ index 00000000..7498bb5d
 +        val c = choices ?: return false
 +        choices = null
 +        hideStale()
-+        val p = c.pick
++        val p = c.optPicks.getOrNull(i) ?: c.pick
 +        val word = c.options.getOrNull(i) ?: return false
 +        val ic = inputConnection() ?: return false
 +        val (text, base) = around(ic, cursor, READ_MAX, READ_MAX) ?: return false
