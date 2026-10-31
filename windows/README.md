@@ -9,8 +9,8 @@
 
 ## 切换到共用的 ai_rerank_* Lua（与 Mac、手机相同）
 
-`windows/deploy_airerank.ps1` 把小狼毫从“原项目加补丁的 llm_processor/llm_filter”切到共用的 `ai_rerank_*`，无引导、有备份、一条命令回滚：
+`windows/deploy_airerank.ps1` 将小狼毫从原项目附带补丁的 llm_processor/llm_filter 切换到共用的 `ai_rerank_*`。脚本无需交互式引导，切换前备份，并支持单条命令回滚：
 
 - 切换：`powershell -NoProfile -ExecutionPolicy Bypass -File windows\deploy_airerank.ps1 [-Ranker legacy|unified]`；已切换过的机器改挂共用的光标上文接入层：加 `-SwitchGlue`；只改排序模式：加 `-SetRanker`；回滚：加 `-Rollback [-BackupDir <目录>]`。
 - 与 Mac、手机共用的 `rime/lua/ai_rerank_app_ctx.lua` 把 UIA/COM 光标前文接到 `_G.ai_rerank_context_get`（读不到退回上屏历史），并处理点击、切换前台应用、编辑键、上屏后重读快照，以及按实际上文预解码；测试：`tests/windows/win_ctx_test.lua`。
-- 无人值守重新部署：先删 `build\rime_ice.schema.yaml` 与 `build\default.yaml`，服务端保持运行，再跑 `WeaselDeployer.exe /deploy`，等编译结果出现后关掉它弹出的窗口（不需要点）。不删 build 文件时 Rime 认为没有变化，什么都不编；服务端没运行时跑 deployer 也不编。
+- 无人值守重新部署：先删除 `build\rime_ice.schema.yaml` 与 `build\default.yaml`，保持服务端运行，再执行 `WeaselDeployer.exe /deploy`。编译结果出现后关闭弹出的窗口，无需点击其中的控件。若不删除 build 文件，Rime 会判定配置未变化，跳过编译；服务端未运行时，deployer 也不会编译。
