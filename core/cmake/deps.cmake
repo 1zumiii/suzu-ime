@@ -1,6 +1,14 @@
 # 第三方依赖：llama.cpp（静态链接、只用 CPU 后端）与 Lua 5.4 头文件/源码。
 
-set(SUZU_DEPS_ROOT "${CMAKE_CURRENT_SOURCE_DIR}/../../rime-llm-mac-port" CACHE PATH "第三方源码所在目录")
+# 默认位置：环境变量 IME_DEPS，其次 ~/Dev/ime-deps，都没有时用仓库旁边的 rime-llm-mac-port/（旧布局）
+if(DEFINED ENV{IME_DEPS})
+  set(_suzu_deps_default "$ENV{IME_DEPS}")
+elseif(EXISTS "$ENV{HOME}/Dev/ime-deps/llama.cpp")
+  set(_suzu_deps_default "$ENV{HOME}/Dev/ime-deps")
+else()
+  set(_suzu_deps_default "${CMAKE_CURRENT_SOURCE_DIR}/../../rime-llm-mac-port")
+endif()
+set(SUZU_DEPS_ROOT "${_suzu_deps_default}" CACHE PATH "第三方源码所在目录")
 set(SUZU_LLAMA_DIR "${SUZU_DEPS_ROOT}/llama.cpp" CACHE PATH "llama.cpp 源码（b11632）")
 set(SUZU_LUA_DIR   "${SUZU_DEPS_ROOT}/deps/lua-5.4.6/src" CACHE PATH "Lua 5.4.6 的 src/ 目录")
 
