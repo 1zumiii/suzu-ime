@@ -83,7 +83,7 @@ llm_rerank:
     - { pack: "~/Library/Rime/models/extra-domain", weight: 0.5 }
 ```
 
-未配置 `models` 时，沿用现有行为：用户目录里有 `suzu.gguf` 和 `suzu.vocab.txt` 就使用 Suzu，否则回退到 Qwen。
+未配置 `models` 时，沿用现有行为：用户目录里有 `suzu.gguf` 和 `suzu.vocab.txt` 就使用 Suzu，否则返回 `no_model`，不重排，输入不受影响。
 
 ## 运行时要求
 
