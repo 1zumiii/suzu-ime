@@ -4,15 +4,16 @@
 # 用法：android/trime/build_apk.sh [输出.apk]
 # 前提：JDK 17（brew install openjdk@17）、Android SDK（Gradle 会自动装 NDK 28 / 平台）、NDK r27d（交叉编译推理部分）、
 #       CMake 3.31.6 的官方预编译包、llama.cpp 与 Lua 源码（见 core/README.md）、签名密钥（见 sign_apk.sh）。
-# 路径都可以用环境变量覆盖，默认放在 ~/Documents/rime-android-port/。
+# 路径都可以用环境变量覆盖：工作目录 WORK 默认是仓库旁边的 rime-android-port/；CMake 与第三方源码在 IME_DEPS（默认 ~/Dev/ime-deps）；NDK 在 Android SDK 的 ndk/27.3.13750724。
 set -euo pipefail
 
 REPO="$(cd "$(dirname "$0")/../.." && pwd)"
-W="${WORK:-$HOME/Documents/rime-android-port}"
+W="${WORK:-$(dirname "$REPO")/rime-android-port}"
+IME_DEPS="${IME_DEPS:-$HOME/Dev/ime-deps}"
 BASE=ad5a14be                                         # 手机上装的 Trime v3.3.12-73-gad5a14be
-NDK="${NDK:-$W/ndk/android-ndk-r27d}"
+NDK="${NDK:-$HOME/Library/Android/sdk/ndk/27.3.13750724}"
 JAVA_HOME="${JAVA_HOME:-/opt/homebrew/opt/openjdk@17}"
-CMAKE_DIR="${CMAKE_DIR:-$W/cmake-dl/cmake-3.31.6-macos-universal/CMake.app/Contents}"
+CMAKE_DIR="${CMAKE_DIR:-$IME_DEPS/cmake-3.31.6-macos-universal/CMake.app/Contents}"
 OUT="${1:-$W/apk_work/trime-mod.apk}"
 SRC="$W/trime-src"
 STRIP="$NDK/toolchains/llvm/prebuilt/darwin-x86_64/bin/llvm-strip"
@@ -43,7 +44,7 @@ printf 'sdk.dir=%s\ncmake.dir=%s\n' "$HOME/Library/Android/sdk" "$CMAKE_DIR" > "
 # 2. 客户端库与守护进程（由 core/ 交叉编译，客户端链接到 Trime 自己的 librime_jni.so 以解析 lua_*）
 JNI_HOST="$W/trime-built/lib/arm64-v8a/librime_jni.so"
 [[ -f "$JNI_HOST" ]] || { echo "缺少 ${JNI_HOST}：先用未打补丁的构建解出 librime_jni.so（见 README）"; exit 1; }
-DEPS="${DEPS:-$HOME/Documents/rime-llm-mac-port}"     # llama.cpp 与 Lua 源码所在目录（布局见 core/README.md）
+DEPS="${DEPS:-$IME_DEPS}"     # llama.cpp 与 Lua 源码所在目录（布局见 core/README.md）
 cmake -S "$REPO/core" -B "$W/build_host" -G Ninja -DCMAKE_TOOLCHAIN_FILE="$NDK/build/cmake/android.toolchain.cmake" \
   -DANDROID_ABI=arm64-v8a -DANDROID_PLATFORM=android-30 -DCMAKE_BUILD_TYPE=Release \
   -DSUZU_ANDROID_ARM_ARCH="$ARM_ARCH" -DSUZU_DEPS_ROOT="$DEPS" -DSUZU_BUILD_DAEMON=ON -DSUZU_BUILD_LUA_MODULE=OFF -DSUZU_LUA_HOST_LIB="$JNI_HOST" >/dev/null

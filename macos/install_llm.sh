@@ -7,7 +7,7 @@ set -euo pipefail
 REPO="$(cd "$(dirname "$0")/.." && pwd)"
 DEST="${RIME_DIR:-$HOME/Library/Rime}"
 SO="${1:-$REPO/core/build/rime_llm.so}"
-MODEL="${2:-$HOME/Documents/rime-llm-mac-port/models/suzu.gguf}"
+MODEL="${2:-$DEST/suzu.gguf}"
 VOCAB="${3:-${MODEL%.gguf}.vocab.txt}"
 
 [[ -f "$SO" ]] || { echo "找不到 ${SO}，请先按 core/README.md 构建"; exit 1; }

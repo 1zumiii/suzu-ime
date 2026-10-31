@@ -6,7 +6,7 @@
 #   stop     停止（先终止监督进程，它会带走工作进程）
 #   status   进程、状态文件、最近日志
 #   log      最近 40 行日志
-# 环境变量：ADB、BIN（rimellmd 路径，默认 ~/Documents/rime-android-port/build_host/rimellmd）、MODEL（suzu.gguf 路径）、VOCAB（suzu.vocab.txt 路径，默认与模型同目录）、
+# 环境变量：ADB、BIN（rimellmd 路径，默认仓库旁边的 rime-android-port/build_host/rimellmd）、MODEL（suzu.gguf 路径）、VOCAB（suzu.vocab.txt 路径，默认与模型同目录）、
 #          THREADS（默认 2：实测 4 线程会因预解码和打分同时忙等而出现数秒卡顿，2~3 线程没有）、IDLE_SEC（空闲自动卸载秒数，默认 0 = 不自动卸载，靠手动启停）、SCREEN_OFF_SEC（熄屏后单独的时限，默认 0 = 不单独设）
 set -euo pipefail
 
@@ -14,8 +14,9 @@ ADB="${ADB:-adb}"
 PKG=com.osfans.trime
 RIME_DIR=/sdcard/Android/data/$PKG/files/rime
 DIR=/data/local/tmp/rimellm
-BIN="${BIN:-$HOME/Documents/rime-android-port/build_host/rimellmd}"
-MODEL="${MODEL:-$HOME/Documents/rime-llm-mac-port/models/suzu.gguf}"
+REPO="$(cd "$(dirname "$0")/../.." && pwd)"
+BIN="${BIN:-$(dirname "$REPO")/rime-android-port/build_host/rimellmd}"
+MODEL="${MODEL:-$HOME/Library/Rime/suzu.gguf}"
 VOCAB="${VOCAB:-${MODEL%.gguf}.vocab.txt}"
 THREADS="${THREADS:-2}"
 IDLE_SEC="${IDLE_SEC:-0}"
@@ -43,7 +44,7 @@ cmd_deploy() {
 }
 
 llvm_strip() {
-  local s="$HOME/Documents/rime-android-port/ndk/android-ndk-r27d/toolchains/llvm/prebuilt/darwin-x86_64/bin/llvm-strip"
+  local s="${NDK:-$HOME/Library/Android/sdk/ndk/27.3.13750724}/toolchains/llvm/prebuilt/darwin-x86_64/bin/llvm-strip"
   [[ -x "$s" ]] && "$s" --strip-unneeded -o "$2" "$1"
 }
 

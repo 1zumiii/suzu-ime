@@ -11,7 +11,7 @@
 #   platform/ 平台相关的能力（Windows 的光标上文读取）
 #   tools/    基准与对照工具
 #
-# 依赖的位置（默认是仓库旁边的 rime-llm-mac-port/，与旧构建一致）：
+# 依赖的位置（默认取环境变量 IME_DEPS，其次 ~/Dev/ime-deps，见 cmake/deps.cmake）：
 #   SUZU_LLAMA_DIR  llama.cpp 源码（固定在 b11632）
 #   SUZU_LUA_DIR    Lua 5.4.6 源码的 src/ 目录
 cmake_minimum_required(VERSION 3.20)

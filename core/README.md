@@ -79,10 +79,10 @@
 
 ## 构建
 
-依赖两份第三方源码，默认位置是仓库旁边的 `rime-llm-mac-port/`，可用 `-DSUZU_DEPS_ROOT=` 整体指定，或用 `-DSUZU_LLAMA_DIR=`、`-DSUZU_LUA_DIR=` 分别指定：
+依赖两份第三方源码。默认位置按顺序查找：环境变量 `IME_DEPS`、`~/Dev/ime-deps`、仓库旁边的 `rime-llm-mac-port/`（旧布局）。可用 `-DSUZU_DEPS_ROOT=` 整体指定，或用 `-DSUZU_LLAMA_DIR=`、`-DSUZU_LUA_DIR=` 分别指定：
 
 ```
-rime-llm-mac-port/
+~/Dev/ime-deps/
   llama.cpp/            llama.cpp，固定在标签 b11632
   deps/lua-5.4.6/src/   Lua 5.4.6 源码（sha256 7d5ea1b9cb6aa0b59ca3dde1c6adcb57ef83a1ba8e5432c0ecd06bf439b3ad88）
 ```
@@ -90,8 +90,8 @@ rime-llm-mac-port/
 获取方式：
 
 ```bash
-git clone --depth 1 --branch b11632 https://github.com/ggml-org/llama.cpp.git rime-llm-mac-port/llama.cpp
-curl -LO https://www.lua.org/ftp/lua-5.4.6.tar.gz && tar xf lua-5.4.6.tar.gz -C rime-llm-mac-port/deps/
+git clone --depth 1 --branch b11632 https://github.com/ggml-org/llama.cpp.git ~/Dev/ime-deps/llama.cpp
+curl -LO https://www.lua.org/ftp/lua-5.4.6.tar.gz && mkdir -p ~/Dev/ime-deps/deps && tar xf lua-5.4.6.tar.gz -C ~/Dev/ime-deps/deps/
 ```
 
 CMake 选项：
