@@ -268,10 +268,10 @@ index 00000000..15f30c55
 +}
 diff --git a/app/src/main/java/com/osfans/trime/ime/core/SuzuFix.kt b/app/src/main/java/com/osfans/trime/ime/core/SuzuFix.kt
 new file mode 100644
-index 00000000..8c8aaf92
+index 00000000..5228d2e3
 --- /dev/null
 +++ b/app/src/main/java/com/osfans/trime/ime/core/SuzuFix.kt
-@@ -0,0 +1,547 @@
+@@ -0,0 +1,566 @@
 +/*
 + * SPDX-FileCopyrightText: 2026 1zumiii
 + * SPDX-License-Identifier: GPL-3.0-or-later
@@ -313,10 +313,10 @@ index 00000000..8c8aaf92
 +    private const val PER_PAUSE = 4       // 每次停顿最多查这么多个（从最近的起）
 +    private const val READ_MAX = 200      // 光标换词：光标前后各读这么多字来核对位置
 +    private const val LOOKUP_SPAN = 6     // 词库查询：光标前后各交给 Lua 这么多字
-+    private const val LOOKUP_WAIT_MS = 300
-+    private const val SINGLE_MARK = '\u0001' // Lua 写回的词表里，带这个前缀的是光标处单字的同音字
++    private const val LOOKUP_WAIT_MS = 500
 +    private const val OPTIONS_MAX = 8     // 候选栏最多列这么多个
-+    private const val SINGLES_MIN = 3     // 词和单字混排时给单字留的位置
++    private const val SHOW_MIN = 3        // 至少列这么多个，分数再低也列
++    private const val HIDE_BELOW = -8.0   // 比原文的整句分低这么多就不列（暂定：离线评估里约三成真选错时正确答案分更低，门槛不能太严）
 +
 +    class Pick(var start: Int, var word: String, var cands: List<String>, val aiChanged: Boolean) {
 +        val threshold get() = if (aiChanged) THRESHOLD_AI else THRESHOLD
@@ -332,7 +332,7 @@ index 00000000..8c8aaf92
 +
 +    /**
 +     * 光标换词：options 已按整句分从高到低排好；margins 为各候选比原词高多少（打不了分时为 null）。
-+     * 词和单字混排时 optPicks 给出每个候选替换的范围，为空表示都替换 pick。
++     * 多种长度混排时 optPicks 给出每个候选替换的范围，为空表示都替换 pick。
 +     */
 +    class Choices(
 +        val pick: Pick,
@@ -532,7 +532,7 @@ index 00000000..8c8aaf92
 +        val left = text.substring(maxOf(0, off - LEFT_MAX), off)
 +        val right = vocabPrefix(text.substring(off + p.word.length).take(RIGHT_MAX))
 +        val others = p.cands.filter { it != p.word }
-+        val splittable = p.word.length > 1   // 词里的一个字也能单独换，要多查一次词库
++        val splittable = p.word.length > 1   // 词的一部分也能单独换，要多查一次词库
 +        if (others.isEmpty() && !splittable) return false
 +        val all = listOf(p.word) + others
 +        val key = cacheKey(left, right)
@@ -550,15 +550,17 @@ index 00000000..8c8aaf92
 +            var c = rank(p, others, tot, right.length, cur)
 +            if (splittable) {
 +                val w = lookupWindow(text, base, cur)
-+                c = withSingles(c, singlesOf(w?.let { lookup(it.first, it.second) }), text, base, cur, g)
++                val spans = w?.let { lookup(it.first, it.second) }?.let { spansOf(it, it0 = w.first) } ?: emptyList()
++                c = merge(listOf(c) + spans.filter { w!!.third + base + it.start != p.start || it.word != p.word }
++                    .map { scoreSpan(base + w!!.third + it.start, it.word, it.cands, text, base, cur, g) }, text, base, cur)
 +            }
 +            finish(g, cur, c.takeIf { it.options.isNotEmpty() }, t0)
 +        }
 +        return true
 +    }
 +
-+    // 词库查询：把光标前后各几个字交给 Lua（客户端库转交，运行时开关通知），由它找出光标处的词和同音词，
-+    // 再与选词记录一样打整句分、排序。Lua 还返回光标处单字的同音字，两者混排。这样的词不记进 picks，也不自动提示。
++    // 词库查询：把光标前后各几个字交给 Lua（客户端库转交，运行时开关通知），由它找出光标处各种长度的词和同音词，
++    // 再与选词记录一样打整句分、排序。这样的词不记进 picks，也不自动提示。
 +    private fun lookupChoices(text: String, base: Int, cur: Int): Boolean {
 +        val w = lookupWindow(text, base, cur) ?: return false
 +        val g = gen
@@ -587,12 +589,32 @@ index 00000000..8c8aaf92
 +        return runCatching { nativeLookupWait(id, LOOKUP_WAIT_MS) }.getOrNull()?.map { String(it) }
 +    }
 +
-+    // 查询结果里光标处单字的同音字：单字自成一段时就是同音词本身，否则是带前缀的那些
-+    private fun singlesOf(r: List<String>?): List<String> {
-+        if (r == null || r.size < 4) return emptyList()
-+        val marked = r.drop(3).filter { it.startsWith(SINGLE_MARK) }.map { it.substring(1) }
-+        if (marked.isNotEmpty()) return marked
-+        return if (r[2].length == 1) r.drop(3) else emptyList()
++    private class Span(val start: Int, val word: String, val cands: List<String>)
++
++    // 查询结果 [起点, 终点, 原词, 同音词…] 拆成各段（起点是 UTF-16 下标，相对 win）。第一段之外的候选带前缀 \\x01起点:终点:，
++    // 起点、终点都是字数
++    private fun spansOf(r: List<String>, it0: String): List<Span> {
++        if (r.size < 4) return emptyList()
++        val groups = LinkedHashMap<Pair<Int, Int>, MutableList<String>>()
++        val first = (r[0].toIntOrNull() ?: return emptyList()) to (r[1].toIntOrNull() ?: return emptyList())
++        groups[first] = mutableListOf()
++        for (x in r.drop(3)) {
++            if (x.startsWith("\u0001")) {
++                val a = x.substring(1).split(":", limit = 3)
++                if (a.size != 3) continue
++                val k = (a[0].toIntOrNull() ?: continue) to (a[1].toIntOrNull() ?: continue)
++                groups.getOrPut(k) { mutableListOf() }.add(a[2])
++            } else {
++                groups.getValue(first).add(x)
++            }
++        }
++        return groups.mapNotNull { (k, cs) ->
++            val s = runCatching { it0.offsetByCodePoints(0, k.first) }.getOrNull() ?: return@mapNotNull null
++            val e = runCatching { it0.offsetByCodePoints(0, k.second) }.getOrNull() ?: return@mapNotNull null
++            val w = it0.substring(s, e)
++            val others = cs.filter { it != w }
++            if (others.isEmpty()) null else Span(s, w, others)
++        }
 +    }
 +
 +    // 后台线程：查词库、打分；查不到或作废时返回 null
@@ -604,49 +626,46 @@ index 00000000..8c8aaf92
 +                diag(if (r == null) "lookup_timeout" else "lookup_none", 0.0, 0, 0, false, ms = System.currentTimeMillis() - t0)
 +                return null
 +            }
-+            val s = runCatching { win.offsetByCodePoints(0, r[0].toInt()) }.getOrNull() ?: return null
-+            val e = runCatching { win.offsetByCodePoints(0, r[1].toInt()) }.getOrNull() ?: return null
-+            val word = r[2]
-+            if (win.substring(s, e) != word) return null
-+            val others = r.drop(3).filter { it != word && !it.startsWith(SINGLE_MARK) }
-+            val singles = if (word.length > 1) singlesOf(r) else emptyList()
-+            if (others.isEmpty() && singles.isEmpty()) return null
-+            diag("lookup", 0.0, word.length, 0, false, ms = System.currentTimeMillis() - t0)
-+            val p = Pick(base + ws + s, word, others, false).apply { dismissed = true }
-+            val off = ws + s
-+            val left = text.substring(maxOf(0, off - LEFT_MAX), off)
-+            val right = vocabPrefix(text.substring(ws + e).take(RIGHT_MAX))
-+            val tot = if (inVocab(word)) scoreAll(left, right, listOf(word) + others) { gen == g } else null
-+            return withSingles(rank(p, others, tot, right.length, cur), singles, text, base, cur, g)
++            val spans = spansOf(r, win)
++            if (spans.isEmpty()) return null
++            diag("lookup", 0.0, spans.first().word.length, 0, false, ms = System.currentTimeMillis() - t0)
++            return merge(spans.map { scoreSpan(base + ws + it.start, it.word, it.cands, text, base, cur, g) }, text, base, cur)
 +                .takeIf { it.options.isNotEmpty() }
 +        }
 +    }
 +
-+    // 把光标处单字的同音字并进候选：各自打整句分，按比原文高多少统一排序，单字至少留 SINGLES_MIN 个位置
-+    private fun withSingles(c: Choices, singles: List<String>, text: String, base: Int, cur: Int, g: Int): Choices {
-+        val off = cur - base
-+        if (singles.isEmpty() || off >= text.length) return c
-+        val ch = text.substring(off, off + 1)
-+        val sp = Pick(cur, ch, singles, false).apply { dismissed = true }
++    // 后台线程：给一段文字（输入框位置 start）的同音候选打整句分
++    private fun scoreSpan(start: Int, word: String, cands: List<String>, text: String, base: Int, cur: Int, g: Int): Choices {
++        val p = Pick(start, word, cands, false).apply { dismissed = true }
++        val off = start - base
 +        val left = text.substring(maxOf(0, off - LEFT_MAX), off)
-+        val right = vocabPrefix(text.substring(off + 1).take(RIGHT_MAX))
-+        val tot = if (inVocab(ch)) scoreAll(left, right, listOf(ch) + singles) { gen == g } else null
-+        val sc = rank(sp, singles, tot, right.length, cur)
-+        val nS = minOf(sc.options.size, maxOf(SINGLES_MIN, OPTIONS_MAX - c.options.size))
-+        val nW = minOf(c.options.size, OPTIONS_MAX - nS)
-+        class Opt(val word: String, val pick: Pick, val margin: Double?)
-+        val opts = c.options.take(nW).mapIndexed { i, w -> Opt(w, c.pick, c.margins?.get(i)) } +
-+            sc.options.take(nS).mapIndexed { i, w -> Opt(w, sp, sc.margins?.get(i)) }
-+        // 有一边打不了分时不比较分数：词在前，单字在后
++        val right = vocabPrefix(text.substring(off + word.length).take(RIGHT_MAX))
++        val tot = if (inVocab(word)) scoreAll(left, right, listOf(word) + cands) { gen == g } else null
++        return rank(p, cands, tot, right.length, cur)
++    }
++
++    // 各段的候选合到一起：不预先判断光标处是词还是单字，统一比“换了之后整句分比原文高多少”。
++    // 替换后整段文字相同的（如“天气→天起”和“气→起”）只留替换范围小的；明显变差的不列，但至少留 SHOW_MIN 个
++    private fun merge(groups: List<Choices>, text: String, base: Int, cur: Int): Choices {
++        class Opt(val word: String, val pick: Pick, val margin: Double?, val result: String)
++        val opts = groups.flatMap { c ->
++            val off = c.pick.start - base
++            c.options.mapIndexed { i, w ->
++                Opt(w, c.pick, c.margins?.get(i), text.substring(0, off) + w + text.substring(off + c.pick.word.length))
++            }
++        }.groupBy { it.result }.values.map { same -> same.minByOrNull { it.pick.word.length }!! }
++        // 有一段打不了分时不比较分数，按查到的顺序列
 +        val scored = opts.all { it.margin != null }
 +        val sorted = if (scored) opts.sortedByDescending { it.margin!! } else opts
++        val shown = (if (scored) sorted.filterIndexed { i, o -> i < SHOW_MIN || o.margin!! >= HIDE_BELOW } else sorted).take(OPTIONS_MAX)
++        val first = groups.first()
 +        return Choices(
-+            c.pick,
-+            sorted.map { it.word },
-+            if (scored) sorted.map { it.margin!! } else null,
-+            c.rightLen,
++            first.pick,
++            shown.map { it.word },
++            if (scored) shown.map { it.margin!! } else null,
++            first.rightLen,
 +            cur,
-+            sorted.map { it.pick },
++            shown.map { it.pick },
 +        )
 +    }
 +
