@@ -17,7 +17,7 @@
 | `ipc/` | 守护进程与客户端的帧读写和协议说明 | |
 | `daemon/` | 守护进程：参数（`options`）、工作进程（`server`）、监督进程（`supervisor`）、状态文件（`status`） | 每连接一个线程 |
 | `client/` | 客户端库：连接管理（`connection`）与 Lua 接口（`rime_llm_client`） | 调用方线程 |
-| `platform/` | 平台相关能力。Windows 的光标上文读取在 `platform/windows/`，其他平台为桩 | |
+| `platform/` | 平台相关能力。光标上文读取：Windows 在 `platform/windows/`，macOS 在 `platform/macos/`，其他平台为桩 | |
 | `tools/` | 推理层基准与对照工具 `suzu_bench` | |
 
 ## Lua 接口
@@ -37,7 +37,7 @@
 | `touch()` | 刷新“最近使用”时间（空闲卸载用） | 客户端 40 ms，1.5 秒最多一次 |
 | `match_code(模式, 编码)` | 全串正则匹配；空模式恒为真，非法模式回退 `.{4}` | 立即返回 |
 | `now_ms()`、`sleep_ms(毫秒)` | 单调时钟；测试用的睡眠（`sleep_ms` 为新增） | |
-| `llm_context()`、`kick_context()`、`edit_reset_context()`、`fg_changed()`、`click_happened()` | 光标上文旁路。Windows 读取前台应用的光标前文字，其他平台恒为 `nil` 或 `false` | 立即返回 |
+| `llm_context()`、`kick_context()`、`edit_reset_context()`、`fg_changed()`、`click_happened()` | 光标上文旁路。Windows 和 macOS 读取前台应用的光标前文字，其中 macOS 的 `fg_changed()`、`click_happened()` 恒为 `false`。Android 的客户端库由改版 Trime 写入文字，只有 `llm_context()` 返回内容。其他平台恒为 `nil` 或 `false` | 立即返回 |
 
 `score` 不打分时的原因码：
 
