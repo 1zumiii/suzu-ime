@@ -67,7 +67,7 @@ object DictPacks {
     fun activate(pack: String) {
         val dir = dirOf(pack)
         require(dir.resolve(PACK_MAIN).isFile) { "词库包 $pack 没有装好" }
-        writeAtomically(userDir.resolve(MAIN_DICT), dir.resolve(PACK_MAIN).readText())
+        writeAtomically(userDir.resolve(MAIN_DICT), AddonRules.composeMainDict(dir.resolve(PACK_MAIN).readText(), DictAddons.enabledIds()))
         writeAtomically(userDir.resolve(LOCK), dir.resolve(PACK_LOCK).takeIf { it.isFile }?.readText() ?: "pack\t$pack\n")
         writeAtomically(userDir.resolve(PATCH), "patch:\n  llm_rerank/lexicon_dir: ${dirName(pack)}\n")
         Timber.i("Dict pack activated: %s", pack)

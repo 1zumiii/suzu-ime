@@ -2,6 +2,7 @@
 
 #include <cstdio>
 #include <cstdlib>
+#include <filesystem>
 #if defined(__GLIBC__)
 #include <malloc.h>
 #endif
@@ -568,6 +569,12 @@ void Engine::start_lexicon_load_locked(const EngineConfig & cfg, uint64_t gen) {
         // base 与 ext 之外，目录里有 extra.dict.yaml（本项目自己的补充词条，由词库包安装脚本放入）就一并读
         std::vector<std::string> files = {cfg.lexicon_dir + "/base.dict.yaml", cfg.lexicon_dir + "/ext.dict.yaml"};
         if (FILE * fx = fopen((cfg.lexicon_dir + "/extra.dict.yaml").c_str(), "rb")) { fclose(fx); files.push_back(cfg.lexicon_dir + "/extra.dict.yaml"); }
+        // 附加词库在词库目录旁边的 suzu_addons/（App 下载），所有词库包共用
+        std::error_code ec;
+        const std::filesystem::path addons = std::filesystem::path(cfg.lexicon_dir).parent_path() / "suzu_addons";
+        for (std::filesystem::directory_iterator it(addons, ec), end; !ec && it != end; it.increment(ec)) {
+            if (it->path().extension() == ".yaml") files.push_back(it->path().string());
+        }
         bool ok = lex->load(files, *vocab, kGenMinChars, kGenMaxChars, &err);
         double ms = ms_between(tl, Clock::now());
         std::lock_guard<std::mutex> lk(mu_);

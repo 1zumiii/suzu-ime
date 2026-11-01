@@ -50,6 +50,7 @@ class SetupActivity : FragmentActivity() {
     }
 
     private fun completeSetup() {
+        SetupPage.markDecided()
         startActivity<MainActivity>()
         finish()
     }
@@ -59,7 +60,7 @@ class SetupActivity : FragmentActivity() {
         private const val CHANNEL_ID = "setup"
         private const val NOTIFY_ID = 87463
 
-        fun shouldShowUp() = !shown && SetupPage.hasUndonePage()
+        fun shouldShowUp() = !shown && (SetupPage.hasUndonePage() || !SetupPage.optionalDecided())
     }
 
     override fun onCreate(savedInstanceState: Bundle?) {

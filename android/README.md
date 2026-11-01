@@ -45,7 +45,9 @@ Trime 的 nightly 构建（arm64，v3.3.12-73）：
 - 方案只有一份，ID 和主词典名都是 `suzu`，由 `trime/gen_assets.py` 从 rime-suzu 的 `rime_ice` 基座生成。构建时记录来源提交，显示在状态页。工作区有未提交的改动时，版本名带 `-dirty`。
 - 词库包放在用户目录，每包一个目录。默认包打进 APK，其他包按 `suzu_packs.tsv` 下载并校验 sha256。切换在设置页的“词库”里进行，失败时回到原来的包。候选生成的 `lexicon_dir` 跟随当前包。
 - 首次升级时，App 把 `rime_frost`、`rime_ice` 的用户词典合并到 `suzu.userdb`，核对条数后按固定清单清理旧配置。旧的 `*.userdb` 保留。迁移状态写在 `suzu_migration.txt`，结果显示在状态页。
-- 语法模型不打进 APK，用 rime-suzu 的 `llm-android/deploy_trime.sh` 推送（约 380 MB）。
+- 首次启动时，引导页在启用输入法之后提供三个可选步骤：下载 Suzu 模型（约 42 MB）、下载语法模型（约 399 MB，也可以选择已下载好的 `.gram` 文件）、经 Shizuku 启动 AI 服务。跳过的功能保持关闭。设置的“词库”页可以补下载或删除，文件在就算启用。代码见 `suzu/SuzuAssets.kt`。
+- 附加词库叠加在词库包之上，目前只有萌娘百科。App 从上游 GitHub Release 按固定版本下载并校验 sha256，再在手机上过滤（保留 2 到 8 字，去掉同字重复）并统一权重，写入用户目录的 `suzu_addons/`。守护进程的候选生成也读这个目录，启动时加载。代码见 `suzu/DictAddons.kt`。
+- 语法模型也可以用 rime-suzu 的 `llm-android/deploy_trime.sh` 从电脑推送。
 
 用户目录里同名的配置文件会盖住 APK 里的配置。调试时可以临时推送文件，状态页会提示有覆盖文件，调试完须删除。
 
