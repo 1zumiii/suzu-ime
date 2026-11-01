@@ -88,5 +88,4 @@ interface RimeApi {
         limit: Int,
     ): Array<CandidateProto>
 
-    suspend fun setCandidatePagingMode(enabled: Boolean)
 }

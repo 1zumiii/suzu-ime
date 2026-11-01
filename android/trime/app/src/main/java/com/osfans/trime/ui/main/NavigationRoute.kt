@@ -11,7 +11,6 @@ import androidx.navigation.createGraph
 import androidx.navigation.fragment.fragment
 import com.osfans.trime.R
 import com.osfans.trime.ui.main.settings.AdvancedSettingsFragment
-import com.osfans.trime.ui.main.settings.CandidatesSettingsFragment
 import com.osfans.trime.ui.main.settings.ClipboardSettingsFragment
 import com.osfans.trime.ui.main.settings.GeneralSettingsFragment
 import com.osfans.trime.ui.main.settings.KeyboardSettingsFragment
@@ -41,9 +40,6 @@ sealed class NavigationRoute : Parcelable {
 
     @Serializable
     data object VirtualKeyboard : NavigationRoute()
-
-    @Serializable
-    data object CandidatesWindow : NavigationRoute()
 
     @Serializable
     data object Clipboard : NavigationRoute()
@@ -83,9 +79,6 @@ sealed class NavigationRoute : Parcelable {
             }
             fragment<KeyboardSettingsFragment, VirtualKeyboard> {
                 label = ctx.getString(R.string.virtual_keyboard)
-            }
-            fragment<CandidatesSettingsFragment, CandidatesWindow> {
-                label = ctx.getString(R.string.candidates_window)
             }
             fragment<ClipboardSettingsFragment, Clipboard> {
                 label = ctx.getString(R.string.clipboard)

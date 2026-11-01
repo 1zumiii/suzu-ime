@@ -29,7 +29,6 @@ import com.osfans.trime.ime.broadcast.EnterKeyDisplayDelegate
 import com.osfans.trime.ime.broadcast.InputBroadcastReceiver
 import com.osfans.trime.ime.broadcast.InputBroadcaster
 import com.osfans.trime.ime.candidates.compact.CompactCandidateDelegate
-import com.osfans.trime.ime.candidates.popup.PopupCandidatesMode
 import com.osfans.trime.ime.composition.PreeditDelegate
 import com.osfans.trime.ime.keyboard.CommonKeyboardActionListener
 import com.osfans.trime.ime.keyboard.KeyboardPrefs.isLandscapeMode
@@ -129,7 +128,6 @@ class InputView(
     private val keyboardWindow: KeyboardWindow by instance()
     private val liquidWindow: LiquidWindow by instance()
 
-    private val candidatesMode by AppPrefs.defaultInstance().candidates.mode
 
     private val keyboardSidePadding = theme.style.keyboardPadding
     private val keyboardSidePaddingLandscape = theme.style.keyboardPaddingLand
@@ -349,12 +347,7 @@ class InputView(
             }
 
             is RimeMessage.CompositionMessage -> {
-                val data = if (candidatesMode == PopupCandidatesMode.ALWAYS_SHOW) {
-                    CompositionProto()
-                } else {
-                    it.data
-                }
-                broadcaster.onCompositionUpdate(data)
+                broadcaster.onCompositionUpdate(it.data)
             }
 
             is RimeMessage.BulkCandidatesMessage -> {

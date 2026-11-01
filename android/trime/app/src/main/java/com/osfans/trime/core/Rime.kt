@@ -75,7 +75,6 @@ class Rime :
     private var asciiSwitchTipsJob: Job? = null
     private var isNullInputType = true
     private var lastAsciiTipsText = ""
-    private var pagingMode = false
 
     init {
         if (lifecycle.currentState != RimeLifecycle.State.STOPPED) {
@@ -263,11 +262,6 @@ class Rime :
         getRimeCandidates(startIndex, limit)
     }
 
-    override suspend fun setCandidatePagingMode(enabled: Boolean) = withRimeContext {
-        pagingMode = enabled
-        emitResponse()
-    }
-
     private fun startRime(fullCheck: Boolean) {
         DataManager.sync()
         val sharedDataDir = DataManager.sharedDataDir.absolutePath
@@ -311,7 +305,7 @@ class Rime :
     }
 
     private fun emitResponse(commit: CommitProto? = null) {
-        val response = getRimeResponse(pagingMode)
+        val response = getRimeResponse(false)
         handleRimeMessage(4, arrayOf(commit ?: response.commit))
         handlePreedit(response.composition)
         if (response.composition.length <= 0 && lastAsciiTipsText != asciiTipsText(response.status)) {
