@@ -60,7 +60,7 @@ object AppUtils {
         }
     }
 
-    fun launchMainToSchemaList(context: Context) = launchMainToDest(context, NavigationRoute.SchemaList)
+    fun launchMainToDictPacks(context: Context) = launchMainToDest(context, NavigationRoute.DictPacks)
 
     fun launchMainToKeyboard(context: Context) = launchMainToDest(context, NavigationRoute.VirtualKeyboard)
 

@@ -15,7 +15,7 @@ import com.osfans.trime.ui.main.settings.ClipboardSettingsFragment
 import com.osfans.trime.ui.main.settings.GeneralSettingsFragment
 import com.osfans.trime.ui.main.settings.KeyboardSettingsFragment
 import com.osfans.trime.ui.main.settings.ProfileSettingsFragment
-import com.osfans.trime.ui.main.settings.schema.SchemaListFragment
+import com.osfans.trime.suzu.DictPackFragment
 import com.osfans.trime.ui.main.settings.userdict.UserDictionaryFragment
 import kotlinx.parcelize.Parcelize
 import kotlinx.serialization.Serializable
@@ -27,7 +27,7 @@ sealed class NavigationRoute : Parcelable {
     data object Main : NavigationRoute()
 
     @Serializable
-    data object SchemaList : NavigationRoute()
+    data object DictPacks : NavigationRoute()
 
     @Serializable
     data object UserDict : NavigationRoute()
@@ -64,8 +64,8 @@ sealed class NavigationRoute : Parcelable {
                 label = ctx.getString(R.string.trime_app_name)
             }
 
-            fragment<SchemaListFragment, SchemaList> {
-                label = ctx.getString(R.string.schemata)
+            fragment<DictPackFragment, DictPacks> {
+                label = ctx.getString(R.string.dict_packs)
             }
             fragment<UserDictionaryFragment, UserDict> {
                 label = ctx.getString(R.string.user_dictionary)
