@@ -12,7 +12,7 @@
 
 ## Android 端
 
-`android/trime/` 是 [osfans/trime](https://github.com/osfans/trime)（GPL-3.0，版权归 Rime community，作者名单见 `android/trime/AUTHORS`）的硬分叉，起点为上游提交 `ad5a14be`。该目录保留上游的许可证 `android/trime/LICENSE` 与各文件的版权声明，改版的源码与 APK 同样按 GPL-3.0 分发。
+`android/trime/` 从 [osfans/trime](https://github.com/osfans/trime) 的上游提交 `ad5a14be` 分叉后独立维护。上游按 GPL-3.0 许可，版权归 Rime community，作者名单见 `android/trime/AUTHORS`。该目录保留上游的许可证 `android/trime/LICENSE` 与各文件的版权声明，改版源码与 APK 同样按 GPL-3.0 分发。
 
 ## 推理引擎
 
