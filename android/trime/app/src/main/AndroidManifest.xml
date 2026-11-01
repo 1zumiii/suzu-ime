@@ -50,17 +50,6 @@ SPDX-License-Identifier: GPL-3.0-or-later
         </service>
 
         <provider
-            android:name=".provider.RimeDataProvider"
-            android:authorities="${applicationId}.provider"
-            android:exported="true"
-            android:grantUriPermissions="true"
-            android:permission="android.permission.MANAGE_DOCUMENTS">
-            <intent-filter>
-                <action android:name="android.content.action.DOCUMENTS_PROVIDER" />
-            </intent-filter>
-        </provider>
-
-        <provider
             android:name="androidx.core.content.FileProvider"
             android:authorities="${applicationId}.fileprovider"
             android:exported="false"
@@ -75,13 +64,7 @@ SPDX-License-Identifier: GPL-3.0-or-later
             android:authorities="${applicationId}.androidx-startup"
             android:directBootAware="true"
             android:exported="false"
-            tools:node="merge">
-            <!-- remove WorkManager default initializer -->
-            <meta-data
-                android:name="androidx.work.WorkManagerInitializer"
-                android:value="androidx.startup"
-                tools:node="remove" />
-        </provider>
+            tools:node="merge" />
 
         <!-- Settings activity -->
         <activity

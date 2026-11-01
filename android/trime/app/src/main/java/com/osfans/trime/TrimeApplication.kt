@@ -26,7 +26,6 @@ import com.osfans.trime.data.theme.ThemeManager
 import com.osfans.trime.receiver.RimeIntentReceiver
 import com.osfans.trime.ui.main.LogActivity
 import com.osfans.trime.util.isNightMode
-import com.osfans.trime.worker.BackgroundSyncWork
 import kotlinx.coroutines.CoroutineName
 import kotlinx.coroutines.MainScope
 import kotlinx.coroutines.launch
@@ -188,7 +187,6 @@ class TrimeApplication : Application() {
                 ThemeManager.syncToDeviceEncryptedStorage()
             }
             registerBroadcastReceiver()
-            startWorkManager()
         } catch (e: Exception) {
             e.fillInStackTrace()
             return
@@ -201,12 +199,6 @@ class TrimeApplication : Application() {
             ColorManager.onSystemNightModeChange(newConfig.isNightMode())
         } catch (e: Exception) {
             Timber.w(e, "Something wrong on configuration changed")
-        }
-    }
-
-    private fun startWorkManager() {
-        coroutineScope.launch {
-            BackgroundSyncWork.start(directBootAwareContext)
         }
     }
 

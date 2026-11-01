@@ -54,7 +54,3 @@ fun buildIntentFromAction(
     else -> Intent(fullAction, Uri.parse(argument))
 }
 
-fun buildDocumentsProviderIntent(): Intent {
-    val uri = DocumentsContract.buildRootUri("${BuildConfig.APPLICATION_ID}.provider", "files")
-    return Intent(Intent.ACTION_VIEW, uri)
-}

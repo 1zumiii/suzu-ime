@@ -35,8 +35,6 @@ fun createNotificationChannel(
 object DeployNotification {
     const val CHANNEL_ID = "rime-daemon"
     const val MESSAGE_ID = 2331
-    private const val PARTIAL_COPY_MESSAGE_ID = 2332
-    private const val EXTERNAL_SYNC_FALLBACK_MESSAGE_ID = 2333
 
     fun ensureChannel() {
         createNotificationChannel(CHANNEL_ID, appContext.getString(R.string.rime_daemon))
@@ -91,59 +89,5 @@ object DeployNotification {
 
     fun cancel() {
         notificationManager.cancel(MESSAGE_ID)
-    }
-
-    fun notifyPartialCopyIfNeeded(
-        failed: Int,
-        operation: String,
-    ) {
-        if (failed <= 0) return
-        ensureChannel()
-        NotificationCompat
-            .Builder(appContext, CHANNEL_ID)
-            .setContentTitle(appContext.getString(R.string.rime_daemon))
-            .setSmallIcon(R.drawable.ic_baseline_warning_24)
-            .setContentText(appContext.getString(R.string.sync_partial_copy_failure))
-            .setStyle(
-                NotificationCompat
-                    .BigTextStyle()
-                    .bigText(
-                        appContext.getString(
-                            R.string.sync_partial_copy_failure_detail,
-                            failed,
-                            operation,
-                        ),
-                    ),
-            ).setAutoCancel(true)
-            .setPriority(NotificationCompat.PRIORITY_DEFAULT)
-            .build()
-            .let { notificationManager.notify(PARTIAL_COPY_MESSAGE_ID, it) }
-    }
-
-    fun showExternalSyncFallback() {
-        val message = appContext.getString(R.string.external_sync_missing_tree_fallback)
-        val contentIntent =
-            PendingIntent.getActivity(
-                appContext,
-                EXTERNAL_SYNC_FALLBACK_MESSAGE_ID,
-                Intent(appContext, MainActivity::class.java).apply {
-                    action = Intent.ACTION_RUN
-                    putExtra(MainActivity.EXTRA_SETTINGS_ROUTE, NavigationRoute.Profile)
-                    flags = Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_EXCLUDE_FROM_RECENTS
-                },
-                PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE,
-            )
-        ensureChannel()
-        NotificationCompat
-            .Builder(appContext, CHANNEL_ID)
-            .setContentTitle(appContext.getString(R.string.rime_daemon))
-            .setSmallIcon(R.drawable.ic_baseline_warning_24)
-            .setContentText(message)
-            .setStyle(NotificationCompat.BigTextStyle().bigText(message))
-            .setContentIntent(contentIntent)
-            .setAutoCancel(true)
-            .setPriority(NotificationCompat.PRIORITY_HIGH)
-            .build()
-            .let { notificationManager.notify(EXTERNAL_SYNC_FALLBACK_MESSAGE_ID, it) }
     }
 }
