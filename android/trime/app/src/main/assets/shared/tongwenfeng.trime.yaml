@@ -3986,7 +3986,7 @@ preset_keys:
   Return2: {label: 回车, send: Return }
   Hide: {label: 隐藏, send: BACK}
   BackSpace: {label: 退格, preview: '⇦', repeatable: true, functional: false, send: BackSpace}
-  BackSpace2: {label: 退格, preview: '⇦', repeatable: true, functional: false, slide_delete: true, send: BackSpace}
+  BackSpace2: {label: 退格, preview: '⇦', repeatable: true, functional: false, send: BackSpace}
   space: {repeatable: false, preview: ' ', functional: false, slide_cursor: true, label: '_______', send: space}
   space1: {repeatable: false, label: '空格', functional: false, send: space}
   Clear: {label: 全清, send: CLEAR}

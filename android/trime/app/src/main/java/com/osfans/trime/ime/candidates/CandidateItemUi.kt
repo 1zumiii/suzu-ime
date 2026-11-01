@@ -10,7 +10,6 @@ import android.content.Context
 import android.graphics.Color
 import android.view.View
 import androidx.constraintlayout.widget.ConstraintLayout
-import androidx.core.view.updateLayoutParams
 import androidx.core.view.isVisible
 import com.osfans.trime.core.CandidateProto
 import com.osfans.trime.data.theme.Theme
@@ -175,26 +174,15 @@ class CandidateItemUi(
 
         val commentText = item.comment
         comment.text = commentText
-        // AI 标记（◇ 等单个符号）用候选字的颜色，在高亮底色上也看得清；并垂直居中，不按基线贴在下沿
-        val badge = commentText.length == 1 && commentText[0] in BADGES
+        // AI 标记（◇ ◈ ❖，可能两个连用）用候选字的颜色并略放大，在高亮底色上也看得清；位置仍按基线
+        val badge = commentText.isNotEmpty() && commentText.all { it in BADGES }
         comment.setTextColor(if (badge) tColor else cColor)
+        comment.textSize = if (badge) commentSize * BADGE_SCALE else commentSize
         comment.isVisible = commentText.isNotEmpty()
-        if (commentPosition == GeneralStyle.CommentPosition.RIGHT) {
-            comment.updateLayoutParams<ConstraintLayout.LayoutParams> {
-                if (badge) {
-                    baselineToBaseline = ConstraintLayout.LayoutParams.UNSET
-                    topToTop = ConstraintLayout.LayoutParams.PARENT_ID
-                    bottomToBottom = ConstraintLayout.LayoutParams.PARENT_ID
-                } else {
-                    topToTop = ConstraintLayout.LayoutParams.UNSET
-                    bottomToBottom = ConstraintLayout.LayoutParams.UNSET
-                    baselineToBaseline = text.id
-                }
-            }
-        }
     }
 
     private companion object {
         const val BADGES = "◇◈❖"
+        const val BADGE_SCALE = 1.25f
     }
 }

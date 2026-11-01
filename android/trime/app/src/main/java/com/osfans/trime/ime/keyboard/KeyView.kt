@@ -5,6 +5,7 @@
 
 package com.osfans.trime.ime.keyboard
 
+import com.osfans.trime.daemon.RimeDaemon
 import android.annotation.SuppressLint
 import android.content.Context
 import android.graphics.Canvas
@@ -80,6 +81,17 @@ class KeyView(
         hasDouble = key.hasAction(KeyBehavior.DOUBLE_CLICK) || key.isShift
         hasLazyDouble = key.hasAction(KeyBehavior.LAZY_DOUBLE_CLICK)
         hasPopup = key.popup.isNotEmpty()
+        swipeBehaviors = SWIPES.filter { key.hasAction(it) }.toSet()
+        // 长按退格：开始时候选区有拼音，这一次长按最多删光拼音，不接着删已经上屏的字
+        if (key.click?.code == KeyEvent.KEYCODE_DEL) {
+            onRepeatStart = {
+                // 状态更新比连按慢半拍，只看“是否还在输入”会多删一个上屏的字，所以同时按拼音的字母数限定次数
+                val startedComposing = isComposing()
+                var left = composingLength()
+                val keepRepeating: () -> Boolean = { !startedComposing || (left-- > 0 && isComposing()) }
+                keepRepeating
+            }
+        }
 
         onPress = {
             if (keyboard.firstPressedKeyIndex == -1) keyboard.firstPressedKeyIndex = id
@@ -429,5 +441,15 @@ class KeyView(
                 canvas.drawText(lines[i], centerX, lineY, symbolPaint)
             }
         }
+    }
+
+    private fun isComposing() = RimeDaemon.getFirstSessionOrNull()?.run { statusCached }?.isComposing == true
+
+    /** 候选区的拼音还剩几个字（不算音节之间显示用的空格） */
+    private fun composingLength() =
+        RimeDaemon.getFirstSessionOrNull()?.run { compositionCached }?.preedit?.count { !it.isWhitespace() } ?: 0
+
+    private companion object {
+        val SWIPES = listOf(KeyBehavior.SWIPE_LEFT, KeyBehavior.SWIPE_RIGHT, KeyBehavior.SWIPE_UP, KeyBehavior.SWIPE_DOWN)
     }
 }
