@@ -10,7 +10,6 @@ import android.os.Bundle
 import android.widget.LinearLayout
 import android.widget.ProgressBar
 import android.widget.TextView
-import androidx.activity.result.contract.ActivityResultContracts
 import androidx.appcompat.app.AlertDialog
 import androidx.fragment.app.activityViewModels
 import androidx.lifecycle.lifecycleScope
@@ -20,43 +19,18 @@ import com.osfans.trime.util.addCategory
 import com.osfans.trime.util.addPreference
 import com.osfans.trime.util.toast
 import kotlinx.coroutines.Dispatchers
-import kotlinx.coroutines.flow.drop
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 
-/** 词库页：切换词库包，开关附加词库，管理模型下载。方案只有一份，各包只差词库，用户词典共用 */
+/** 词库页：切换词库包，开关附加词库。方案只有一份，各包只差词库，用户词典共用 */
 class DictPackFragment : PaddingPreferenceFragment() {
     private val viewModel: MainViewModel by activityViewModels()
-
-    private val pickGrammar = registerForActivityResult(ActivityResultContracts.OpenDocument()) { uri ->
-        uri?.let(SuzuAssets::importGrammar)
-    }
 
     override fun onCreatePreferences(
         savedInstanceState: Bundle?,
         rootKey: String?,
     ) {
         build()
-        // 下载进度变化时刷新
-        lifecycleScope.launch {
-            SuzuAssets.states.drop(1).collect {
-                // 只更新模型那两行，不重建页面，否则滚动位置会跳回顶部
-                if (isAdded) assetPrefs.forEach { (asset, pref) -> renderAsset(asset, pref) }
-            }
-        }
-    }
-
-    private val assetPrefs = HashMap<SuzuAsset, AssetPreference>()
-
-    private fun renderAsset(asset: SuzuAsset, pref: AssetPreference) {
-        val state = SuzuAssets.state(asset)
-        pref.percent = (state as? SuzuAssets.State.Downloading)?.percent
-        pref.summary = when {
-            state is SuzuAssets.State.Downloading -> "正在下载 ${state.percent}%（${state.doneMb} / ${state.totalMb} MB），点按取消"
-            SuzuAssets.isInstalled(asset) -> "已安装，点按可删除并关闭此功能"
-            state is SuzuAssets.State.Failed -> "下载失败：${state.message}\n点按重试"
-            else -> "未安装，此功能已关闭。点按下载（约 ${asset.sizeMb} MB）"
-        }
     }
 
     private fun build() {
@@ -92,22 +66,6 @@ class DictPackFragment : PaddingPreferenceFragment() {
                     ) { confirmAddon(addon, !on) }
                 }
             }
-            addCategory("模型") {
-                isIconSpaceReserved = false
-                for (asset in SuzuAsset.entries) {
-                    val pref = AssetPreference(ctx).apply {
-                        title = asset.title
-                        isSingleLineTitle = false
-                        setOnPreferenceClickListener {
-                            onAssetClick(asset)
-                            true
-                        }
-                    }
-                    addPreference(pref)
-                    assetPrefs[asset] = pref
-                    renderAsset(asset, pref)
-                }
-            }
             addCategory("说明") {
                 isIconSpaceReserved = false
                 addPreference(
@@ -116,38 +74,6 @@ class DictPackFragment : PaddingPreferenceFragment() {
                 )
             }
         }
-    }
-
-    private fun onAssetClick(asset: SuzuAsset) {
-        when {
-            SuzuAssets.state(asset) is SuzuAssets.State.Downloading -> SuzuAssets.cancel(asset)
-            SuzuAssets.isInstalled(asset) ->
-                AlertDialog.Builder(requireContext())
-                    .setTitle("删除${asset.title}？")
-                    .setMessage(
-                        if (asset == SuzuAsset.Model) {
-                            "删除后关闭 AI 重排，仍可正常打字。之后可在此页重新下载。"
-                        } else {
-                            "删除后，整句输入不再使用语法模型辅助选字，其他功能不受影响。之后可在此页重新下载。"
-                        },
-                    )
-                    .setNegativeButton(android.R.string.cancel, null)
-                    .setPositiveButton(android.R.string.ok) { _, _ ->
-                        if (asset == SuzuAsset.Model) {
-                            lifecycleScope.launch { viewModel.rime.runOnReady { setRuntimeOption("ai_rerank", false) } }
-                        }
-                        SuzuAssets.delete(asset)
-                        build()
-                    }.show()
-            asset == SuzuAsset.Grammar ->
-                AlertDialog.Builder(requireContext())
-                    .setTitle(asset.title)
-                    .setItems(arrayOf("下载（约 ${asset.sizeMb} MB）", "选择已下载的文件")) { _, which ->
-                        if (which == 0) SuzuAssets.start(asset) else pickGrammar.launch(arrayOf("*/*"))
-                    }.show()
-            else -> SuzuAssets.start(asset)
-        }
-        if (isAdded) build()
     }
 
     private fun confirmAddon(addon: DictAddon, enable: Boolean) {

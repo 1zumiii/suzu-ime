@@ -7,16 +7,12 @@
 
 <resources xmlns:xliff="urn:oasis:names:tc:xliff:document:1.2">
     <!-- 输入法平台名称  -->
-    <string name="app_name_release">同文输入法</string>
-    <string name="app_name_debug">同文输入法（调试）</string>
-    <string name="qq_group_1">同文 QQ 群 1</string>
-    <string name="qq_group_2">同文 QQ 群 2</string>
-    <string name="rime_qq_group">中州韵 QQ 群</string>
+    <string name="app_name_release">Suzu 输入法</string>
+    <string name="app_name_debug">Suzu 输入法（调试）</string>
     <string name="librime_version">RIME 版本</string>
     <string name="opencc_version">OpenCC 版本</string>
     <string name="current_version">当前版本</string>
     <string name="license">许可证</string>
-    <string name="privacy_policy">隐私策略</string>
     <string name="build_info_format">构建者：%1$s\n构建 Git 哈希：%2$s\n构建时间：%3$s</string>
     <string name="selected_theme">主题</string>
     <string name="selected_theme_summary">选取主题</string>
@@ -61,12 +57,12 @@
     <string name="deploy_finish">部署完成</string>
     <string name="system_default">系统默认</string>
     <string name="key_swipe_travel">触发按键滑动手势的距离</string>
-    <string name="trime_app_slogan">击响中文之韵</string>
+    <string name="trime_app_slogan">基于同文输入法</string>
     <string name="custom_sound_effect_name">自定义按键音效</string>
     <string name="setup__next">下一步</string>
     <string name="done">完成</string>
-    <string name="setup__enable_ime_hint">在语言和输入设置中启用<b>同文输入法</b></string>
-    <string name="setup__select_ime_hint">选择<b>同文输入法</b>作为默认输入法</string>
+    <string name="setup__enable_ime_hint">在语言和输入设置中启用<b>Suzu 输入法</b></string>
+    <string name="setup__select_ime_hint">选择<b>Suzu 输入法</b>作为默认输入法</string>
     <string name="setup__enable_ime">启用输入法</string>
     <string name="setup__select_ime">选择输入法</string>
     <string name="setup__prev">上一步</string>
@@ -74,7 +70,7 @@
     <string name="setup__step_one">第 1 步</string>
     <string name="setup__step_two">第 2 步</string>
     <string name="setup__skip">跳过</string>
-    <string name="setup__skip_hint">跳过设置？之后可在“设置 → 词库”中开启可选功能。</string>
+    <string name="setup__skip_hint">跳过设置？之后可在“设置 → 模型”中开启可选功能。</string>
     <string name="setup__skip_hint_yes">跳过</string>
     <string name="setup__skip_hint_no">继续设置</string>
     <string name="follow_system_day_night_color">跟随系统夜间模式</string>
@@ -84,7 +80,6 @@
     <string name="hook_ctrl_zy">拦截 Ctrl+Z/Y</string>
     <string name="key_swipe_velocity">触发按键滑动手势的速度（距离/速度满足其一即可）</string>
     <string name="build_info">构建信息</string>
-    <string name="telegram">Telegram</string>
     <string name="quick_bar">快捷栏</string>
     <string name="copy_done">已复制</string>
     <string name="hook_shift_space">点击空格时，忽略Shift的锁定状态</string>
@@ -125,7 +120,6 @@
     <string name="use_app_specific_storage">使用应用专属存储空间</string>
     <string name="sync_from_external_desc">每次部署或同步用户数据前，从指定目录导入数据到内部存储，并在同步用户数据后导出到该目录。需要较多存储空间。推荐老用户使用。</string>
     <string name="use_app_specific_storage_desc">直接使用应用内部私有存储空间，用户需要使用支持的文件管理器管理数据。卸载应用时系统可能会询问是否保留数据，请随时做好备份。</string>
-    <string name="external_sync_select_folder_message">外部同步需要选择数据文件夹。请选择存放 Trime 配置文件的位置。</string>
     <string name="external_sync_fallback_app_storage">文件夹选择失败或已取消。存储模式将还原为使用应用专属存储空间。</string>
     <string name="external_sync_missing_tree_fallback">外部数据文件夹缺失或无法访问，已切换为应用专属存储空间。如需继续外部同步，请在设置中重新选择文件夹。</string>
     <string name="maintenance">维护</string>
@@ -154,8 +148,6 @@
     <string name="enable_landscape_mode">启用横屏模式</string>
     <string name="split_space_percent">自动分割键盘比例</string>
     <string name="setup__step_three">第 3 步</string>
-    <string name="setup__select_data_path_hint">选择<b>同文输入法</b>如何存储 Rime 数据</string>
-    <string name="setup__select_data_path">选择外部数据目录…</string>
     <string name="setup__data_path_imported">数据文件夹导入成功</string>
     <string name="setup__data_path_import_failed">数据文件夹导入失败</string>
     <string name="select_another_directory_to_sync">要选择另一个文件夹进行同步吗？</string>
@@ -247,7 +239,6 @@
     <string name="landscape_only">仅限横屏</string>
     <string name="wide_or_landscape">宽屏或横屏</string>
     <string name="always">始终</string>
-    <string name="preferred_voice_input">首选语音输入法</string>
     <string name="no_voice_input_installed">未安装语音输入</string>
     <string name="inline_suggestions">显示内嵌自动填充建议</string>
     <string name="update_config">重新加载配置</string>
@@ -290,4 +281,6 @@
     <string name="suzu_file_save_failed">无法保存文件，请检查存储空间后重试。</string>
     <string name="suzu_download_http_error">下载请求失败（HTTP %1$d），请稍后重试。</string>
     <string name="suzu_file_checksum_failed">文件校验失败，请重新下载。若仍失败，可能是来源文件已更新。</string>
+    <string name="models">模型</string>
+    <string name="based_on_trime">基于同文输入法（Trime）</string>
 </resources>

@@ -68,14 +68,6 @@ class AboutFragment : PaddingPreferenceFragment() {
             )
             addCategory("") {
                 isIconSpaceReserved = false
-                addPreference(R.string.privacy_policy) {
-                    startActivity(
-                        Intent(
-                            Intent.ACTION_VIEW,
-                            Uri.parse(Const.PRIVACY_POLICY_URL),
-                        ),
-                    )
-                }
                 addPreference(R.string.source_code, R.string.git_repo) {
                     startActivity(
                         Intent(
@@ -101,37 +93,8 @@ class AboutFragment : PaddingPreferenceFragment() {
             }
             addCategory("") {
                 isIconSpaceReserved = false
-                addPreference(R.string.qq_group_1, Const.QQ_GROUP_1_NUM) {
-                    startActivity(
-                        Intent(
-                            Intent.ACTION_VIEW,
-                            Uri.parse(Const.QQ_GROUP_1_URL),
-                        ),
-                    )
-                }
-                addPreference(R.string.qq_group_2, Const.QQ_GROUP_2_NUM) {
-                    startActivity(
-                        Intent(
-                            Intent.ACTION_VIEW,
-                            Uri.parse(Const.QQ_GROUP_2_URL),
-                        ),
-                    )
-                }
-                addPreference(R.string.rime_qq_group, Const.RIME_QQ_GROUP_NUM) {
-                    startActivity(
-                        Intent(
-                            Intent.ACTION_VIEW,
-                            Uri.parse(Const.RIME_QQ_GROUP_URL),
-                        ),
-                    )
-                }
-                addPreference(R.string.telegram, Const.TELEGRAM_NAME) {
-                    startActivity(
-                        Intent(
-                            Intent.ACTION_VIEW,
-                            Uri.parse(Const.TELEGRAM_URL),
-                        ),
-                    )
+                addPreference(R.string.based_on_trime, Const.TRIME_URL) {
+                    startActivity(Intent(Intent.ACTION_VIEW, Uri.parse(Const.TRIME_URL)))
                 }
             }
         }
