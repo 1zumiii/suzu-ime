@@ -36,8 +36,8 @@ class Rime {
     return instance;
   }
 
-  void startup(bool fullCheck,
-               const RimeNotificationHandler& notificationHandler) {
+  // 拆成两步：prepare 之后 levers 接口可用、还没有会话打开用户词典，App 在此做迁移，再开始维护（部署）
+  void prepare(const RimeNotificationHandler& notificationHandler) {
     if (!rime) return;
     const char* userDir = getenv("RIME_USER_DATA_DIR");
     const char* sharedDir = getenv("RIME_SHARED_DATA_DIR");
@@ -54,7 +54,13 @@ class Rime {
 
     rime->setup(&trime_traits);
     rime->initialize(&trime_traits);
+    // 提前加载 deployer 模块，迁移要在部署前跑 installation_update（模块加载可重复，维护开始时不会再加载一次）
+    rime->deployer_initialize(&trime_traits);
     rime->set_notification_handler(notificationHandler, GlobalRef->jvm);
+  }
+
+  void startMaintenance(bool fullCheck) {
+    if (!rime) return;
     rime->start_maintenance(fullCheck);
   }
 
@@ -236,9 +242,9 @@ JNIEXPORT jint JNICALL JNI_OnLoad(JavaVM* jvm, void* reserved) {
   return JNI_VERSION_1_6;
 }
 
-extern "C" JNIEXPORT void JNICALL Java_com_osfans_trime_core_Rime_startupRime(
+extern "C" JNIEXPORT void JNICALL Java_com_osfans_trime_core_Rime_prepareRime(
     JNIEnv* env, jclass clazz, jstring shared_dir, jstring user_dir,
-    jstring version_name, jboolean full_check) {
+    jstring version_name) {
   // for rime shared data dir
   setenv("RIME_SHARED_DATA_DIR", CString(env, shared_dir), 1);
   // for rime user data dir
@@ -264,7 +270,20 @@ extern "C" JNIEXPORT void JNICALL Java_com_osfans_trime_core_Rime_startupRime(
                               type, *vararg);
   };
 
-  Rime::Instance().startup(full_check, notificationHandler);
+  Rime::Instance().prepare(notificationHandler);
+}
+
+// 部署任务（如 installation_update：设置同步目录与 installation_id，levers 的 backup 依赖它）
+extern "C" JNIEXPORT jboolean JNICALL Java_com_osfans_trime_core_Rime_runRimeTask(
+    JNIEnv* env, jclass /* thiz */, jstring task_name) {
+  return rime_get_api()->run_task(CString(env, task_name));
+}
+
+extern "C" JNIEXPORT void JNICALL
+Java_com_osfans_trime_core_Rime_startRimeMaintenance(JNIEnv* env,
+                                                     jclass /* thiz */,
+                                                     jboolean full_check) {
+  Rime::Instance().startMaintenance(full_check);
 }
 
 extern "C" JNIEXPORT void JNICALL

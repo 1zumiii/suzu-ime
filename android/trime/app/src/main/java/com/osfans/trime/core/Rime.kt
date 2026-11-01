@@ -7,6 +7,7 @@ package com.osfans.trime.core
 
 import com.osfans.trime.BuildConfig
 import com.osfans.trime.data.base.DataManager
+import com.osfans.trime.suzu.SuzuSetup
 import com.osfans.trime.data.opencc.OpenCCDictManager
 import com.osfans.trime.data.prefs.AppPrefs
 import com.osfans.trime.ime.core.InlinePreeditMode
@@ -274,12 +275,10 @@ class Rime :
             fullCheck: $fullCheck
             """.trimIndent(),
         )
-        startupRime(
-            sharedDataDir,
-            userDataDir,
-            BuildConfig.BUILD_VERSION_NAME,
-            fullCheck,
-        )
+        prepareRime(sharedDataDir, userDataDir, BuildConfig.BUILD_VERSION_NAME)
+        // 还没有会话打开用户词典：迁移旧数据、启用词库包，改了文件就做完整检查
+        val changed = SuzuSetup.beforeMaintenance()
+        startRimeMaintenance(fullCheck || changed)
     }
 
     private fun processKeyInner(value: Int, modifiers: Int, isVirtual: Boolean): Boolean {
@@ -465,12 +464,17 @@ class Rime :
 
         // init
         @JvmStatic
-        external fun startupRime(
+        external fun prepareRime(
             sharedDir: String,
             userDir: String,
             versionName: String,
-            fullCheck: Boolean,
         )
+
+        @JvmStatic
+        external fun startRimeMaintenance(fullCheck: Boolean)
+
+        @JvmStatic
+        external fun runRimeTask(taskName: String): Boolean
 
         @JvmStatic
         external fun exitRime()
