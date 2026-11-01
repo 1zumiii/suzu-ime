@@ -5,6 +5,7 @@
 
 package com.osfans.trime.ime.switches
 
+import com.osfans.trime.data.prefs.AppPrefs
 import android.app.Dialog
 import android.view.View
 import android.widget.PopupMenu
@@ -44,8 +45,13 @@ class SwitchOptionWindow(di: DI) :
     private val scope: ThemeScope by instance()
     private val theme: Theme get() = scope.theme
 
-    private val staticEntries by lazy {
+    private val staticEntries get() =
         arrayOf(
+            SwitchOptionEntry.Static(
+                "配色：" + context.getString(AppPrefs.defaultInstance().keyboard.colorMode.getValue().stringRes),
+                R.drawable.ic_baseline_color_lens_24,
+                SwitchOptionEntry.Static.Type.ColorMode,
+            ),
             SwitchOptionEntry.Static(
                 context.getString(R.string.dict_packs),
                 R.drawable.ic_round_view_list_24,
@@ -67,7 +73,6 @@ class SwitchOptionWindow(di: DI) :
                 SwitchOptionEntry.Static.Type.Keyboard,
             ),
         )
-    }
 
     var popupMenu: PopupMenu? = null
 
@@ -119,6 +124,13 @@ class SwitchOptionWindow(di: DI) :
                         )
 
                         SwitchOptionEntry.Static.Type.Keyboard -> AppUtils.launchMainToKeyboard(context)
+
+                        SwitchOptionEntry.Static.Type.ColorMode -> {
+                            val pref = AppPrefs.defaultInstance().keyboard.colorMode
+                            val modes = AppPrefs.Keyboard.ColorMode.entries
+                            pref.setValue(modes[(pref.getValue().ordinal + 1) % modes.size])
+                            updateSchemaOptionEntries()
+                        }
                     }
 
                     is SwitchOptionEntry.Custom -> {

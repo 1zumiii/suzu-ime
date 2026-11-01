@@ -20,6 +20,7 @@ sealed class SwitchOptionEntry(
             UpdateConfig,
             ModuleStatus,
             Keyboard,
+            ColorMode,
         }
     }
 

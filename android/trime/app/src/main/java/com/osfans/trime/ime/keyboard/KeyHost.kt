@@ -52,7 +52,7 @@ class KeyPalette {
 
     fun lookFor(spec: KeySpec, pressed: Boolean, on: Boolean): KeyLook {
         val baseBack = drawable(spec.tone.back) ?: drawable("key_back_color")
-        val pressedBack = drawable(spec.pressedBack) ?: drawable("hilited_key_back_color")
+        val pressedBack = drawable("hilited_key_back_color")
         val baseText = color(spec.tone.text) { ColorManager.getColor("key_text_color") }
         val pressedText = color("hilited_key_text_color") { baseText }
         val baseCorner = color("key_symbol_color") { baseText }

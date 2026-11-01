@@ -89,6 +89,7 @@ enum class Tone(val back: String?, val text: String?) {
     Aoe("baoe", "taoe"),
     Bs("bbs", "tbs"),
     Kg("bkg", "tkg"),
+    Active("bactive", "tactive"),
 }
 
 /** 标签占位符：由输入框的回车动作决定显示什么 */
@@ -101,7 +102,6 @@ data class KeySpec(
     val label: String? = null,
     val asciiLabel: String? = null,
     val tone: Tone = Tone.Plain,
-    val pressedBack: String? = null,
     val long: KeyCommand? = null,
     val double: KeyCommand? = null,
     val swipeUp: KeyCommand? = null,
@@ -130,7 +130,6 @@ internal fun key(
     label: String? = null,
     asciiLabel: String? = null,
     tone: Tone = Tone.Plain,
-    pressedBack: String? = null,
     long: KeyCommand? = null,
     double: KeyCommand? = null,
     swipeUp: KeyCommand? = null,
@@ -145,7 +144,7 @@ internal fun key(
     functional: Boolean = false,
     slideCursor: Boolean = false,
 ) = KeySpec(
-    command, width, label, asciiLabel, tone, pressedBack, long, double, swipeUp, swipeDown, swipeLeft, swipeRight,
+    command, width, label, asciiLabel, tone, long, double, swipeUp, swipeDown, swipeLeft, swipeRight,
     composing, hint, textSp, cornerSp, preview, functional, slideCursor,
 )
 

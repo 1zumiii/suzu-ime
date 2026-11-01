@@ -41,7 +41,7 @@ internal object MainPages {
             gap(5.0f),
         )),
         Row(48.0f, listOf(
-            key(Shift, label = "ic@arrow_up_bold_outline", width = 15.0f, tone = Tone.Bs, pressedBack = "benter", long = ShiftLock, double = ShiftLock, composing = Insert("'"), preview = "⇪"),
+            key(Shift, label = "ic@arrow_up_bold_outline", width = 15.0f, tone = Tone.Bs, long = ShiftLock, double = ShiftLock, composing = Insert("'"), preview = "⇪"),
             key(Char('z'), width = 10.0f, tone = Tone.H3, long = Char('`'), swipeDown = Insert("[]", listOf(Nav.Left))),
             key(Char('x'), width = 10.0f, tone = Tone.H3, long = Editor(EditorOp.Cut), swipeDown = Insert("{}", listOf(Nav.Left))),
             key(Char('c'), width = 10.0f, tone = Tone.H3, long = Editor(EditorOp.Copy), swipeDown = Char(' ')),
@@ -88,7 +88,7 @@ internal object MainPages {
             gap(5.0f),
         )),
         Row(48.0f, listOf(
-            key(Shift, label = "ic@arrow_up_bold_outline", width = 15.0f, tone = Tone.Bs, pressedBack = "benter", composing = Insert("'"), preview = "⇪"),
+            key(Shift, label = "ic@arrow_up_bold_outline", width = 15.0f, tone = Tone.Bs, composing = Insert("'"), preview = "⇪"),
             key(Char('z'), width = 10.0f, tone = Tone.H3, long = Char('`'), swipeDown = Insert("[]", listOf(Nav.Left))),
             key(Char('x'), width = 10.0f, tone = Tone.H3, long = Editor(EditorOp.Cut), swipeDown = Insert("{}", listOf(Nav.Left))),
             key(Char('c'), width = 10.0f, tone = Tone.H3, long = Editor(EditorOp.Copy), swipeDown = Char(' ')),
