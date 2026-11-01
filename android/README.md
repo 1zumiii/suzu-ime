@@ -1,9 +1,6 @@
 # rime-llm-rerank 的 Android 移植（Trime，已可日常使用）
 
-本目录包含 Android 端的推理守护进程、客户端库与改版 Trime 的源码。手机端的配置推送脚本（`deploy_trime.sh`）、专属覆盖配置（`*.overlay.yaml`）和主题补丁（`*.custom.yaml`）位于配置仓库 [rime-suzu](https://github.com/1zumiii/rime-suzu) 的 `llm-android/trime/` 下。
-
-改版 Trime 的“从仓库更新”按上述固定路径读取，不能改名。下文提到这些文件时，均指配置仓库中的位置。
-
+本目录包含 Android 端的推理守护进程、客户端库与改版 Trime 的源码。方案、Lua 和默认词库包在构建时打包进 APK：`trime/rime-suzu.ref` 固定配置仓库 [rime-suzu](https://github.com/1zumiii/rime-suzu) 的提交，再叠加本仓库的 `rime/lua` 和 `llm-android/trime/rime_ice.overlay.yaml`。
 
 目标设备：ASUS Zenfone 10（骁龙 8 Gen 2，16 GB，Android 15）。目标前端：[Trime（同文输入法）](https://github.com/osfans/trime)。
 
@@ -43,22 +40,20 @@ Trime 的 nightly 构建（arm64，v3.3.12-73）：
 - 词典是 `--rime-dir` 下的 `cn_dicts/`，读 `base.dict.yaml`、`ext.dict.yaml`，以及有的话 `extra.dict.yaml`（本项目自己的补充词条，由词库包安装脚本放入）。词典索引在模型就绪后由单独的线程加载，打分不必等它，常驻内存约多 19 MB。
 - 不同方案可以用不同的词库：方案的补丁里设 `llm_rerank/lexicon_dir: <rime 目录下的子目录名>`，Lua 经 `set_lexicon` 把目录名发给守护进程，守护进程只重读词典索引，模型不重载。守护进程重启后客户端会重新下发。不认识该请求的旧守护进程会忽略它，继续用 `cn_dicts`。
 
-## 第一档配置的部署
+## 方案、词库包与升级
 
-`rime-suzu` 仓库的 `llm-android/deploy_trime.sh` 通过 `adb push` 将本仓库的配置推送到手机的 `/sdcard/Android/data/com.osfans.trime/files/rime`，再用 Trime 自带的广播 `com.osfans.trime.action.DEPLOY` 触发部署，无需在手机上操作界面：
+- 方案只有一份，ID 和主词典名都是 `suzu`，由 `trime/gen_assets.py` 从 rime-suzu 的 `rime_ice` 基座生成。构建时记录来源提交，显示在状态页。工作区有未提交的改动时，版本名带 `-dirty`。
+- 词库包放在用户目录，每包一个目录。默认包打进 APK，其他包按 `suzu_packs.tsv` 下载并校验 sha256。切换在设置页的“词库”里进行，失败时回到原来的包。候选生成的 `lexicon_dir` 跟随当前包。
+- 首次升级时，App 把 `rime_frost`、`rime_ice` 的用户词典合并到 `suzu.userdb`，核对条数后按固定清单清理旧配置。旧的 `*.userdb` 保留。迁移状态写在 `suzu_migration.txt`，结果显示在状态页。
+- 语法模型不打进 APK，用 rime-suzu 的 `llm-android/deploy_trime.sh` 推送（约 380 MB）。
 
-```bash
-llm-android/deploy_trime.sh --with-gram        # 首次：配置 + 语法模型（约 380 MB）
-llm-android/deploy_trime.sh                    # 之后修改了配置：仅推送配置
-```
-
-前提：Trime 已安装并完成首次引导，在第 1 步选择“使用应用专属存储空间”。
+用户目录里同名的配置文件会盖住 APK 里的配置。调试时可以临时推送文件，状态页会提示有覆盖文件，调试完须删除。
 
 手机端编译（骁龙 8 Gen 2，约 12~20 秒）的结果与 Mac 一致：
 
 | 检查项 | 手机 | Mac |
 | --- | --- | --- |
-| `rime_ice.table.bin` 大小 | 60,656,260 字节 | 60,656,260 字节 |
+| 主词典 `table.bin` 大小 | 60,656,260 字节 | 60,656,260 字节 |
 | 拼写规则 / 简拼规则 | 55 / 2 | 55 / 2 |
 | 过滤器、处理器顺序 | 一致 | |
 | librime 版本 | 1.17.0 | 1.16.0 |
@@ -95,7 +90,7 @@ Trime（改版 APK）                              rimellmd（shell 身份，由
 - 引擎默认按 128 上下文、12 并发序列预留，手机端收紧为 96 和 6：堆内存由 374 MB 降至 234 MB，延迟不变。RSS 中另有约 512 MB 为模型文件映射页（干净页，内核可随时回收）。
 - 上文 token 数由 10 降为 6，缩短上屏后的后台预解码。
 
-这些手机端专属设置不改动仓库中 Mac、PC 使用的配置，而是写在 `trime/*.overlay.yaml` 中，由 `deploy_trime.sh` 在部署时追加到暂存的 `*.custom.yaml`。
+这些手机端专属设置不改动仓库中 Mac、PC 使用的配置，而是写在 rime-suzu 的 `llm-android/trime/rime_ice.overlay.yaml` 中，构建 APK 时追加到方案补丁。
 
 ### 文件
 
@@ -106,18 +101,16 @@ Trime（改版 APK）                              rimellmd（shell 身份，由
 | `tests/test_daemon.py` | 端到端测试：认证、非法输入、时限、正确性、并发；加 `--chaos` 还会做 `kill -9`、`SIGSTOP` 与删除模型的恢复测试；`--host` 在电脑上跑 |
 | `tools/bench_daemon.py` | 真实打分延迟基准（每次更换新候选） |
 | `trime/` | 改版 Trime 的完整源码，2026-11-01 由上游 `ad5a14be` 硬分叉而来，不再跟随上游。librime、OpenCC 等第三方源码是固定提交的子模块 |
-| `trime/app/src/main/java/com/osfans/trime/suzu/` | 本项目新增的代码：AI 徽标、Shizuku 启动、光标上文、选错修正、模块状态页。上游文件中的其他改动：`INTERNET` 权限、亮灭屏接收器、流式键盘布局，可用 `git diff 9338bb3 -- android/trime` 查看 |
+| `trime/app/src/main/java/com/osfans/trime/suzu/` | 本项目新增的代码：AI 徽标、Shizuku 启动、光标上文、选错修正、模块状态页。上游文件中的其他改动可用 `git diff 9338bb3 -- android/trime` 查看 |
 | `trime/app/src/main/java/com/osfans/trime/suzu/SuzuAppContext.kt` | 光标上文：没有未上屏编码时用 `getTextBeforeCursor` 读光标前最多 60 个字，经 JNI 写进客户端库，Lua 的 `llm_context` 读取（`rime/lua/ai_rerank_app_ctx.lua`），读不到退回上屏历史；密码框、数字框、电话框和无痕模式不读，文字只在内存里 |
 | `trime/app/src/main/java/com/osfans/trime/suzu/SuzuFix.kt`、`FixChoicesUi.kt` | 选错修正建议（试验）：每次整段选词，Lua 把所选词和同页候选登记到客户端库（`fix_note`），上屏时由 `SuzuFix` 领取；停顿 1.5 秒后补上右侧已打的文字，给句中最近的几个词与各自的候选打整句分（经单独的连接请求守护进程），某个候选高出门槛时在工具栏提示“A → B”，点了才核对并替换。门槛：选了 AI 改过的首位为 5，其他为 8。光标换词：光标点到文字上时，在候选栏列出可替换的同音候选，点了只替换对应的一段。词库分不清光标处是词还是单字，要改的文字也可能本身有错，所以不判断边界：Lua 查出从光标处开始和跨过光标的 1 到 4 字各段的同音词，`SuzuFix` 逐段打整句分，统一按“比原文高多少”排序。替换结果相同的只留范围小的，比原文低 8 分以上的不列（暂定值），至少列 3 个，最多 8 个。最近整段选过的词还会列出选词时的同页候选。领取、定位、打分、出现、采纳、忽略等事件只记数字，写入用户目录的 `fix_stats.tsv`；密码框和无痕模式不查 |
-| `trime/app/src/main/java/com/osfans/trime/ime/keyboard/KeyboardWindow.kt` | 键盘配置新增 `ascii_mode: 2`：进出这个键盘时不改中英文状态。`?123` 页和数字页用它跟随当前语言；中文模式下进入时先上屏未完成的输入，避免数字键选中候选 |
+| `trime/app/src/main/java/com/osfans/trime/ime/keyboard/` | 键盘：`KeyModel.kt` 是按键数据、类型化的动作和纯函数的布局计算，`MainPages.kt` 是有独立布局的页面，`SymbolBoard.kt` 是表情、标点和颜文字共用的组件（内容在 `SymbolData.kt`），`SuzuKeyboard.kt` 管理当前页、Shift 状态并执行动作，`KeyCapView.kt` 只负责手势和绘制。数字页和符号页用 `AsciiPolicy.Follow`：进出时不改中英文状态，中文模式下进入时先上屏未完成的输入，避免数字键选中候选 |
+| `trime/app/src/main/java/com/osfans/trime/data/theme/BuiltinTheme.kt` | 内置主题：样式、工具栏、液体键盘和浅色、深色两套配色。配色可选跟随系统、浅色或深色（`AppPrefs.Keyboard.colorMode`） |
+| `trime/gen_assets.py` | 构建时生成 `assets/shared` 和词库包，由 `build_apk.sh` 调用 |
 | `trime/build_apk.sh` | 从源码到签名 APK 的完整流程；`trime/sign_apk.sh` 仅负责对齐和签名 |
-| `trime/*.overlay.yaml` | 手机端专属配置，部署时追加到对应的 `*.custom.yaml` |
-| `trime/gen_tongwenfeng_patch.py` | 生成 `trime/tongwenfeng.trime.custom.yaml`（GBoard 风格布局补丁），不要手工编辑生成结果 |
-| `trime/trime.custom.yaml` | `trime` 主题的键盘高度补丁 |
 | `docs/preview.png` | README 使用的 Android 预览图 |
-| `deploy_trime.sh` | 推送配置并触发部署 |
 
-覆盖安装改版 APK 后，键盘首次弹出时才会启动输入法服务。部署广播只有在服务运行时才会被接收，因此安装后须先打开任意输入框，再部署。
+覆盖安装改版 APK 后，键盘首次弹出时才会启动输入法服务。部署广播只有在服务运行时才会被接收，因此安装后须先打开任意输入框，再发部署广播。
 
 **更换签名密钥须先卸载原有的 Trime。** 卸载会清空其数据目录，应事先备份用户词库。
 
@@ -133,17 +126,6 @@ Trime（改版 APK）                              rimellmd（shell 身份，由
 - 注意：学生的训练上下文上限为 64，上文最多取 30 个字；候选最多打分前 12 个字。
 - 验证：`daemon/test_student.py` 在手机上单独起一个守护进程（端口 17921），核对几组同音词的排序并测延迟。
 - 已知情况：Q8_0 量化对准确率的影响尚待评测确认；难例上学生比 0.8B 弱约 4 个百分点。
-
-## 手机端配置更新
-
-改版 Trime 在工具栏左侧三个点的面板中提供“从仓库更新”入口。填写仓库地址与分支（默认 `1zumiii/rime-suzu` 的 `main` 分支）后，点击“立即更新”即可下载、覆盖并重新部署配置。原有的“更新配置”入口仅重新部署本地配置。
-
-- 配置仓库不含词库：“从仓库更新”只更新配置，词库包要先用 `deploy_trime.sh` 安装一次（见 rime-suzu 的词库包说明），之后更新配置不会动它。
-- 地址格式：`https://github.com/用户/仓库`、`用户/仓库`、`.../tree/分支`，或直接给 `.zip` 链接。仓库须公开。
-- 覆盖范围与 `deploy_trime.sh` 一致：排除其他平台文件、文档、构建产物、个人数据和大模型；`rime-suzu` 仓库 `llm-android/trime/*.overlay.yaml` 追加到同名 `.custom.yaml`，`llm-android/trime/*.custom.yaml`（主题补丁）直接放入用户目录。
-- 备份与回退：覆盖前把将被改动的文件备份到应用私有目录，只保留上一个版本。更新后 45 秒内进程被重启两次（即连续崩溃两次）自动回退，部署本身失败时立即回退，也可在界面上手动回退。回退会恢复被改动的文件、删除新增的文件并强制重新编译。
-- 需要联网，因此改版 Trime 声明了 `INTERNET` 权限。更新界面不对外导出，只能从该面板进入。
-- 相关源码：`trime/app/src/main/java/com/osfans/trime/update/ConfigUpdater.kt`、`update/ConfigUpdateActivity.kt`、`ime/switches/SwitchOptionWindow.kt` 中的入口。
 
 ## 构建与测试
 
