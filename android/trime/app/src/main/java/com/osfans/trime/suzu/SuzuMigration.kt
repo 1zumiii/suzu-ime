@@ -48,6 +48,10 @@ object SuzuMigration {
         "build/rime_frost.schema.yaml", "build/rime_frost.table.bin", "build/rime_frost.prism.bin",
         "build/rime_frost.reverse.bin", "build/rime_ice.schema.yaml", "build/rime_ice.table.bin",
         "build/rime_ice.prism.bin", "build/rime_ice.reverse.bin",
+        // Trime 首次运行时编译的朙月拼音、笔画（APK 已不再带这两个方案）
+        "build/luna_pinyin.schema.yaml", "build/luna_pinyin.table.bin", "build/luna_pinyin.prism.bin",
+        "build/luna_pinyin.reverse.bin", "build/luna_pinyin_simp.schema.yaml", "build/luna_pinyin_simp.prism.bin",
+        "build/stroke.schema.yaml", "build/stroke.table.bin", "build/stroke.prism.bin", "build/stroke.reverse.bin",
     )
 
     /** 整个目录都是旧配置的副本（雾凇的旧词库 cn_dicts 也在此列；白霜 cn_dicts_frost 现在由 APK 管理） */
