@@ -30,6 +30,24 @@ REV="$(git -C "$REPO" rev-parse --short HEAD)"
 git -C "$REPO" diff --quiet HEAD -- android core 2>/dev/null || { REV="$REV-dirty"; echo "警告：android/ 或 core/ 有未提交的改动，版本名带 -dirty"; }
 export BUILD_VERSION_NAME="v3.3.12-suzu.$REV"
 
+# 方案与默认词库包：rime-suzu 的固定提交（rime-suzu.ref）导出后生成 assets；
+# RIME_SUZU_REF=worktree 时直接用 rime-suzu 工作区（开发用，有未提交改动会警告）
+RIME_SUZU="${RIME_SUZU:-$(dirname "$REPO")/rime-suzu}"
+RIME_SUZU_REF="${RIME_SUZU_REF:-$(cat "$SRC/rime-suzu.ref")}"
+[[ -d "$RIME_SUZU/.git" ]] || git clone -q https://github.com/1zumiii/rime-suzu.git "$RIME_SUZU"
+RS="$(mktemp -d)"; trap 'rm -rf "$RS"' EXIT
+if [[ "$RIME_SUZU_REF" == worktree ]]; then
+  RS_REV="$(git -C "$RIME_SUZU" rev-parse --short HEAD)"
+  if ! git -C "$RIME_SUZU" diff --quiet HEAD; then RS_REV="$RS_REV-dirty"; echo "警告：rime-suzu 工作区有未提交的改动，APK 来源记为 $RS_REV"; fi
+  rsync -a --exclude=.git/ "$RIME_SUZU"/ "$RS"/
+else
+  git -C "$RIME_SUZU" cat-file -e "$RIME_SUZU_REF^{commit}" 2>/dev/null || git -C "$RIME_SUZU" fetch -q origin
+  git -C "$RIME_SUZU" archive "$RIME_SUZU_REF" | tar -x -C "$RS"
+  RS_REV="$(git -C "$RIME_SUZU" rev-parse --short "$RIME_SUZU_REF")"
+fi
+python3 -I "$SRC/gen_assets.py" --rime-suzu "$RS" --assets "$SRC/app/src/main/assets" --pack "${PACK:-frost}" \
+  --sources "suzu-ime $REV" "rime-suzu $RS_REV"
+
 # 2. 客户端库与守护进程（由 core/ 交叉编译，客户端链接到 Trime 自己的 librime_jni.so 以解析 lua_*）
 JNI_HOST="$W/trime-built/lib/arm64-v8a/librime_jni.so"
 [[ -f "$JNI_HOST" ]] || { echo "缺少 ${JNI_HOST}：先编一次 APK，从中解出 librime_jni.so（见 README）"; exit 1; }

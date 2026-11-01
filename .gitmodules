@@ -28,19 +28,3 @@
 	path = android/trime/app/src/main/jni/librime-predict
 	url = https://github.com/rime/librime-predict
 	shallow = true
-[submodule "android/prelude"]
-	path = android/trime/app/data/rime/prelude
-	url = https://github.com/rime/rime-prelude
-	shallow = true
-[submodule "android/luna-pinyin"]
-	path = android/trime/app/data/rime/luna-pinyin
-	url = https://github.com/rime/rime-luna-pinyin
-	shallow = true
-[submodule "android/stroke"]
-	path = android/trime/app/data/rime/stroke
-	url = https://github.com/rime/rime-stroke
-	shallow = true
-[submodule "android/essay"]
-	path = android/trime/app/data/rime/essay
-	url = https://github.com/rime/rime-essay
-	shallow = true

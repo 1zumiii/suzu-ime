@@ -473,6 +473,13 @@ keystore.properties
 # Project
 app/src/main/assets/checksums.json
 app/src/main/assets/shared/opencc
+# 方案与默认词库包由 gen_assets.py 在构建时生成
+app/src/main/assets/shared/*
+!app/src/main/assets/shared/trime.yaml
+!app/src/main/assets/shared/tongwenfeng.trime.yaml
+app/src/main/assets/rime/
+app/src/main/assets/suzu_sources.txt
+app/src/main/assets/.pack-tmp/
 
 # boost
 app/boost-*.tar.xz

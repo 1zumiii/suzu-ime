@@ -16,24 +16,7 @@ import java.util.concurrent.locks.ReentrantLock
 import kotlin.concurrent.withLock
 
 object DataManager {
-    const val DEFAULT_CUSTOM_FILE_NAME = "default.custom.yaml"
-    const val USER_CONFIG_FILE_NAME = "user.yaml"
-    const val INSTALLATION_FILE_NAME = "installation.yaml"
-
-    val POST_SCHEMA_DEPLOY_EXPORT_FILES =
-        listOf(
-            DEFAULT_CUSTOM_FILE_NAME,
-            USER_CONFIG_FILE_NAME,
-        )
-
     private const val DATA_CHECKSUMS_NAME = "checksums.json"
-
-    private const val SCHEMA_LIST_CUSTOM_PATCH = """
-      patch:
-        schema_list:
-          - schema: luna_pinyin
-          - schema: luna_pinyin_simp
-    """
 
     private val lock = ReentrantLock()
 
@@ -105,15 +88,17 @@ object DataManager {
             }
         }
 
+        // 校验和记录只说明上次复制过，文件可能已被删掉：缺了就补回
+        newChecksums.files
+            .filter { (path, sha256) -> sha256.isNotBlank() && !externalFilesDir.resolve(path).exists() }
+            .keys
+            .forEach {
+                Timber.w("Restoring missing data file: $it")
+                appContext.assets.copyFile(it)
+            }
+
         destChecksumsFile.bufferedWriter().use {
             it.write(serializeDataChecksums(newChecksums))
-        }
-
-        val custom = userDataDir.resolve(DEFAULT_CUSTOM_FILE_NAME)
-        if (!custom.exists()) {
-            if (custom.createNewFile()) {
-                custom.writeText(SCHEMA_LIST_CUSTOM_PATCH.trimIndent())
-            }
         }
 
         Timber.d("Synced!")
