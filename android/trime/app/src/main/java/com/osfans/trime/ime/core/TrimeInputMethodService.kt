@@ -91,6 +91,7 @@ open class TrimeInputMethodService : LifecycleInputMethodService() {
         prefs.keyboard.expandKeypressArea,
         prefs.keyboard.hideKeySymbol,
         prefs.keyboard.hideKeyHint,
+        prefs.keyboard.useLegacyKeyboard,
         prefs.keyboard.hideInputBar,
         prefs.advanced.ignoreSystemGestureInsets,
     )

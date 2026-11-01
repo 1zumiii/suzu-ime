@@ -207,6 +207,7 @@
     <string name="hide_input_bar">Hide input bar</string>
     <string name="hide_key_symbol">Hide key symbol</string>
     <string name="hide_key_hint">Hide key hint</string>
+    <string name="use_legacy_keyboard">Use legacy keyboard</string>
     <string name="navbar_bkg_none">No background</string>
     <string name="navbar_bkg_color_only">Follow keyboard color</string>
     <string name="navbar_bkg_full">Keyboard background image</string>
