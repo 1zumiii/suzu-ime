@@ -8,6 +8,7 @@ package com.osfans.trime.ime.candidates
 import android.annotation.SuppressLint
 import android.content.Context
 import android.graphics.Color
+import android.graphics.Paint
 import android.view.View
 import androidx.constraintlayout.widget.ConstraintLayout
 import androidx.core.view.isVisible
@@ -178,11 +179,17 @@ class CandidateItemUi(
         val badge = commentText.isNotEmpty() && commentText.all { it in BADGES }
         comment.setTextColor(if (badge) tColor else cColor)
         comment.textSize = if (badge) commentSize * BADGE_SCALE else commentSize
+        // 空心的 ◇ 线条细，描边加粗；行视图会复用，其他注释要恢复成普通填充
+        val hollow = badge && HOLLOW_BADGE in commentText
+        comment.paint.style = if (hollow) Paint.Style.FILL_AND_STROKE else Paint.Style.FILL
+        comment.paint.strokeWidth = if (hollow) ctx.dp(HOLLOW_BADGE_STROKE_DP) else 0f
         comment.isVisible = commentText.isNotEmpty()
     }
 
     private companion object {
         const val BADGES = "◇◈❖"
         const val BADGE_SCALE = 1.25f
+        const val HOLLOW_BADGE = '◇'
+        const val HOLLOW_BADGE_STROKE_DP = 0.5f
     }
 }
