@@ -115,7 +115,7 @@ object SymbolBoard {
     /** 表情和标点共用的底部行：当前所在的类别高亮 */
     private fun sharedBottom(category: Category): Row {
         fun tab(label: String, target: String, active: Boolean) =
-            navKey(target, label, 16.5f, if (active) Tone.Enter else Tone.Gn)
+            navKey(target, label, 16.5f, if (active) Tone.Active else Tone.Gn)
         return Row(
             30f,
             listOf(
@@ -131,7 +131,7 @@ object SymbolBoard {
 
     private fun emojiPage(id: String, category: Category, index: Int, last: Int, symbols: List<Symbol>): Page {
         val tabs = categories.filter { it.kind == Kind.Emoji }
-        fun tab(c: Category) = navKey(pageId(c.id, 0), c.label, 10f, if (c === category) Tone.Enter else Tone.Gn).copy(textSp = 0f)
+        fun tab(c: Category) = navKey(pageId(c.id, 0), c.label, 10f, if (c === category) Tone.Active else Tone.Gn).copy(textSp = 0f)
         val top = tabs.take(8).map(::tab) + listOf(
             if (index > 0) navKey(pageId(category.id, index - 1), "上页", 10f, Tone.Plain) else tab(tabs[8]),
             if (index < last) navKey(pageId(category.id, index + 1), "下页", 10f, Tone.Plain) else navKey("symbols", "更多", 10f, Tone.Plain),
@@ -164,7 +164,7 @@ object SymbolBoard {
         val width = 12.5f
         val textSp = 16f
         val tabs = categories.filter { it.kind == Kind.Kao }.map {
-            navKey(pageId(it.id, 0), it.label, width, if (it === category) Tone.Enter else Tone.Gn).copy(textSp = textSp)
+            navKey(pageId(it.id, 0), it.label, width, if (it === category) Tone.Active else Tone.Gn).copy(textSp = textSp)
         }
         val bottom = Row(24f, listOf(backKey(width, textSp)) + tabs + deleteKey(width, textSp))
         return Page(id, AsciiPolicy.Ascii, grid(symbols, Kind.Kao, 25f, 24f, 14f) + bottom)

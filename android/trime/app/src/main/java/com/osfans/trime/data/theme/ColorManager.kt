@@ -4,6 +4,9 @@
 
 package com.osfans.trime.data.theme
 
+import androidx.annotation.Keep
+import com.osfans.trime.data.prefs.AppPrefs
+import com.osfans.trime.data.prefs.PreferenceDelegate
 import android.content.res.Configuration
 import android.content.res.Resources
 import android.graphics.Bitmap
@@ -39,6 +42,13 @@ object ColorManager {
 
     private var isNightMode = false
 
+    private val colorMode = AppPrefs.defaultInstance().keyboard.colorMode
+
+    @Keep
+    private val onColorModeChange = PreferenceDelegate.OnChangeListener<AppPrefs.Keyboard.ColorMode> { _, _ ->
+        activateScheme(notify = true)
+    }
+
     val activeColorScheme: ColorScheme
         get() = requireNotNull(requireScope().activeColorScheme) { "ColorManager is not initialized" }
 
@@ -72,6 +82,7 @@ object ColorManager {
     }
 
     fun init(configuration: Configuration) {
+        colorMode.registerOnChangeListener(onColorModeChange)
         isNightMode = configuration.isNightMode()
         activateScheme(notify = false)
 
@@ -106,9 +117,15 @@ object ColorManager {
 
     private fun requireScope(): ThemeScope = requireNotNull(scope) { "ColorManager is not initialized" }
 
-    /** 浅色和深色各一套，跟随系统 */
-    private fun resolveActiveScheme(theme: Theme): ColorScheme =
-        theme.presetColorSchemes.getValue(if (isNightMode) BuiltinTheme.DARK_SCHEME else BuiltinTheme.LIGHT_SCHEME)
+    /** 浅色和深色各一套，默认跟随系统，也可以在设置里固定一套 */
+    private fun resolveActiveScheme(theme: Theme): ColorScheme {
+        val dark = when (colorMode.getValue()) {
+            AppPrefs.Keyboard.ColorMode.FOLLOW_SYSTEM -> isNightMode
+            AppPrefs.Keyboard.ColorMode.LIGHT -> false
+            AppPrefs.Keyboard.ColorMode.DARK -> true
+        }
+        return theme.presetColorSchemes.getValue(if (dark) BuiltinTheme.DARK_SCHEME else BuiltinTheme.LIGHT_SCHEME)
+    }
 
     /**
      * Re-resolves the active scheme from the prefs and current theme, or

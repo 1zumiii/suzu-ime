@@ -257,4 +257,8 @@
     <string name="star_success">收藏成功</string>
     <string name="ignore_system_gesture_insets">忽略系統手勢插邊</string>
     <string name="dict_packs">詞庫</string>
+    <string name="color_mode">鍵盤配色</string>
+    <string name="color_mode_follow_system">跟隨系統</string>
+    <string name="color_mode_light">淺色</string>
+    <string name="color_mode_dark">深色</string>
 </resources>

@@ -257,4 +257,8 @@
     <string name="star_success">Star success</string>
     <string name="ignore_system_gesture_insets">Ignore system gesture insets</string>
     <string name="dict_packs">Dictionaries</string>
+    <string name="color_mode">Keyboard colors</string>
+    <string name="color_mode_follow_system">Follow system</string>
+    <string name="color_mode_light">Light</string>
+    <string name="color_mode_dark">Dark</string>
 </resources>

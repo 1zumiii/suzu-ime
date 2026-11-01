@@ -123,6 +123,7 @@ class AppPrefs(
             const val HIDE_INPUT_BAR = "hide_input_bar"
             const val HIDE_KEY_SYMBOL = "hide_key_symbol"
             const val HIDE_KEY_HINT = "hide_key_hint"
+            const val COLOR_MODE = "color_mode"
 
             const val SOUND_ON_KEYPRESS = "sound_on_keypress"
             const val KEY_SOUND_VOLUME = "sound_volume"
@@ -165,6 +166,16 @@ class AppPrefs(
         val useSoftCursor = switch(R.string.use_soft_cursor, USE_SOFT_CURSOR, true)
 
         val hideInputBar = switch(R.string.hide_input_bar, HIDE_INPUT_BAR, false)
+        enum class ColorMode(
+            override val stringRes: Int,
+        ) : PreferenceDelegateEnum {
+            FOLLOW_SYSTEM(R.string.color_mode_follow_system),
+            LIGHT(R.string.color_mode_light),
+            DARK(R.string.color_mode_dark),
+        }
+
+        val colorMode = enum(R.string.color_mode, COLOR_MODE, ColorMode.FOLLOW_SYSTEM)
+
         val hideKeySymbol = switch(R.string.hide_key_symbol, HIDE_KEY_SYMBOL, false)
         val hideKeyHint = switch(R.string.hide_key_hint, HIDE_KEY_HINT, false)
 
