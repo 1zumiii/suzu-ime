@@ -27,9 +27,9 @@ class LiquidLayout(
     private val runCommand: (KeyCommand) -> Unit,
 ) : LinearLayout(context) {
     private val theme: Theme get() = scope.theme
-    private val position = theme.liquidKeyboard.fixedKeyBar.position
+    private val position = theme.liquidKeyboard.barPosition
     private val barIsVertical =
-        position == LiquidKeyboard.KeyBar.Position.LEFT || position == LiquidKeyboard.KeyBar.Position.RIGHT
+        position == LiquidKeyboard.BarPosition.LEFT || position == LiquidKeyboard.BarPosition.RIGHT
 
     // The fixed-key items, kept so their colors can be refreshed on scheme switches.
     private val fixedKeyItems = mutableListOf<LiquidItemUi>()
@@ -64,7 +64,7 @@ class LiquidLayout(
         val barParams =
             if (barIsVertical) LayoutParams(dp(BAR_THICKNESS_DP), MATCH_PARENT) else LayoutParams(MATCH_PARENT, dp(BAR_THICKNESS_DP))
         val gridParams = if (barIsVertical) LayoutParams(0, MATCH_PARENT, 1f) else LayoutParams(MATCH_PARENT, 0, 1f)
-        val barFirst = position == LiquidKeyboard.KeyBar.Position.TOP || position == LiquidKeyboard.KeyBar.Position.LEFT
+        val barFirst = position == LiquidKeyboard.BarPosition.TOP || position == LiquidKeyboard.BarPosition.LEFT
         if (bar != null && barFirst) addView(bar, barParams)
         addView(recyclerView, gridParams)
         if (bar != null && !barFirst) addView(bar, barParams)

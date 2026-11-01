@@ -90,7 +90,11 @@ class SuzuKeyboard(
     fun show(id: String) {
         val target = if (id == Pages.LAST) lastPageId else id
         val previous = current
-        if (previous?.page?.id == target) return
+        if (previous?.page?.id == target) {
+            // 页面没变，但部署结束后 Rime 的状态可能变了
+            repaintAfterRime()
+            return
+        }
         val page = Pages.get(target)
         val current = rime.run { statusCached }.isAsciiMode
         val leavingFollow = previous?.page?.ascii == AsciiPolicy.Follow

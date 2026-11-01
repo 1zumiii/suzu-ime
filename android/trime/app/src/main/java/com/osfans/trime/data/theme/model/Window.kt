@@ -5,9 +5,6 @@
 
 package com.osfans.trime.data.theme.model
 
-import kotlinx.serialization.Serializable
-
-@Serializable
 data class Window(
     val insets: Padding = Padding(4, 4),
     val itemPadding: Padding = Padding(2, 4),
@@ -18,14 +15,10 @@ data class Window(
     val alpha: Float = 1f,
     val foreground: Foreground = Foreground(),
 ) {
-
-    @Serializable
     data class Padding(
         val vertical: Int = 0,
         val horizontal: Int = 0,
     )
-
-    @Serializable
     data class Foreground(
         val labelFontSize: Float = 20f,
         val textFontSize: Float = 20f,

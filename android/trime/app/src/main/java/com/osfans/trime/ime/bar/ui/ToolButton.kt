@@ -31,6 +31,7 @@ import splitties.views.gravityCenter
 import splitties.views.imageDrawable
 import splitties.views.imageResource
 import splitties.views.padding
+import com.osfans.trime.ime.keyboard.KeyCommand
 
 class ToolButton(context: Context, private val scope: ThemeScope) : GestureFrame(context) {
 
@@ -84,7 +85,7 @@ class ToolButton(context: Context, private val scope: ThemeScope) : GestureFrame
     ) : this(context, scope) {
         this.config = config
         val fg = config.foreground
-        if (config.action == "Mode_switch" && config.foreground.optionStyles.size == 2) {
+        if (config.command == KeyCommand.ToggleAscii && config.foreground.optionStyles.size == 2) {
             option = "ascii_mode"
             optionStyles = fg.optionStyles
         } else {

@@ -8,7 +8,7 @@
   suzu_sources.txt   来源提交，状态页显示
   suzu_packs.tsv     可下载的词库包清单（名字、说明、许可证、提交、下载地址、sha256、大小）
 另外把每个词库包打成内容确定的 zip 放进 --pack-out（同样的提交总是得到同样的 sha256），发布到下载地址。
-shared/ 里由 Trime 仓库跟踪的主题文件（trime.yaml、tongwenfeng.trime.yaml）和 opencc/ 保留，其余每次重新生成。
+shared/ 里由 Trime 仓库跟踪的 opencc/ 保留，其余每次重新生成。
 
 用法：gen_assets.py --rime-suzu <目录> --assets <目录> --pack <包名> --pack-out <目录> --sources <说明行>...
 """
@@ -23,7 +23,7 @@ import zipfile
 
 BASE = "rime_ice"          # rime-suzu 里的基座方案
 SCHEMA = "suzu"
-KEEP_IN_SHARED = {"trime.yaml", "tongwenfeng.trime.yaml", "opencc"}
+KEEP_IN_SHARED = {"opencc"}
 # 不进 APK：其他平台、文档、安装与工具脚本、词库（另行打包）、个人数据
 EXCLUDE_TOP = {
     ".git", ".github", ".gitignore", ".DS_Store", "others", "windows", "llm-mac", "llm-android", "tools",

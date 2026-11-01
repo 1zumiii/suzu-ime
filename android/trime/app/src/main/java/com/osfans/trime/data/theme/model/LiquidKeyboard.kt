@@ -5,29 +5,18 @@
 
 package com.osfans.trime.data.theme.model
 
-import kotlinx.serialization.Serializable
-import kotlinx.serialization.Transient
-
-@Serializable(with = LiquidKeyboardSerializer::class)
 data class LiquidKeyboard(
     val singleWidth: Int = 0,
     val keyHeight: Int = 0,
     val marginX: Float = 0f,
-    val fixedKeyBar: KeyBar = KeyBar(),
+    val barPosition: BarPosition = BarPosition.BOTTOM,
     val keyboards: List<Keyboard> = emptyList(),
 ) {
-
-    @Serializable
-    data class KeyBar(
-        val keys: List<String> = emptyList(),
-        val position: Position = Position.BOTTOM,
-    ) {
-        enum class Position {
-            TOP,
-            LEFT,
-            BOTTOM,
-            RIGHT,
-        }
+    enum class BarPosition {
+        TOP,
+        LEFT,
+        BOTTOM,
+        RIGHT,
     }
 
     data class Keyboard(
@@ -52,8 +41,6 @@ data class LiquidKeyboard(
     }
 
     data class Tag(val label: String = "", val type: DataType)
-
-    @Transient
     private val data = lazy {
         keyboards.map {
             Tag(it.name, it.type) to it.keys.toTypedArray()

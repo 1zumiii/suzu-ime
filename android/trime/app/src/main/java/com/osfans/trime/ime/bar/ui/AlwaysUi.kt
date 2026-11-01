@@ -5,6 +5,7 @@
 
 package com.osfans.trime.ime.bar.ui
 
+import com.osfans.trime.ime.keyboard.KeyCommand
 import android.content.Context
 import android.widget.ViewAnimator
 import androidx.annotation.DrawableRes
@@ -34,7 +35,7 @@ import com.osfans.trime.suzu.AiStatusButton
 class AlwaysUi(
     override val ctx: Context,
     private val scope: ThemeScope,
-    private val onButtonClick: ((String) -> Unit)? = null,
+    private val onButtonClick: ((KeyCommand) -> Unit)? = null,
 ) : Ui {
     private val theme: Theme get() = scope.theme
 
@@ -53,18 +54,18 @@ class AlwaysUi(
         @DrawableRes icon: Int = 0,
     ): ToolButton = if (buttonConfig != null) {
         ToolButton(ctx, buttonConfig, scope).apply {
-            setOnClickListener { onButtonClick?.invoke(buttonConfig.action) }
-            val longPressAction = buttonConfig.longPressAction
-            if (longPressAction.isNotEmpty()) {
+            setOnClickListener { onButtonClick?.invoke(buttonConfig.command ?: KeyCommand.OpenMenu) }
+            val longPressCommand = buttonConfig.longPressCommand
+            if (longPressCommand != null) {
                 setOnLongClickListener {
-                    onButtonClick?.invoke(longPressAction)
+                    onButtonClick?.invoke(longPressCommand)
                     true
                 }
             }
         }
     } else {
         ToolButton(ctx, icon, scope).apply {
-            setOnClickListener { onButtonClick?.invoke("") }
+            setOnClickListener { onButtonClick?.invoke(KeyCommand.OpenMenu) }
         }
     }
 
