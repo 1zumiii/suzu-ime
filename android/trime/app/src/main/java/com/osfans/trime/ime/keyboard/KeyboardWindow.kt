@@ -16,6 +16,7 @@ import androidx.core.content.ContextCompat
 import com.osfans.trime.R
 import com.osfans.trime.core.RimeMessage
 import com.osfans.trime.core.SchemaItem
+import com.osfans.trime.core.StatusProto
 import com.osfans.trime.daemon.RimeSession
 import com.osfans.trime.data.theme.Theme
 import com.osfans.trime.data.theme.model.TextKeyboard
@@ -23,6 +24,13 @@ import com.osfans.trime.ime.broadcast.EnterKeyDisplayDelegate
 import com.osfans.trime.ime.broadcast.InputBroadcastReceiver
 import com.osfans.trime.ime.core.TrimeInputMethodService
 import com.osfans.trime.ime.keyboard.KeyboardPrefs.isLandscapeMode
+import com.osfans.trime.ime.keyboard.v2.KeyboardPanels
+import com.osfans.trime.ime.keyboard.v2.SuzuKeyboard
+import com.osfans.trime.data.prefs.AppPrefs
+import com.osfans.trime.ime.clipboard.ClipboardWindow
+import com.osfans.trime.ime.symbol.LiquidWindow
+import com.osfans.trime.ime.window.BoardWindowManager
+import com.osfans.trime.data.theme.model.LiquidKeyboard
 import com.osfans.trime.ime.popup.PopupDelegate
 import com.osfans.trime.ime.window.BoardWindow
 import com.osfans.trime.ime.window.ResidentWindow
@@ -30,7 +38,6 @@ import com.osfans.trime.util.isLandscape
 import kotlinx.coroutines.channels.BufferOverflow
 import kotlinx.coroutines.flow.MutableSharedFlow
 import kotlinx.coroutines.flow.asSharedFlow
-import kotlinx.coroutines.runBlocking
 import org.kodein.di.DI
 import org.kodein.di.instance
 import splitties.dimensions.dp
@@ -51,6 +58,32 @@ class KeyboardWindow(di: DI) :
     private val commonKeyboardActionListener: CommonKeyboardActionListener by instance()
     private val popup: PopupDelegate by instance()
     private val enterKeyDisplay: EnterKeyDisplayDelegate by instance()
+    private val windowManager: BoardWindowManager by instance()
+    private val liquidWindow: LiquidWindow by instance()
+
+    /** 新键盘；打开“使用旧键盘”时为 null */
+    private val suzuKeyboard: SuzuKeyboard? by lazy {
+        if (AppPrefs.defaultInstance().keyboard.useLegacyKeyboard.getValue()) {
+            null
+        } else {
+            SuzuKeyboard(
+                context, theme, rime, service, popup, enterKeyDisplay,
+                object : KeyboardPanels {
+                    override fun openClipboard() = windowManager.attachWindow(ClipboardWindow(di))
+
+                    override fun openLiquid(tag: String) {
+                        val index = theme.liquidKeyboard.getTagList().indexOfFirst { item ->
+                            item.label == tag || runCatching { LiquidKeyboard.DataType.valueOf(tag.uppercase()) }.getOrNull() == item.type
+                        }
+                        if (index >= 0) {
+                            windowManager.attachWindow(LiquidWindow)
+                            liquidWindow.setDataByIndex(index)
+                        }
+                    }
+                },
+            )
+        }
+    }
 
     private val cursorCapsMode: Int
         get() =
@@ -114,6 +147,13 @@ class KeyboardWindow(di: DI) :
 
     override fun onCreateView(): View {
         keyboardView = context.frameLayout(R.id.keyboard_view)
+        suzuKeyboard?.let { suzu ->
+            // 工具栏等旧代码还会读 currentKeyboard，给一个没有按键的占位，随旧键盘一起删除
+            currentKeyboard = Keyboard(context, theme, computeAllowedWidth(), null)
+            _currentKeyboardHeight.tryEmit(currentKeyboard.keyboardHeight)
+            keyboardView.addView(suzu.createView(), FrameLayout.LayoutParams(-1, -1))
+            return keyboardView
+        }
         keyboardView.addOnLayoutChangeListener(onKeyboardViewLayoutChangeListener)
         attachKeyboard(evalKeyboard(".default"))
         return keyboardView
@@ -183,7 +223,7 @@ class KeyboardWindow(di: DI) :
         }
 
         keyboard.also {
-            runBlocking { _currentKeyboardHeight.emit(it.keyboardHeight) }
+            _currentKeyboardHeight.tryEmit(it.keyboardHeight)
             if (it.isLock) lastLockKeyboardId = target
             dispatchCapsState(it::setShifted)
 
@@ -300,10 +340,28 @@ class KeyboardWindow(di: DI) :
 
     /** Repaints the keyboard after a color-scheme switch; keys re-resolve their colors. */
     override fun refreshColors() {
+        suzuKeyboard?.repaint()
         currentKeyboardView?.invalidateAllKeys()
     }
 
     override fun onStartInput(info: EditorInfo) {
+        suzuKeyboard?.let { suzu ->
+            val cls = info.inputType and InputType.TYPE_MASK_CLASS
+            val numbers = cls == InputType.TYPE_CLASS_NUMBER || cls == InputType.TYPE_CLASS_PHONE || cls == InputType.TYPE_CLASS_DATETIME
+            val variation = info.inputType and InputType.TYPE_MASK_VARIATION
+            val forcedAscii = info.imeOptions and EditorInfo.IME_FLAG_FORCE_ASCII == EditorInfo.IME_FLAG_FORCE_ASCII ||
+                (
+                    cls == InputType.TYPE_CLASS_TEXT && variation in setOf(
+                        InputType.TYPE_TEXT_VARIATION_EMAIL_ADDRESS,
+                        InputType.TYPE_TEXT_VARIATION_PASSWORD,
+                        InputType.TYPE_TEXT_VARIATION_VISIBLE_PASSWORD,
+                        InputType.TYPE_TEXT_VARIATION_WEB_EMAIL_ADDRESS,
+                        InputType.TYPE_TEXT_VARIATION_WEB_PASSWORD,
+                    )
+                    )
+            suzu.startInput(numbers && !forcedAscii, forcedAscii)
+            return
+        }
         val targetKeyboard =
             when (info.imeOptions and EditorInfo.IME_FLAG_FORCE_ASCII) {
                 EditorInfo.IME_FLAG_FORCE_ASCII -> ".ascii"
@@ -367,6 +425,10 @@ class KeyboardWindow(di: DI) :
     }
 
     override fun onKeyAppearanceUpdate(composing: Boolean, menu: Boolean, paging: Boolean) {
+        suzuKeyboard?.let {
+            it.repaint()
+            return
+        }
         if (!rime.run { statusCached }.isAsciiMode) {
             activeKeyboard?.appearanceStateKeys?.forEach { key ->
                 currentKeyboardView?.invalidateKeyByIndex(key.index)
@@ -378,16 +440,29 @@ class KeyboardWindow(di: DI) :
         start: Int,
         end: Int,
     ) {
+        if (suzuKeyboard != null) return
         dispatchCapsState { on, shifted ->
             activeKeyboard?.setShifted(on, shifted)?.let { if (it) currentKeyboardView?.invalidateAllKeys() }
         }
     }
 
+    override fun onInputStatusUpdate(value: StatusProto) {
+        suzuKeyboard?.repaint()
+    }
+
     override fun onRimeSchemaUpdated(schema: SchemaItem) {
+        suzuKeyboard?.let {
+            it.show(com.osfans.trime.ime.keyboard.v2.Pages.DEFAULT)
+            return
+        }
         switchKeyboard(".default")
     }
 
     override fun onRimeOptionUpdated(value: RimeMessage.OptionMessage.Data) {
+        suzuKeyboard?.let {
+            if (value.option == "ascii_mode") it.onAsciiModeChanged(value.value) else it.repaint()
+            return
+        }
         val option = value.option
         when {
             option.startsWith("_keyboard_") -> {
@@ -418,6 +493,7 @@ class KeyboardWindow(di: DI) :
     }
 
     override fun onDetached() {
+        suzuKeyboard?.dismissPopups()
         currentKeyboardView?.onDetach()
     }
 }
