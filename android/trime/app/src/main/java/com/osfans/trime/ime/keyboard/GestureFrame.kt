@@ -29,6 +29,7 @@ open class GestureFrame(context: Context) : FrameLayout(context) {
 
     private var isLongPressed = false
     private var slideActivated = false
+    private var slideStepped = false
     private var swipeTriggered = false
 
     private var longPressJob: Job? = null
@@ -60,7 +61,13 @@ open class GestureFrame(context: Context) : FrameLayout(context) {
     var onMove: ((x: Float, y: Float, longPress: Boolean) -> Unit)? = null
     var onSwipe: ((behavior: KeyBehavior) -> Unit)? = null
 
+    /** 这个键定义了动作的滑动方向；其他方向的滑动松手时仍算点按 */
+    var swipeBehaviors: Set<KeyBehavior> = emptySet()
+
     var isRepeatable = false
+
+    /** 长按连按开始时调用；返回的函数在每次连按前检查，返回 false 就停止连按 */
+    var onRepeatStart: (() -> () -> Boolean)? = null
     var isSlideCursor = false
     var isSlideDelete = false
 
@@ -94,6 +101,7 @@ open class GestureFrame(context: Context) : FrameLayout(context) {
 
                 isLongPressed = false
                 slideActivated = false
+                slideStepped = false
                 swipeTriggered = false
                 lastSwipeBehavior = KeyBehavior.CLICK
 
@@ -120,7 +128,7 @@ open class GestureFrame(context: Context) : FrameLayout(context) {
 
                 if ((isSlideCursor || isSlideDelete) && onSlide != null && !isLongPressed && swipeTravel > 0) {
                     if (!slideActivated) {
-                        if (abs(dx) >= swipeTravel) {
+                        if (abs(dx) >= swipeTravelPx) {
                             slideActivated = true
                             lastX = startX
                         }
@@ -130,6 +138,7 @@ open class GestureFrame(context: Context) : FrameLayout(context) {
                         val step = getNStep(lastX, x, slideStepSize.toFloat())
                         if (step != 0) {
                             onSlide?.invoke(step, x, y)
+                            slideStepped = true
                             lastX = x
                         }
                     }
@@ -156,7 +165,8 @@ open class GestureFrame(context: Context) : FrameLayout(context) {
                 if (vibrateOnKeyRelease) InputFeedbackManager.keyPressVibrate(this)
                 cancelJobs()
 
-                if (slideActivated) {
+                // 滑动真的移动了光标或删了字才吞掉这次点按；只是手指偏移了一点，仍按点按处理
+                if (slideActivated && slideStepped) {
                     onSlide?.invoke(0, x, y)
                     onCancel?.invoke()
                     return true
@@ -167,7 +177,7 @@ open class GestureFrame(context: Context) : FrameLayout(context) {
                     return true
                 }
 
-                if (swipeTriggered) {
+                if (swipeTriggered && lastSwipeBehavior in swipeBehaviors) {
                     dispatchBehavior(lastSwipeBehavior, false)
                     return true
                 }
@@ -238,9 +248,10 @@ open class GestureFrame(context: Context) : FrameLayout(context) {
     }
 
     private fun startRepeatJob() {
+        val keepRepeating = onRepeatStart?.invoke()
         repeatJob = lifecycleScope.launch {
             try {
-                while (true) {
+                while (keepRepeating?.invoke() != false) {
                     if (vibrateOnKeyRepeat) InputFeedbackManager.keyPressVibrate(this@GestureFrame)
                     dispatchBehavior(KeyBehavior.CLICK, true)
                     delay(repeatInterval.toLong())
@@ -265,8 +276,8 @@ open class GestureFrame(context: Context) : FrameLayout(context) {
         }
 
         val isSwipe =
-            (swipeTravel > 0 && distance >= swipeTravel) ||
-                (swipeVelocity > 0 && velocity >= swipeVelocity)
+            (swipeTravel > 0 && distance >= swipeTravelPx) ||
+                (swipeVelocity > 0 && velocity >= swipeVelocity * resources.displayMetrics.density)
         swipeTriggered = isSwipe
 
         if (!isSwipe) return KeyBehavior.CLICK
@@ -319,6 +330,9 @@ open class GestureFrame(context: Context) : FrameLayout(context) {
         onLongClick?.invoke()
         return handled || onLongClick != null
     }
+
+    // 设置里滑动距离与速度的单位是 dp，触摸坐标是像素
+    private val swipeTravelPx get() = swipeTravel * resources.displayMetrics.density
 
     companion object {
         private val swipeTravel by AppPrefs.defaultInstance().keyboard.swipeTravel
