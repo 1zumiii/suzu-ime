@@ -44,9 +44,13 @@ class BoardWindowManager(override val di: DI) : DIAware {
             TransitionSet().apply {
                 enterAnimation?.let { addTransition(it) }
                 exitAnimation?.let { addTransition(it) }
-                duration = 100
+                duration = TRANSITION_MS
             },
         )
+        // 面板背景透明。没有进入动画的窗口（键盘）等面板滑走后再显示，否则两者叠在一起，也不是展开的反向
+        val deferAdd = exitAnimation != null && enterAnimation == null
+        add.visibility = if (deferAdd) View.INVISIBLE else View.VISIBLE
+        if (deferAdd) view.postDelayed({ if (add === currentView) add.visibility = View.VISIBLE }, TRANSITION_MS)
     }
 
     fun <R> cacheResidentWindow(
@@ -120,4 +124,8 @@ class BoardWindowManager(override val di: DI) : DIAware {
     val view: FrameLayout by lazy { context.frameLayout(R.id.input_window) }
 
     fun isAttached(window: BoardWindow) = currentWindow === window
+
+    private companion object {
+        const val TRANSITION_MS = 100L
+    }
 }

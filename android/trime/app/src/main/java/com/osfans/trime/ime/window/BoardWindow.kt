@@ -7,7 +7,6 @@ package com.osfans.trime.ime.window
 import android.view.ContextThemeWrapper
 import android.view.Gravity
 import android.view.View
-import androidx.transition.Fade
 import androidx.transition.Slide
 import androidx.transition.Transition
 import org.kodein.di.DI
@@ -28,7 +27,7 @@ sealed class BoardWindow(override val di: DI) : DIAware {
     /**
      * Animation when the window is removed from the layout
      */
-    open fun exitAnimation(nextWindow: BoardWindow): Transition? = Fade()
+    open fun exitAnimation(nextWindow: BoardWindow): Transition? = enterAnimation(nextWindow)
 
     /**
      * After the window was set up in InputComponent
