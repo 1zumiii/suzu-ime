@@ -136,14 +136,7 @@ class InputBarDelegate(override val di: DI) :
     }
 
     private val alwaysUi: AlwaysUi by lazy {
-        AlwaysUi(context, scope) { action ->
-            val command = TOOLBAR_COMMANDS[action]
-            if (command != null) {
-                keyboardWindow.run(command)
-            } else {
-                windowManager.attachWindow(SwitchOptionWindow(di))
-            }
-        }.apply {
+        AlwaysUi(context, scope) { command -> keyboardWindow.run(command) }.apply {
             // AI 重排手动启停：先读方案开关 ai_rerank 的真实值，再设成相反的；Lua 侧会把它同步给常驻推理进程
             aiToggle = {
                 val target = !rime.run { getRuntimeOption("ai_rerank") }
@@ -417,16 +410,6 @@ class InputBarDelegate(override val di: DI) :
     }
 
     companion object {
-        /** 工具栏按钮对应的动作；不在表里的（三个点）打开开关面板 */
-        private val TOOLBAR_COMMANDS = mapOf(
-            "Hide" to KeyCommand.Hide,
-            "liquid_keyboard_emoji" to KeyCommand.OpenLiquid("emoji"),
-            "clipboard_window" to KeyCommand.OpenClipboard,
-            "Keyboard_editor" to KeyCommand.ShowPage("editor"),
-            "Mode_switch" to KeyCommand.ToggleAscii,
-            "Settings" to KeyCommand.OpenSettings,
-        )
-
         private const val FIX_CHOICES_INDEX = 3   // view 里的第四个子视图
     }
 }

@@ -43,7 +43,7 @@ class KeyMetrics(
 
 class KeyLook(val background: Drawable?, val text: Int, val corner: Int)
 
-/** 按键配色。阶段 6 之前仍取自配色方案，阶段 6 改由代码内的两套配色提供 */
+/** 按键配色，按颜色名取自当前的配色方案（BuiltinTheme 内置浅色和深色两套） */
 class KeyPalette {
     private fun color(name: String?, fallback: () -> Int): Int =
         name?.let { runCatching { ColorManager.getColor(it) }.getOrNull() } ?: fallback()

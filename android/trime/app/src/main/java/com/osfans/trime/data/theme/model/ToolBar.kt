@@ -5,28 +5,22 @@
 
 package com.osfans.trime.data.theme.model
 
-import kotlinx.serialization.Serializable
+import com.osfans.trime.ime.keyboard.KeyCommand
 
-@Serializable
 data class ToolBar(
     val primaryButton: Button? = null,
     val buttons: List<Button> = emptyList(),
     val buttonSpacing: Int = 18,
-    val buttonFont: MaybeStringList = MaybeStringList.Empty,
+    val buttonFont: List<String> = emptyList(),
     val backStyle: String = "ic@arrow-left",
 ) {
-
-    @Serializable
     data class Button(
         val background: Background = Background(),
         val foreground: Foreground = Foreground(),
-        val action: String = "",
-        val longPressAction: String = "",
-        @Serializable(with = LenientIntListSerializer::class)
+        val command: KeyCommand? = null,
+        val longPressCommand: KeyCommand? = null,
         val size: List<Int> = emptyList(),
     ) {
-
-        @Serializable
         data class Background(
             val type: Type = Type.RECTANGLE,
             val cornerRadius: Float = 10f,
@@ -40,11 +34,8 @@ data class ToolBar(
                 CIRCLE,
             }
         }
-
-        @Serializable
         data class Foreground(
             val style: String = "",
-            @Serializable(with = LenientStringListSerializer::class)
             val optionStyles: List<String> = emptyList(),
             val normal: String = "",
             val highlight: String = "",

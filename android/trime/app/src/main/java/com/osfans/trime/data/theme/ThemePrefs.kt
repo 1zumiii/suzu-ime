@@ -1,5 +1,5 @@
 /*
- * SPDX-FileCopyrightText: 2015 - 2025 Rime community
+ * SPDX-FileCopyrightText: 2015 - 2026 Rime community
  * SPDX-License-Identifier: GPL-3.0-or-later
  */
 
@@ -15,22 +15,6 @@ import com.osfans.trime.data.prefs.PreferenceDelegateOwner
 class ThemePrefs(
     sharedPrefs: SharedPreferences,
 ) : PreferenceDelegateOwner(sharedPrefs, R.string.theme) {
-    val selectedTheme =
-        string(
-            R.string.selected_theme,
-            SELECTED_THEME,
-            "trime",
-            R.string.selected_theme_summary,
-        )
-
-    val normalModeColor =
-        string(
-            R.string.normal_mode_color,
-            NORMAL_MODE_COLOR,
-            "default",
-            R.string.normal_mode_color_summary,
-        )
-
     enum class NavbarBackground(
         override val stringRes: Int,
     ) : PreferenceDelegateEnum {
@@ -57,17 +41,7 @@ class ThemePrefs(
             }
         }
 
-    val followSystemDayNight =
-        switch(
-            R.string.follow_system_day_night_color,
-            FOLLOW_SYSTEM_DAY_NIGHT,
-            false,
-        )
-
     companion object {
-        const val SELECTED_THEME = "selected_theme"
-        const val NORMAL_MODE_COLOR = "normal_mode_color"
-        const val FOLLOW_SYSTEM_DAY_NIGHT = "follow_system_day_night"
         const val NAVBAR_BACKGROUND = "navbar_background"
     }
 }

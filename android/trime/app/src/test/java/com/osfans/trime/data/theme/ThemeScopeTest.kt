@@ -18,7 +18,7 @@ import io.kotest.matchers.shouldNotBe
  */
 class ThemeScopeTest :
     BehaviorSpec({
-        val theme = ThemeTestSupport.decodeBuiltinTheme("trime.yaml")
+        val theme = BuiltinTheme.theme
 
         fun scope() = ThemeScope(theme) { value ->
             val digits =

@@ -36,7 +36,6 @@ import com.osfans.trime.util.isNightMode
  */
 object ColorManager {
     private var scope: ThemeScope? = null
-    private val prefs = ThemeManager.prefs
 
     private var isNightMode = false
 
@@ -105,24 +104,11 @@ object ColorManager {
         activateScheme(notify = false)
     }
 
-    /**
-     * Switches to the scheme [schemeId] and remembers it as the user's choice.
-     * The scheme is resolved from the preference afterwards, so the day/night
-     * links a scheme may declare are honoured, like an automatic switch.
-     */
-    fun setColorScheme(schemeId: String) {
-        prefs.normalModeColor.setValue(schemeId)
-        activateScheme(notify = true)
-    }
-
     private fun requireScope(): ThemeScope = requireNotNull(scope) { "ColorManager is not initialized" }
 
-    private fun resolveActiveScheme(theme: Theme): ColorScheme = ColorSchemeResolver.resolve(
-        schemes = theme.presetColorSchemes,
-        selectedSchemeId = prefs.normalModeColor.getValue(),
-        followSystemDayNight = prefs.followSystemDayNight.getValue(),
-        isNightMode = isNightMode,
-    )
+    /** 浅色和深色各一套，跟随系统 */
+    private fun resolveActiveScheme(theme: Theme): ColorScheme =
+        theme.presetColorSchemes.getValue(if (isNightMode) BuiltinTheme.DARK_SCHEME else BuiltinTheme.LIGHT_SCHEME)
 
     /**
      * Re-resolves the active scheme from the prefs and current theme, or

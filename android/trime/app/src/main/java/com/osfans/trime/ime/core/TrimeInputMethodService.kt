@@ -104,12 +104,6 @@ open class TrimeInputMethodService : LifecycleInputMethodService() {
         }
 
     @Keep
-    private val onThemeChangeListener =
-        ThemeManager.OnThemeChangeListener {
-            themeScope?.let { replaceInputViews(it) }
-        }
-
-    @Keep
     private val onColorChangeListener =
         ColorManager.OnColorChangeListener {
             ContextCompat.getMainExecutor(this).execute {
@@ -200,7 +194,6 @@ open class TrimeInputMethodService : LifecycleInputMethodService() {
         lifecycleScope.launch {
             rime.runOnReady {
                 ThemeManager.init(resources.configuration)
-                ThemeManager.addOnChangedListener(onThemeChangeListener)
                 ColorManager.addOnChangedListener(onColorChangeListener)
             }
             // 键盘先于 Rime 就绪弹出时建不了视图，而上面的初始化不会通知监听器，这里补建，否则一直白屏
@@ -296,14 +289,6 @@ open class TrimeInputMethodService : LifecycleInputMethodService() {
                     }
                 }
 
-            is RimeMessage.DeployMessage -> {
-                if (it.data == RimeMessage.DeployMessage.State.Success) {
-                    // The deployment may have refreshed the current theme's artifact.
-                    val themeId = ThemeManager.prefs.selectedTheme.getValue()
-                    lifecycleScope.launch { ThemeManager.selectTheme(themeId) }
-                }
-            }
-
             else -> {}
         }
     }
@@ -334,7 +319,6 @@ open class TrimeInputMethodService : LifecycleInputMethodService() {
         recreateInputViewPrefs.forEach {
             it.unregisterOnChangeListener(recreateInputViewListener)
         }
-        ThemeManager.removeOnChangedListener(onThemeChangeListener)
         ColorManager.removeOnChangedListener(onColorChangeListener)
         super.onDestroy()
         unregisterReceiver(rimeIntentReceiver)

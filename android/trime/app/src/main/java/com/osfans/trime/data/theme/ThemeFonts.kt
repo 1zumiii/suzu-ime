@@ -38,34 +38,34 @@ class ThemeFonts(private val theme: Theme) {
         }
 
     val hanb: Typeface
-        get() = getTypeface(style.hanbFont.toList())
+        get() = getTypeface(style.hanbFont)
 
     val latin: Typeface
-        get() = getTypeface(style.latinFont.toList())
+        get() = getTypeface(style.latinFont)
 
     val candidate: Typeface
-        get() = getTypeface(style.candidateFont.toList())
+        get() = getTypeface(style.candidateFont)
 
     val comment: Typeface
-        get() = getTypeface(style.commentFont.toList())
+        get() = getTypeface(style.commentFont)
 
     val key: Typeface
-        get() = getTypeface(style.keyFont.toList())
+        get() = getTypeface(style.keyFont)
 
     val label: Typeface
-        get() = getTypeface(style.labelFont.toList())
+        get() = getTypeface(style.labelFont)
 
     val popup: Typeface
-        get() = getTypeface(style.popupFont.toList())
+        get() = getTypeface(style.popupFont)
 
     val symbol: Typeface
-        get() = getTypeface(style.symbolFont.toList())
+        get() = getTypeface(style.symbolFont)
 
     val text: Typeface
-        get() = getTypeface(style.textFont.toList())
+        get() = getTypeface(style.textFont)
 
     val toolbar: Typeface
-        get() = getTypeface(theme.toolBar.buttonFont.toList())
+        get() = getTypeface(theme.toolBar.buttonFont)
 
     private fun makeFileStateList(names: List<String>): List<FileState> = names.asSequence()
         .map { File(fontDir, it) }
@@ -90,7 +90,7 @@ class ThemeFonts(private val theme: Theme) {
             val newTypeface = if (key.files.isEmpty()) {
                 Typeface.DEFAULT
             } else if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
-                val bulk = makeFileStateList(style.latinFont.toList() + fonts + style.hanbFont.toList())
+                val bulk = makeFileStateList(style.latinFont + fonts + style.hanbFont)
                 val fontFamilies = bulk.map { getFontFamily(it) }
                 Typeface.CustomFallbackBuilder(fontFamilies.first())
                     .apply {
