@@ -204,6 +204,11 @@ open class TrimeInputMethodService : LifecycleInputMethodService() {
                 ThemeManager.addOnChangedListener(onThemeChangeListener)
                 ColorManager.addOnChangedListener(onColorChangeListener)
             }
+            // 键盘先于 Rime 就绪弹出时建不了视图，而上面的初始化不会通知监听器，这里补建，否则一直白屏
+            if (isInputViewShown && inputView == null) {
+                ensureInputView()
+                currentInputEditorInfo?.let { inputView?.startInput(it, false) }
+            }
         }
         InputFeedbackManager.init(this)
         registerReceiver()
@@ -317,6 +322,11 @@ open class TrimeInputMethodService : LifecycleInputMethodService() {
         navBarManager.evaluate(window.window!!, true, scope.colors)
         replaceInputView(scope)
         inputView?.updateEnterKeyLabel(currentInputEditorInfo)
+    }
+
+    private fun ensureInputView() {
+        if (inputView != null) return
+        themeScope?.let { replaceInputViews(it) }
     }
 
     override fun onDestroy() {
@@ -533,6 +543,7 @@ open class TrimeInputMethodService : LifecycleInputMethodService() {
         postRimeJob {
             updateRimeOption(this)
         }
+        ensureInputView()
         inputView?.startInput(attribute, restarting)
     }
 
