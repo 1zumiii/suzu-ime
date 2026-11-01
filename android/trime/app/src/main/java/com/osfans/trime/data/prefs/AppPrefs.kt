@@ -118,7 +118,6 @@ class AppPrefs(
     ) : PreferenceDelegateOwner(shared, R.string.virtual_keyboard) {
         companion object {
             const val LANDSCAPE_MODE = "keyboard_landscape_mode"
-            const val SPLIT_SPACE_PERCENT = "keyboard_split_space"
 
             const val USE_SOFT_CURSOR = "use_soft_cursor"
             const val HIDE_INPUT_BAR = "hide_input_bar"
@@ -168,14 +167,6 @@ class AppPrefs(
         }
 
         val landscapeMode = enum(R.string.enable_landscape_mode, LANDSCAPE_MODE, LandscapeMode.NEVER)
-        val splitSpacePercent = int(
-            R.string.split_space_percent,
-            SPLIT_SPACE_PERCENT,
-            100,
-            0,
-            200,
-            "%",
-        )
 
         val useSoftCursor = switch(R.string.use_soft_cursor, USE_SOFT_CURSOR, true)
 

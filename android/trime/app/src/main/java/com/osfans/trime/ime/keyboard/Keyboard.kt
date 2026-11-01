@@ -88,9 +88,6 @@ class Keyboard(
     var lastAsciiMode: Boolean = asciiMode
 
     val landscapeKeyboard: String? = selfConfig?.landscapeKeyboard
-    private val preferredSplitPercent by AppPrefs.defaultInstance().keyboard.splitSpacePercent
-    private val landscapePercent =
-        resolvePositive(selfConfig?.landscapeSplitPercent, preferredSplitPercent)
 
     // Variables for pre-computing nearest keys.
     private val labelTransform = selfConfig?.labelTransform ?: TextKeyboard.LabelTransform.NONE
@@ -126,11 +123,7 @@ class Keyboard(
 
             val maxColumns = if (selfConfig.columns == -1) Int.MAX_VALUE else selfConfig.columns
 
-            val isSplit = context.isLandscapeMode() && landscapePercent > 0
-            val splitRatio = if (isSplit) landscapePercent / 100f else 0f
-
-            val oneWeightWidthPx =
-                allowedWidth.toFloat() / (MAX_TOTAL_WEIGHT * (1 + splitRatio))
+            val oneWeightWidthPx = allowedWidth.toFloat() / MAX_TOTAL_WEIGHT
 
             // total width weight for each row.
             val rowWidthTotalWeight = mutableListOf<Float>()
@@ -203,11 +196,7 @@ class Keyboard(
             var row = 0
             column = 0
 
-            var rowWeightAccumulo = 0f
             var currentRowHeight = rowHeightScaled[0]
-
-            // indicates whether the split gap has been inserted in the current row
-            var splitInserted = false
 
             minWidth = 0
 
@@ -219,7 +208,7 @@ class Keyboard(
                 val keyWidthWeight =
                     if (textKey.width == 0f && textKey.click.orAbsent != null) keyboardKeyWidth else textKey.width
 
-                var widthPx = (keyWidthWeight * oneWeightWidthPx).toInt()
+                val widthPx = (keyWidthWeight * oneWeightWidthPx).toInt()
 
                 // wrap to next row if limits are exceeded
                 if (column >= maxColumns || xPos + widthPx > allowedWidth) {
@@ -227,27 +216,7 @@ class Keyboard(
                     yPos += currentRowHeight
                     row++
                     column = 0
-                    rowWeightAccumulo = 0f
-                    splitInserted = false
                     currentRowHeight = rowHeightScaled[row]
-                }
-
-                rowWeightAccumulo += keyWidthWeight
-
-                val totalWeight = rowWidthTotalWeight[row]
-
-                // if split keyboard layout is enabled, insert split gap at row middle when cumulative width > 50%
-                if (isSplit && !splitInserted && rowWeightAccumulo > totalWeight * 0.5f) {
-                    splitInserted = true
-                    val gap = (totalWeight * splitRatio * oneWeightWidthPx).toInt()
-
-                    // large keys absorb the gap; small keys shift right
-                    if (keyWidthWeight > 20f) {
-                        widthPx += gap
-                    } else {
-                        if (expandKeypressArea) spacers.add(Triple(xPos, gap, row))
-                        xPos += gap
-                    }
                 }
 
                 if (textKey.click.orAbsent == null) {
