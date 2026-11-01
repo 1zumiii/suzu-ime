@@ -73,11 +73,6 @@ object ThemeLoader {
         data class Success(
             val themeId: String,
             val theme: Theme,
-            /**
-             * What static checks found in the theme, or null when the checks
-             * could not run at all.
-             */
-            val findings: List<ThemeDiagnostics.Finding>? = null,
         ) : ThemeLoadResult
 
         data class Failure(
@@ -148,12 +143,7 @@ object ThemeLoader {
         if (theme.presetColorSchemes.isEmpty()) {
             return ThemeLoadResult.Failure(themeId, ThemeLoadError.NoColorScheme(themeId))
         }
-        val findings =
-            runCatching { ThemeDiagnostics.lint(theme, mapping) }
-                .onFailure { Timber.w(it, "Theme '%s': diagnostics failed", themeId) }
-                .getOrNull()
-        findings?.let { ThemeDiagnostics.log(themeId, it) }
-        return ThemeLoadResult.Success(themeId, theme, findings)
+        return ThemeLoadResult.Success(themeId, theme)
     }
 
     /**
