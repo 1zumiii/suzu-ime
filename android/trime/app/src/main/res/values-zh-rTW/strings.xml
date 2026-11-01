@@ -7,17 +7,13 @@
 
 <resources xmlns:xliff="urn:oasis:names:tc:xliff:document:1.2">
     <!-- 輸入法平臺名稱  -->
-    <string name="app_name_release">同文輸入法</string>
-    <string name="app_name_debug">同文輸入法（除錯模式）</string>
+    <string name="app_name_release">Suzu 輸入法</string>
+    <string name="app_name_debug">Suzu 輸入法（除錯）</string>
     <!-- Preference settings -->
-    <string name="qq_group_1">同文 QQ 羣 1</string>
-    <string name="qq_group_2">同文 QQ 羣 2</string>
-    <string name="rime_qq_group">中州韻 QQ 羣</string>
     <string name="librime_version">RIME 版本</string>
     <string name="opencc_version">OpenCC 版本</string>
     <string name="current_version">當前版本</string>
     <string name="license">許可證</string>
-    <string name="privacy_policy">隱私權政策</string>
     <string name="build_info_format">建構者：%1$s\n建構 Git 雜湊值：%2$s\n建構時間：%3$s</string>
     <string name="selected_theme">主題</string>
     <string name="selected_theme_summary">選取想要的主題</string>
@@ -65,12 +61,12 @@
     <string name="open_source_licenses">開放源代碼軟體許可</string>
     <string name="system_default">系統預設</string>
     <string name="key_swipe_travel">觸發滑動手勢的最短距離</string>
-    <string name="trime_app_slogan">擊響中文之韻</string>
+    <string name="trime_app_slogan">基於同文輸入法</string>
     <string name="custom_sound_effect_name">自訂按鍵音效</string>
     <string name="setup__next">下一步</string>
     <string name="done">完成</string>
-    <string name="setup__enable_ime_hint">在語言和輸入設定中啟用<b>同文輸入法</b></string>
-    <string name="setup__select_ime_hint">選擇<b>同文輸入法</b>作為預設輸入法</string>
+    <string name="setup__enable_ime_hint">在語言和輸入設定中啟用<b>Suzu 輸入法</b></string>
+    <string name="setup__select_ime_hint">選擇<b>Suzu 輸入法</b>作為預設輸入法</string>
     <string name="setup__enable_ime">啟用輸入法</string>
     <string name="setup__select_ime">選擇輸入法</string>
     <string name="setup__prev">上一步</string>
@@ -78,7 +74,7 @@
     <string name="setup__step_one">第 1 步</string>
     <string name="setup__step_two">第 2 步</string>
     <string name="setup__skip">跳過</string>
-    <string name="setup__skip_hint">略過設定？之後可在「設定 → 詞庫」中啟用選用功能。</string>
+    <string name="setup__skip_hint">略過設定？之後可在「設定 → 模型」中啟用選用功能。</string>
     <string name="setup__skip_hint_yes">略過</string>
     <string name="setup__skip_hint_no">繼續設定</string>
     <string name="follow_system_day_night_color">跟隨系統設定主題色調</string>
@@ -88,7 +84,6 @@
     <string name="hook_ctrl_zy">攔截 Ctrl+Z/Y</string>
     <string name="key_swipe_velocity">觸發按鍵滑動手勢的速度（距離/速度滿足其一即可）</string>
     <string name="build_info">建構資訊</string>
-    <string name="telegram">Telegram</string>
     <string name="quick_bar">快捷欄</string>
     <string name="copy_done">已複製</string>
     <string name="hook_shift_space">點擊空格時，忽略Shift的鎖定狀態</string>
@@ -129,7 +124,6 @@
     <string name="use_app_specific_storage">使用應用專用存儲空間</string>
     <string name="sync_from_external_desc">每次部署或同步使用者資料前，從指定目錄匯入資料到內部儲存空間，並在同步使用者資料後匯出到該目錄。需要較多儲存空間。建議有經驗的使用者使用。</string>
     <string name="use_app_specific_storage_desc">直接使用應用程式內部私有儲存空間，使用者需要使用支援的檔案管理器管理資料。解除安裝應用程式時，系統可能會詢問是否保留資料，請隨時做好備份。</string>
-    <string name="external_sync_select_folder_message">外部同步需要選擇資料資料夾。請選擇存放 Trime 設定檔的位置。</string>
     <string name="external_sync_fallback_app_storage">資料夾選擇失敗或已取消。儲存模式將還原為使用應用程式專屬儲存空間。</string>
     <string name="external_sync_missing_tree_fallback">外部資料資料夾缺失或無法存取，已切換為應用程式專屬儲存空間。如需繼續外部同步，請在設定中重新選擇資料夾。</string>
     <string name="maintenance">維護</string>
@@ -155,8 +149,6 @@
     <string name="enable_landscape_mode">啟用橫屏模式</string>
     <string name="split_space_percent">自動分割鍵盤比例</string>
     <string name="setup__step_three">第 3 步</string>
-    <string name="setup__select_data_path_hint">選擇<b>同文輸入法</b>如何儲存 Rime 資料</string>
-    <string name="setup__select_data_path">選擇外部資料夾…</string>
     <string name="setup__data_path_imported">資料夾匯入成功</string>
     <string name="setup__data_path_import_failed">資料夾匯入失敗</string>
     <string name="select_another_directory_to_sync">要選擇另一個資料夾進行同步嗎？</string>
@@ -248,7 +240,6 @@
     <string name="landscape_only">僅限橫屏</string>
     <string name="wide_or_landscape">寬屏或橫屏</string>
     <string name="always">始終</string>
-    <string name="preferred_voice_input">首選語音輸入</string>
     <string name="no_voice_input_installed">尚未安裝語音輸入</string>
     <string name="inline_suggestions">顯示內嵌自動填充建議</string>
     <string name="update_config">重新載入設定</string>
@@ -291,4 +282,6 @@
     <string name="suzu_file_save_failed">無法儲存檔案，請檢查儲存空間後重試。</string>
     <string name="suzu_download_http_error">下載請求失敗（HTTP %1$d），請稍後重試。</string>
     <string name="suzu_file_checksum_failed">檔案驗證失敗，請重新下載。若仍失敗，可能是來源檔案已更新。</string>
+    <string name="models">模型</string>
+    <string name="based_on_trime">基於同文輸入法（Trime）</string>
 </resources>

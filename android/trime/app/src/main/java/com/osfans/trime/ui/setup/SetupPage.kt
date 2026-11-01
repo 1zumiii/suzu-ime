@@ -19,7 +19,7 @@ import com.osfans.trime.data.base.DataManager
 import com.osfans.trime.util.InputMethodUtils
 import com.osfans.trime.util.appContext
 
-/** 前两步是必需的；后面都可以跳过，跳过的功能保持关闭，之后可在设置的“词库”页补上 */
+/** 前两步是必需的；后面都可以跳过，跳过的功能保持关闭，之后可在设置的“模型”页补上 */
 enum class SetupPage(val required: Boolean) {
     Enable(true),
     Select(true),

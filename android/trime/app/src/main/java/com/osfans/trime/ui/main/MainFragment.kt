@@ -51,6 +51,11 @@ class MainFragment : PaddingPreferenceFragment() {
                 NavigationRoute.DictPacks,
             )
             addDestinationPreference(
+                R.string.models,
+                R.drawable.ic_baseline_smart_toy_24,
+                NavigationRoute.Models,
+            )
+            addDestinationPreference(
                 R.string.user_dictionary,
                 R.drawable.ic_baseline_book_24,
                 NavigationRoute.UserDict,
