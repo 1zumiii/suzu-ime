@@ -307,6 +307,8 @@ open class TrimeInputMethodService : LifecycleInputMethodService() {
 
     private fun replaceInputView(scope: ThemeScope): InputView {
         val newInputView = InputView(this, rime, scope)
+        // 只有屏幕键盘，视图建好就接收 Rime 的消息（原先由 InputDeviceManager 打开）
+        newInputView.handleMessages = true
         setInputView(newInputView)
         inputView = newInputView
         return newInputView
