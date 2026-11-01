@@ -22,7 +22,6 @@ import com.osfans.trime.data.theme.ThemeScope
 import com.osfans.trime.ime.bar.ui.ToolButton
 import com.osfans.trime.ime.broadcast.InputBroadcastReceiver
 import com.osfans.trime.ime.core.TrimeInputMethodService
-import com.osfans.trime.ime.dialog.EnabledSchemaPickerDialog
 import com.osfans.trime.ime.window.BoardWindow
 import com.osfans.trime.util.AppUtils
 import kotlinx.coroutines.launch
@@ -48,19 +47,14 @@ class SwitchOptionWindow(di: DI) :
     private val staticEntries by lazy {
         arrayOf(
             SwitchOptionEntry.Static(
-                context.getString(R.string.schemata),
+                context.getString(R.string.dict_packs),
                 R.drawable.ic_round_view_list_24,
-                SwitchOptionEntry.Static.Type.SchemaList,
+                SwitchOptionEntry.Static.Type.DictPacks,
             ),
             SwitchOptionEntry.Static(
                 context.getString(R.string.update_config),
                 R.drawable.ic_baseline_sync_24,
                 SwitchOptionEntry.Static.Type.UpdateConfig,
-            ),
-            SwitchOptionEntry.Static(
-                "从仓库更新",
-                R.drawable.ic_baseline_cloud_download_24,
-                SwitchOptionEntry.Static.Type.RepoUpdate,
             ),
             SwitchOptionEntry.Static(
                 "模块状态",
@@ -110,13 +104,7 @@ class SwitchOptionWindow(di: DI) :
             ) {
                 when (entry) {
                     is SwitchOptionEntry.Static -> when (entry.type) {
-                        SwitchOptionEntry.Static.Type.SchemaList -> showDialog { r ->
-                            EnabledSchemaPickerDialog.build(r, service.lifecycleScope, context) {
-                                setNegativeButton(R.string.enable_schemata) { _, _ ->
-                                    AppUtils.launchMainToSchemaList(context)
-                                }
-                            }
-                        }
+                        SwitchOptionEntry.Static.Type.DictPacks -> AppUtils.launchMainToDictPacks(context)
 
                         SwitchOptionEntry.Static.Type.UpdateConfig -> rime.launchOnReady { r ->
                             r.updateConfig()
@@ -124,11 +112,6 @@ class SwitchOptionWindow(di: DI) :
                                 Toast.makeText(service, R.string.done, Toast.LENGTH_SHORT).show()
                             }
                         }
-
-                        SwitchOptionEntry.Static.Type.RepoUpdate -> context.startActivity(
-                            android.content.Intent(context, com.osfans.trime.update.ConfigUpdateActivity::class.java)
-                                .addFlags(android.content.Intent.FLAG_ACTIVITY_NEW_TASK),
-                        )
 
                         SwitchOptionEntry.Static.Type.ModuleStatus -> context.startActivity(
                             android.content.Intent(context, com.osfans.trime.suzu.ModuleStatusActivity::class.java)

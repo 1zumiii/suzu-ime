@@ -80,13 +80,6 @@ SPDX-License-Identifier: GPL-3.0-or-later
             android:launchMode="singleTask"
             android:theme="@style/Theme.DialogTheme" />
 
-        <activity
-            android:name=".update.ConfigUpdateActivity"
-            android:exported="false"
-            android:label="更新配置"
-            android:launchMode="singleTask"
-            android:theme="@style/Theme.DialogTheme"
-            android:windowSoftInputMode="adjustResize" />
 
         <activity
             android:name=".ui.setup.SetupActivity"

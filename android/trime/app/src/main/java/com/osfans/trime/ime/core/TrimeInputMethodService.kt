@@ -186,7 +186,6 @@ open class TrimeInputMethodService : LifecycleInputMethodService() {
 
     override fun onCreate() {
         rime = RimeDaemon.createSession(javaClass.name)
-        com.osfans.trime.update.ConfigUpdater.runPendingDeploy()
         lifecycleScope.launch {
             jobs.consumeEach { it.join() }
         }

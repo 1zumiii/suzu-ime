@@ -15,11 +15,11 @@ import android.os.Looper
 import android.view.Gravity
 import android.view.ViewGroup
 import android.view.Window
+import android.widget.Button
 import android.widget.LinearLayout
 import android.widget.ScrollView
 import android.widget.TextView
 import com.osfans.trime.data.base.DataManager
-import com.osfans.trime.update.ConfigUpdater
 import org.json.JSONObject
 import java.io.File
 
@@ -188,7 +188,7 @@ class ModuleStatusActivity : Activity() {
         add(row(sz.first, "Shizuku（拉起守护进程）", sz.second))
 
         add(section("排序"))
-        val schema = dir.resolve("build/rime_ice.schema.yaml")
+        val schema = dir.resolve("build/${DictPacks.SCHEMA}.schema.yaml")
         val ranker =
             try {
                 // 方案里没写 ranker 时用代码里的默认值：统一排序
@@ -214,9 +214,51 @@ class ModuleStatusActivity : Activity() {
         toggle("选词统计", "select_stats.enabled", "select_stats.tsv")
         add(row(GRAY, "最近使用词 / 词对", "${lines(dir.resolve("recent_words.tsv"))} / ${lines(dir.resolve("recent_pairs.tsv"))}"))
 
-        add(section("配置"))
-        val v = ConfigUpdater.version.ifEmpty { "未通过仓库更新过" }
-        add(row(GRAY, "配置版本", v))
+        add(section("方案与词库"))
+        val sources = runCatching { assets.open("suzu_sources.txt").bufferedReader().readLines() }.getOrDefault(emptyList())
+        for (line in sources.filter { !it.startsWith("词库包 ") }) {
+            val (name, rev) = line.split(' ', limit = 2).let { it[0] to it.getOrElse(1) { "" } }
+            add(row(if (rev.endsWith("-dirty")) YELLOW else GRAY, name, rev.ifEmpty { "未知" }))
+        }
+        val pack = DictPacks.active()
+        add(
+            row(
+                if (pack != null) GREEN else RED,
+                "词库包",
+                pack?.let { "${PackInstaller.title(it)} ${DictPacks.info(it)["commit"]?.take(7).orEmpty()}" } ?: "没有启用",
+            ),
+        )
+        val migration = SuzuMigration.state()
+        val failed = migration["failed"]
+        when {
+            failed != null -> {
+                add(row(RED, "旧数据迁移", "没有完成：$failed，正在用旧配置"))
+                add(
+                    Button(this).apply {
+                        text = "下次启动时重试迁移"
+                        setOnClickListener {
+                            SuzuMigration.clearFailure()
+                            text = "已安排，重新部署或重启手机后生效"
+                        }
+                    },
+                )
+            }
+            migration["merged"] == "1" ->
+                add(row(GREEN, "旧数据迁移", "已完成，用户词典 ${migration["count.suzu"]} 条"))
+            else -> add(row(GRAY, "旧数据迁移", "不需要"))
+        }
+        // Rime 先读用户目录：这里有同名文件就会盖住 APK 自带的配置
+        val shared = DataManager.sharedDataDir
+        val overriding = (shared.list().orEmpty().filter { shared.resolve(it).isFile && it != "custom_phrase.txt" } +
+            shared.resolve("lua").list().orEmpty().map { "lua/$it" })
+            .filter { dir.resolve(it).isFile }
+        add(
+            row(
+                if (overriding.isEmpty()) GREEN else YELLOW,
+                "用户目录覆盖文件",
+                if (overriding.isEmpty()) "没有" else "${overriding.size} 个盖住了 APK 配置：${overriding.joinToString("、")}",
+            ),
+        )
     }
 
     private companion object {

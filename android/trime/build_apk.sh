@@ -45,7 +45,7 @@ else
   git -C "$RIME_SUZU" archive "$RIME_SUZU_REF" | tar -x -C "$RS"
   RS_REV="$(git -C "$RIME_SUZU" rev-parse --short "$RIME_SUZU_REF")"
 fi
-python3 -I "$SRC/gen_assets.py" --rime-suzu "$RS" --assets "$SRC/app/src/main/assets" --pack "${PACK:-frost}" \
+python3 -I "$SRC/gen_assets.py" --rime-suzu "$RS" --assets "$SRC/app/src/main/assets" --pack "${PACK:-frost}" --pack-out "$W/dict-packs" \
   --sources "suzu-ime $REV" "rime-suzu $RS_REV"
 
 # 2. 客户端库与守护进程（由 core/ 交叉编译，客户端链接到 Trime 自己的 librime_jni.so 以解析 lua_*）

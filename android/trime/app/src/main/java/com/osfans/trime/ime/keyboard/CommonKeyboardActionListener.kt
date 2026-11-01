@@ -24,7 +24,6 @@ import com.osfans.trime.data.theme.ThemeManager
 import com.osfans.trime.data.theme.model.LiquidKeyboard
 import com.osfans.trime.ime.clipboard.ClipboardWindow
 import com.osfans.trime.ime.core.TrimeInputMethodService
-import com.osfans.trime.ime.dialog.EnabledSchemaPickerDialog
 import com.osfans.trime.ime.switches.SwitchOptionWindow
 import com.osfans.trime.ime.symbol.LiquidWindow
 import com.osfans.trime.ime.window.BoardWindowManager
@@ -67,16 +66,6 @@ class CommonKeyboardActionListener(override val di: DI) : DIAware {
     private fun showSoundEffectPicker() {
         showDialog {
             SoundEffectPickerDialog.build(service.lifecycleScope, context)
-        }
-    }
-
-    private fun showEnabledSchemaPicker() {
-        showDialog { api ->
-            EnabledSchemaPickerDialog.build(api, service.lifecycleScope, context) {
-                setNegativeButton(R.string.enable_schemata) { _, _ ->
-                    AppUtils.launchMainToSchemaList(context)
-                }
-            }
         }
     }
 
@@ -123,7 +112,6 @@ class CommonKeyboardActionListener(override val di: DI) : DIAware {
                         KeyEvent.KEYCODE_LANGUAGE_SWITCH -> handleLanguageSwitch(action)
                         KeyEvent.KEYCODE_FUNCTION -> handleFunctionCommand(action)
                         KeyEvent.KEYCODE_SETTINGS -> handleSettings(action)
-                        KeyEvent.KEYCODE_MENU -> showEnabledSchemaPicker()
                         KeyEvent.KEYCODE_VOICE_ASSIST -> switchToVoiceInputMethod()
                         else -> handleDefaultKeyAction(action)
                     }
@@ -293,7 +281,7 @@ class CommonKeyboardActionListener(override val di: DI) : DIAware {
 
             private fun handleSettings(action: KeyAction) {
                 when (action.option) {
-                    "schema" -> AppUtils.launchMainToSchemaList(context)
+                    "schema" -> AppUtils.launchMainToDictPacks(context)
                     "sound" -> showSoundEffectPicker()
                     else -> AppUtils.launchMainActivity(service)
                 }

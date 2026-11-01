@@ -479,6 +479,7 @@ app/src/main/assets/shared/*
 !app/src/main/assets/shared/tongwenfeng.trime.yaml
 app/src/main/assets/rime/
 app/src/main/assets/suzu_sources.txt
+app/src/main/assets/suzu_packs.tsv
 app/src/main/assets/.pack-tmp/
 
 # boost

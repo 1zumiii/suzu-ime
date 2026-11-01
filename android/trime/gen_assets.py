@@ -6,16 +6,20 @@
   rime/<词库目录>/    默认词库包，同步到用户目录；包的主词典与说明放在包目录里，由 App 启用时写到用户目录
   rime/opencc/       rime-suzu 的 OpenCC 配置（emoji 等）。shared/opencc 归 OpenCC 数据任务管，不往里放
   suzu_sources.txt   来源提交，状态页显示
+  suzu_packs.tsv     可下载的词库包清单（名字、说明、许可证、提交、下载地址、sha256、大小）
+另外把每个词库包打成内容确定的 zip 放进 --pack-out（同样的提交总是得到同样的 sha256），发布到下载地址。
 shared/ 里由 Trime 仓库跟踪的主题文件（trime.yaml、tongwenfeng.trime.yaml）和 opencc/ 保留，其余每次重新生成。
 
-用法：gen_assets.py --rime-suzu <目录> --assets <目录> --pack <包名> --sources <说明行>...
+用法：gen_assets.py --rime-suzu <目录> --assets <目录> --pack <包名> --pack-out <目录> --sources <说明行>...
 """
 import argparse
 import os
 import re
 import shutil
+import hashlib
 import subprocess
 import sys
+import zipfile
 
 BASE = "rime_ice"          # rime-suzu 里的基座方案
 SCHEMA = "suzu"
@@ -28,6 +32,7 @@ EXCLUDE_TOP = {
     f"{BASE}.dict.yaml", "recent_words.tsv",
 }
 EXCLUDE_SUFFIX = (".userdb", ".gram", ".gguf", "luac.out")
+PACK_URL = "https://github.com/1zumiii/rime-suzu/releases/download/dict-packs/{file}"
 LUNAR_OLD = "ReverseDb( 'lua/lunar.db' )"
 LUNAR_NEW = "ReverseDb(rime_api.get_shared_data_dir() .. '/lua/lunar.db')"   # Lua 的 ReverseDb 只认用户目录下的相对路径
 
@@ -124,24 +129,67 @@ def overlay_lua(repo, shared):
             shutil.copy2(os.path.join(src, name), os.path.join(shared, "lua", name))
 
 
-def make_pack(src, assets, pack):
-    tmp = os.path.join(assets, ".pack-tmp")
+def build_pack(src, pack, dest):
+    """装一个包到 dest：cn_dicts_<包>/（含 pack.main.yaml、pack.lock）及 cn_dicts_<包>_cell/ 等"""
+    tmp = dest + ".tmp"
     shutil.rmtree(tmp, ignore_errors=True)
     os.makedirs(tmp)
     into = f"cn_dicts_{pack}"
     subprocess.run([sys.executable, "-I", os.path.join(src, "tools", "dict_pack.py"), "install", pack,
                     "--rime-dir", tmp, "--into", into, "--schema", SCHEMA], check=True, stdout=subprocess.DEVNULL)
-    rime = os.path.join(assets, "rime")
-    shutil.rmtree(rime, ignore_errors=True)
-    os.makedirs(rime)
+    os.makedirs(dest, exist_ok=True)
     for name in sorted(os.listdir(tmp)):
         if name.startswith(into):
-            shutil.move(os.path.join(tmp, name), os.path.join(rime, name))
+            shutil.move(os.path.join(tmp, name), os.path.join(dest, name))
     # 主词典与锁文件随包放在包目录里，App 启用这个包时复制到用户目录
-    shutil.move(os.path.join(tmp, f"{SCHEMA}.dict.yaml"), os.path.join(rime, into, "pack.main.yaml"))
-    shutil.move(os.path.join(tmp, "dict_pack.lock"), os.path.join(rime, into, "pack.lock"))
+    shutil.move(os.path.join(tmp, f"{SCHEMA}.dict.yaml"), os.path.join(dest, into, "pack.main.yaml"))
+    shutil.move(os.path.join(tmp, "dict_pack.lock"), os.path.join(dest, into, "pack.lock"))
     shutil.rmtree(tmp)
+
+
+def zip_dir(root, out):
+    """内容确定的 zip：条目排序、时间戳与权限固定"""
+    with zipfile.ZipFile(out, "w", zipfile.ZIP_DEFLATED, compresslevel=9) as z:
+        for dirpath, dirnames, files in os.walk(root):
+            dirnames.sort()
+            for f in sorted(files):
+                p = os.path.join(dirpath, f)
+                info = zipfile.ZipInfo(os.path.relpath(p, root).replace(os.sep, "/"), (1980, 1, 1, 0, 0, 0))
+                info.compress_type = zipfile.ZIP_DEFLATED
+                info.external_attr = 0o644 << 16
+                with open(p, "rb") as fh:
+                    z.writestr(info, fh.read(), compresslevel=9)
+
+
+def packs_table(src):
+    with open(os.path.join(src, "packs", "packs.tsv"), encoding="utf-8") as f:
+        rows = [l.rstrip("\n").split("\t") for l in f if l.strip() and not l.startswith("#")]
+    head = rows[0]
+    return [dict(zip(head, r)) for r in rows[1:]]
+
+
+def make_packs(src, assets, default, pack_out):
+    rime = os.path.join(assets, "rime")
+    shutil.rmtree(rime, ignore_errors=True)
+    build_pack(src, default, rime)
     shutil.copytree(os.path.join(src, "opencc"), os.path.join(rime, "opencc"))
+    os.makedirs(pack_out, exist_ok=True)
+    lines = []
+    for row in packs_table(src):
+        name = row["name"]
+        work = os.path.join(pack_out, f".{name}")
+        shutil.rmtree(work, ignore_errors=True)
+        build_pack(src, name, work)
+        file = f"{name}-{row['commit'][:12]}.zip"
+        zip_dir(work, os.path.join(pack_out, file))
+        shutil.rmtree(work)
+        with open(os.path.join(pack_out, file), "rb") as fh:
+            data = fh.read()
+        title = re.split("[：（]", row.get("note", name))[0]
+        lines.append("\t".join([name, title, row.get("license", ""), row["commit"], PACK_URL.format(file=file),
+                                hashlib.sha256(data).hexdigest(), str(len(data))]))
+    write(os.path.join(assets, "suzu_packs.tsv"), "name\ttitle\tlicense\tcommit\turl\tsha256\tsize\n" + "".join(l + "\n" for l in lines))
+    return len(lines)
 
 
 def main():
@@ -149,6 +197,7 @@ def main():
     ap.add_argument("--rime-suzu", required=True)
     ap.add_argument("--assets", required=True)
     ap.add_argument("--pack", default="frost")
+    ap.add_argument("--pack-out", required=True)
     ap.add_argument("--sources", nargs="*", default=[])
     a = ap.parse_args()
     repo = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
@@ -157,10 +206,10 @@ def main():
     copy_config(a.rime_suzu, shared)
     overlay_lua(repo, shared)
     make_suzu(a.rime_suzu, shared)
-    make_pack(a.rime_suzu, a.assets, a.pack)
+    n_packs = make_packs(a.rime_suzu, a.assets, a.pack, a.pack_out)
     write(os.path.join(a.assets, "suzu_sources.txt"), "".join(s + "\n" for s in a.sources + [f"词库包 {a.pack}"]))
     n = sum(len(fs) for _, _, fs in os.walk(shared))
-    print(f"已生成：shared {n} 个文件，默认词库包 {a.pack}")
+    print(f"已生成：shared {n} 个文件，默认词库包 {a.pack}，可下载的包 {n_packs} 个（{a.pack_out}）")
 
 
 if __name__ == "__main__":
