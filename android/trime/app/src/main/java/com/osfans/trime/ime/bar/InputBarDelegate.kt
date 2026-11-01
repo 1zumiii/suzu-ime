@@ -28,11 +28,11 @@ import com.osfans.trime.data.db.ClipboardHelper
 import com.osfans.trime.data.prefs.AppPrefs
 import com.osfans.trime.data.theme.Theme
 import com.osfans.trime.data.theme.ThemeScope
-import com.osfans.trime.ime.bar.ui.AiStatusButtonAction
+import com.osfans.trime.suzu.AiStatusButtonAction
 import com.osfans.trime.ime.bar.ui.AlwaysUi
-import com.osfans.trime.ime.core.SuzuFix
+import com.osfans.trime.suzu.SuzuFix
 import com.osfans.trime.ime.bar.ui.CandidateUi
-import com.osfans.trime.ime.bar.ui.FixChoicesUi
+import com.osfans.trime.suzu.FixChoicesUi
 import com.osfans.trime.ime.bar.ui.TabUi
 import com.osfans.trime.ime.broadcast.InputBroadcastReceiver
 import com.osfans.trime.ime.candidates.compact.CompactCandidateDelegate

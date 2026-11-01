@@ -3,7 +3,7 @@
  * SPDX-License-Identifier: GPL-3.0-or-later
  */
 
-package com.osfans.trime.update
+package com.osfans.trime.suzu
 
 import android.app.Activity
 import android.graphics.Color
@@ -19,7 +19,7 @@ import android.widget.LinearLayout
 import android.widget.ScrollView
 import android.widget.TextView
 import com.osfans.trime.data.base.DataManager
-import com.osfans.trime.ime.bar.ui.AiDaemonLauncher
+import com.osfans.trime.update.ConfigUpdater
 import org.json.JSONObject
 import java.io.File
 

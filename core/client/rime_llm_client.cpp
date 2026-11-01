@@ -360,8 +360,8 @@ extern "C" __attribute__((visibility("default"))) int luaopen_rime_llm(lua_State
     return 1;
 }
 
-// Trime 的 com.osfans.trime.ime.core.SuzuAppContext.nativeSet(ByteArray)：参数是 UTF-8 字节
-extern "C" JNIEXPORT void JNICALL Java_com_osfans_trime_ime_core_SuzuAppContext_nativeSet(JNIEnv * env, jclass, jbyteArray utf8) {
+// Trime 的 com.osfans.trime.suzu.SuzuAppContext.nativeSet(ByteArray)：参数是 UTF-8 字节
+extern "C" JNIEXPORT void JNICALL Java_com_osfans_trime_suzu_SuzuAppContext_nativeSet(JNIEnv * env, jclass, jbyteArray utf8) {
     std::string t;
     if (utf8) {
         jsize n = env->GetArrayLength(utf8);
@@ -399,7 +399,7 @@ Connection & fix_conn() {
 
 // SuzuFix.nativeTake(所选词 UTF-8)：登记的词与之相同时返回 [类别, 候选…]（UTF-8 字节数组的数组；类别 "1" 为选了
 // AI 改过的首位，"0" 为其他）并清空，否则返回 null
-extern "C" JNIEXPORT jobjectArray JNICALL Java_com_osfans_trime_ime_core_SuzuFix_nativeTake(JNIEnv * env, jclass, jbyteArray word) {
+extern "C" JNIEXPORT jobjectArray JNICALL Java_com_osfans_trime_suzu_SuzuFix_nativeTake(JNIEnv * env, jclass, jbyteArray word) {
     std::string w = bytes_of(env, word);
     std::vector<std::string> cands;
     {
@@ -422,7 +422,7 @@ extern "C" JNIEXPORT jobjectArray JNICALL Java_com_osfans_trime_ime_core_SuzuFix
 
 // SuzuFix.nativeScore(上文, 候选[], 时限毫秒)：各候选在上文之后的分数（各字对数概率之和），与输入同序；
 // 不打分（上文不足、守护进程不在、超时、AI 关）时返回 null
-extern "C" JNIEXPORT jdoubleArray JNICALL Java_com_osfans_trime_ime_core_SuzuFix_nativeScore(JNIEnv * env, jclass, jbyteArray ctx,
+extern "C" JNIEXPORT jdoubleArray JNICALL Java_com_osfans_trime_suzu_SuzuFix_nativeScore(JNIEnv * env, jclass, jbyteArray ctx,
                                                                                             jobjectArray cands, jint budget) {
     Connection & c = fix_conn();
     if (c.token_dir().empty()) {
@@ -456,7 +456,7 @@ extern "C" JNIEXPORT jdoubleArray JNICALL Java_com_osfans_trime_ime_core_SuzuFix
 }
 
 // SuzuFix.nativeLookupPut(文字 UTF-8, 光标位置)：放入一条词库查询，返回编号（之前没取走的请求作废）
-extern "C" JNIEXPORT jlong JNICALL Java_com_osfans_trime_ime_core_SuzuFix_nativeLookupPut(JNIEnv * env, jclass, jbyteArray text,
+extern "C" JNIEXPORT jlong JNICALL Java_com_osfans_trime_suzu_SuzuFix_nativeLookupPut(JNIEnv * env, jclass, jbyteArray text,
                                                                                           jint cursor) {
     std::string t = bytes_of(env, text);
     std::lock_guard<std::mutex> lk(g_lk_mu);
@@ -471,7 +471,7 @@ extern "C" JNIEXPORT jlong JNICALL Java_com_osfans_trime_ime_core_SuzuFix_native
 
 // SuzuFix.nativeLookupWait(编号, 时限毫秒)：等 Lua 写回。返回 [起点, 终点, 原词, 同音词…]（UTF-8 字节数组的数组），
 // 没找到时返回空数组，超时或编号已过时返回 null
-extern "C" JNIEXPORT jobjectArray JNICALL Java_com_osfans_trime_ime_core_SuzuFix_nativeLookupWait(JNIEnv * env, jclass, jlong id,
+extern "C" JNIEXPORT jobjectArray JNICALL Java_com_osfans_trime_suzu_SuzuFix_nativeLookupWait(JNIEnv * env, jclass, jlong id,
                                                                                                   jint timeoutMs) {
     std::vector<std::string> res;
     {

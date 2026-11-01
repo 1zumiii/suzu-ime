@@ -28,6 +28,8 @@ import splitties.views.dsl.core.lParams
 import splitties.views.dsl.core.matchParent
 import splitties.views.dsl.core.wrapContent
 import timber.log.Timber
+import com.osfans.trime.suzu.SuzuFix
+import com.osfans.trime.suzu.AiStatusButton
 
 class AlwaysUi(
     override val ctx: Context,

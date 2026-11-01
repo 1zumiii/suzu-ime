@@ -3,7 +3,7 @@
  * SPDX-License-Identifier: GPL-3.0-or-later
  */
 
-package com.osfans.trime.ime.core
+package com.osfans.trime.suzu
 
 import android.os.Handler
 import android.os.Looper

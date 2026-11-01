@@ -2,7 +2,7 @@
  * SPDX-FileCopyrightText: 2026 1zumiii
  * SPDX-License-Identifier: GPL-3.0-or-later
  */
-package com.osfans.trime.ime.bar.ui
+package com.osfans.trime.suzu
 
 import android.content.Context
 import android.widget.HorizontalScrollView
@@ -10,6 +10,7 @@ import android.widget.LinearLayout
 import com.osfans.trime.R
 import com.osfans.trime.core.CandidateProto
 import com.osfans.trime.data.theme.ThemeScope
+import com.osfans.trime.ime.bar.ui.ToolButton
 import com.osfans.trime.ime.candidates.CandidateItemUi
 import splitties.dimensions.dp
 import splitties.views.dsl.constraintlayout.before

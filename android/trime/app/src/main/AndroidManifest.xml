@@ -91,7 +91,7 @@ SPDX-License-Identifier: GPL-3.0-or-later
             android:windowSoftInputMode="adjustResize" />
 
         <activity
-            android:name=".update.ModuleStatusActivity"
+            android:name=".suzu.ModuleStatusActivity"
             android:exported="false"
             android:label="模块状态"
             android:launchMode="singleTask"
