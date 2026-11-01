@@ -1,0 +1,46 @@
+[submodule "android/OpenCC"]
+	path = android/trime/app/src/main/jni/OpenCC
+	url = https://github.com/BYVoid/OpenCC.git
+	shallow = true
+[submodule "android/snappy"]
+	path = android/trime/app/src/main/jni/snappy
+	url = https://github.com/google/snappy.git
+	shallow = true
+[submodule "android/librime"]
+	path = android/trime/app/src/main/jni/librime
+	url = https://github.com/rime/librime.git
+	shallow = true
+	ignore = dirty
+[submodule "android/librime-lua"]
+	path = android/trime/app/src/main/jni/librime-lua
+	url = https://github.com/hchunhui/librime-lua
+	shallow = true
+	ignore = dirty
+[submodule "android/librime-lua-deps"]
+	path = android/trime/app/src/main/jni/librime-lua-deps
+	url = https://github.com/hchunhui/librime-lua
+	shallow = true
+[submodule "android/librime-octagram"]
+	path = android/trime/app/src/main/jni/librime-octagram
+	url = https://github.com/lotem/librime-octagram.git
+	shallow = true
+[submodule "android/librime-predict"]
+	path = android/trime/app/src/main/jni/librime-predict
+	url = https://github.com/rime/librime-predict
+	shallow = true
+[submodule "android/prelude"]
+	path = android/trime/app/data/rime/prelude
+	url = https://github.com/rime/rime-prelude
+	shallow = true
+[submodule "android/luna-pinyin"]
+	path = android/trime/app/data/rime/luna-pinyin
+	url = https://github.com/rime/rime-luna-pinyin
+	shallow = true
+[submodule "android/stroke"]
+	path = android/trime/app/data/rime/stroke
+	url = https://github.com/rime/rime-stroke
+	shallow = true
+[submodule "android/essay"]
+	path = android/trime/app/data/rime/essay
+	url = https://github.com/rime/rime-essay
+	shallow = true
