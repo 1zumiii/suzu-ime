@@ -36,6 +36,7 @@ import splitties.views.dsl.constraintlayout.lParams
 import splitties.views.dsl.core.add
 import splitties.views.dsl.recyclerview.recyclerView
 import splitties.views.recyclerview.gridLayoutManager
+import com.osfans.trime.suzu.ModuleStatusActivity
 
 class SwitchOptionWindow(di: DI) :
     BoardWindow.BarBoardWindow(di),
@@ -136,7 +137,7 @@ class SwitchOptionWindow(di: DI) :
                         )
 
                         SwitchOptionEntry.Static.Type.ModuleStatus -> context.startActivity(
-                            android.content.Intent(context, com.osfans.trime.update.ModuleStatusActivity::class.java)
+                            android.content.Intent(context, com.osfans.trime.suzu.ModuleStatusActivity::class.java)
                                 .addFlags(android.content.Intent.FLAG_ACTIVITY_NEW_TASK),
                         )
 

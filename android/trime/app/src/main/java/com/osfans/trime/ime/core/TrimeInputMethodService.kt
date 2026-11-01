@@ -68,6 +68,8 @@ import splitties.bitflags.hasFlag
 import splitties.systemservices.clipboardManager
 import splitties.systemservices.inputMethodManager
 import timber.log.Timber
+import com.osfans.trime.suzu.SuzuFix
+import com.osfans.trime.suzu.SuzuAppContext
 
 /** [輸入法][InputMethodService]主程序  */
 

@@ -106,9 +106,9 @@ Trime（改版 APK）                              rimellmd（shell 身份，由
 | `tests/test_daemon.py` | 端到端测试：认证、非法输入、时限、正确性、并发；加 `--chaos` 还会做 `kill -9`、`SIGSTOP` 与删除模型的恢复测试；`--host` 在电脑上跑 |
 | `tools/bench_daemon.py` | 真实打分延迟基准（每次更换新候选） |
 | `trime/` | 改版 Trime 的完整源码，2026-11-01 由上游 `ad5a14be` 硬分叉而来，不再跟随上游。librime、OpenCC 等第三方源码是固定提交的子模块 |
-| `trime/app/src/main/java/com/osfans/trime/ime/bar/ui/AiStatusButton.kt` 等 | 相对上游的改动：`INTERNET` 权限、亮灭屏接收器、AI 徽标、Shizuku 启动、流式键盘布局 |
-| `trime/app/src/main/java/com/osfans/trime/ime/core/SuzuAppContext.kt` | 光标上文：没有未上屏编码时用 `getTextBeforeCursor` 读光标前最多 60 个字，经 JNI 写进客户端库，Lua 的 `llm_context` 读取（`rime/lua/ai_rerank_app_ctx.lua`），读不到退回上屏历史；密码框、数字框、电话框和无痕模式不读，文字只在内存里 |
-| `trime/app/src/main/java/com/osfans/trime/ime/core/SuzuFix.kt`、`ime/bar/ui/FixChoicesUi.kt` | 选错修正建议（试验）：每次整段选词，Lua 把所选词和同页候选登记到客户端库（`fix_note`），上屏时由 `SuzuFix` 领取；停顿 1.5 秒后补上右侧已打的文字，给句中最近的几个词与各自的候选打整句分（经单独的连接请求守护进程），某个候选高出门槛时在工具栏提示“A → B”，点了才核对并替换。门槛：选了 AI 改过的首位为 5，其他为 8。光标换词：光标点到文字上时，在候选栏列出可替换的同音候选，点了只替换对应的一段。词库分不清光标处是词还是单字，要改的文字也可能本身有错，所以不判断边界：Lua 查出从光标处开始和跨过光标的 1 到 4 字各段的同音词，`SuzuFix` 逐段打整句分，统一按“比原文高多少”排序。替换结果相同的只留范围小的，比原文低 8 分以上的不列（暂定值），至少列 3 个，最多 8 个。最近整段选过的词还会列出选词时的同页候选。领取、定位、打分、出现、采纳、忽略等事件只记数字，写入用户目录的 `fix_stats.tsv`；密码框和无痕模式不查 |
+| `trime/app/src/main/java/com/osfans/trime/suzu/` | 本项目新增的代码：AI 徽标、Shizuku 启动、光标上文、选错修正、模块状态页。上游文件中的其他改动：`INTERNET` 权限、亮灭屏接收器、流式键盘布局，可用 `git diff 9338bb3 -- android/trime` 查看 |
+| `trime/app/src/main/java/com/osfans/trime/suzu/SuzuAppContext.kt` | 光标上文：没有未上屏编码时用 `getTextBeforeCursor` 读光标前最多 60 个字，经 JNI 写进客户端库，Lua 的 `llm_context` 读取（`rime/lua/ai_rerank_app_ctx.lua`），读不到退回上屏历史；密码框、数字框、电话框和无痕模式不读，文字只在内存里 |
+| `trime/app/src/main/java/com/osfans/trime/suzu/SuzuFix.kt`、`FixChoicesUi.kt` | 选错修正建议（试验）：每次整段选词，Lua 把所选词和同页候选登记到客户端库（`fix_note`），上屏时由 `SuzuFix` 领取；停顿 1.5 秒后补上右侧已打的文字，给句中最近的几个词与各自的候选打整句分（经单独的连接请求守护进程），某个候选高出门槛时在工具栏提示“A → B”，点了才核对并替换。门槛：选了 AI 改过的首位为 5，其他为 8。光标换词：光标点到文字上时，在候选栏列出可替换的同音候选，点了只替换对应的一段。词库分不清光标处是词还是单字，要改的文字也可能本身有错，所以不判断边界：Lua 查出从光标处开始和跨过光标的 1 到 4 字各段的同音词，`SuzuFix` 逐段打整句分，统一按“比原文高多少”排序。替换结果相同的只留范围小的，比原文低 8 分以上的不列（暂定值），至少列 3 个，最多 8 个。最近整段选过的词还会列出选词时的同页候选。领取、定位、打分、出现、采纳、忽略等事件只记数字，写入用户目录的 `fix_stats.tsv`；密码框和无痕模式不查 |
 | `trime/app/src/main/java/com/osfans/trime/ime/keyboard/KeyboardWindow.kt` | 键盘配置新增 `ascii_mode: 2`：进出这个键盘时不改中英文状态。`?123` 页和数字页用它跟随当前语言；中文模式下进入时先上屏未完成的输入，避免数字键选中候选 |
 | `trime/build_apk.sh` | 从源码到签名 APK 的完整流程；`trime/sign_apk.sh` 仅负责对齐和签名 |
 | `trime/*.overlay.yaml` | 手机端专属配置，部署时追加到对应的 `*.custom.yaml` |

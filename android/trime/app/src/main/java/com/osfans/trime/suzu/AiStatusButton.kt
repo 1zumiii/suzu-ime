@@ -3,7 +3,7 @@
  * SPDX-License-Identifier: GPL-3.0-or-later
  */
 
-package com.osfans.trime.ime.bar.ui
+package com.osfans.trime.suzu
 
 import android.content.Context
 import android.graphics.Color
