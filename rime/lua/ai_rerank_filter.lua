@@ -142,7 +142,7 @@ local reverse = { db = nil, tried = false }
 local function reverse_readings(ch)
     if not reverse.tried then
         reverse.tried = true
-        local ok, db = pcall(function() return ReverseDb("build/" .. (reverse.dict or "rime_ice") .. ".reverse.bin") end)
+        local ok, db = pcall(function() return ReverseDb("build/" .. (reverse.dict or "suzu") .. ".reverse.bin") end)
         if ok and db then reverse.db = db end
     end
     if not reverse.db then return nil end
