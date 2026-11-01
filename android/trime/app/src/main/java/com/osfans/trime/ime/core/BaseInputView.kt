@@ -111,9 +111,9 @@ abstract class BaseInputView(
                     // AI 推理出来的候选（注释里带 ◇ 或 ◈）才提供“怪词”标记；已标记的提供取消
                     val marked = text in weirdWords()
                     if (marked || comment.contains("◇") || comment.contains("◈")) {
-                        menu.add(if (marked) "取消怪词标记" else "标记为怪词").setOnMenuItemClickListener {
+                        menu.add(if (marked) R.string.suzu_unmark_word else R.string.suzu_mark_word).setOnMenuItemClickListener {
                             setWeird(text, !marked)
-                            Toast.makeText(themedContext, if (marked) "已取消怪词标记：$text" else "已标记为怪词：$text", Toast.LENGTH_SHORT).show()
+                            Toast.makeText(themedContext, themedContext.getString(if (marked) R.string.suzu_word_unmarked else R.string.suzu_word_marked, text), Toast.LENGTH_SHORT).show()
                             true
                         }
                     }

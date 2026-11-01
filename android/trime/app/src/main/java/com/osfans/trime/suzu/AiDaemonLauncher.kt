@@ -37,7 +37,7 @@ object AiDaemonLauncher {
         private set
 
     @Volatile
-    var lastResult: String = "尚未启动过"
+    var lastResult: String = "尚未启动"
         private set
 
     fun availability(): Availability =
@@ -95,7 +95,7 @@ object AiDaemonLauncher {
                     val libDir = context.applicationInfo.nativeLibraryDir
                     val rimeDir = DataManager.userDataDir.absolutePath
                     if (!File(libDir, "librimellmd.so").exists()) {
-                        Result.Failed("APK 里没有 librimellmd.so")
+                        Result.Failed("安装包缺少 AI 服务组件，请重新安装完整版本")
                     } else {
                         val method =
                             Shizuku::class.java.getDeclaredMethod(
@@ -114,8 +114,8 @@ object AiDaemonLauncher {
                             out.contains("RUNNING") -> Result.AlreadyRunning
                             out.contains("STARTED") -> Result.Started
                             out.contains("NO_MODEL") ->
-                                Result.Failed("找不到模型：把 $STUDENT_MODEL 和 $STUDENT_VOCAB 放进 Trime 的用户目录")
-                            else -> Result.Failed("退出码 $code ${(out + " " + err).trim().take(120)}")
+                                Result.Failed("模型文件不完整，请到“设置 → 词库”重新下载 Suzu 模型")
+                            else -> Result.Failed("AI 服务启动失败（错误码 $code）：${(out + " " + err).trim().take(120)}")
                         }
                     }
                 } catch (e: Throwable) {
@@ -125,7 +125,7 @@ object AiDaemonLauncher {
                 when (result) {
                     Result.Started -> "已启动"
                     Result.AlreadyRunning -> "已在运行"
-                    is Result.Failed -> "失败：${result.reason}"
+                    is Result.Failed -> "启动失败：${result.reason}"
                 }
             main.post { onResult(result) }
         }.start()

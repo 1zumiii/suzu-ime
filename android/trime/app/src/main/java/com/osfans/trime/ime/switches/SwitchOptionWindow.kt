@@ -48,7 +48,7 @@ class SwitchOptionWindow(di: DI) :
     private val staticEntries get() =
         arrayOf(
             SwitchOptionEntry.Static(
-                "配色：" + context.getString(AppPrefs.defaultInstance().keyboard.colorMode.getValue().stringRes),
+                context.getString(R.string.suzu_current_color, context.getString(AppPrefs.defaultInstance().keyboard.colorMode.getValue().stringRes)),
                 R.drawable.ic_baseline_color_lens_24,
                 SwitchOptionEntry.Static.Type.ColorMode,
             ),
@@ -63,7 +63,7 @@ class SwitchOptionWindow(di: DI) :
                 SwitchOptionEntry.Static.Type.UpdateConfig,
             ),
             SwitchOptionEntry.Static(
-                "模块状态",
+                context.getString(R.string.suzu_module_status),
                 R.drawable.ic_baseline_list_alt_24,
                 SwitchOptionEntry.Static.Type.ModuleStatus,
             ),

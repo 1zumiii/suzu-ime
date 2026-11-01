@@ -59,7 +59,7 @@ class SetupFragment : Fragment() {
             progressBar.visibility = if (percent != null) View.VISIBLE else View.GONE
             progressBar.progress = percent ?: 0
             secondaryButton.visibility = if (page.canImportFile && !done && SuzuAssets.state(SuzuAsset.Grammar) !is SuzuAssets.State.Downloading) View.VISIBLE else View.GONE
-            secondaryButton.text = "选择已下载的文件"
+            secondaryButton.text = getString(R.string.suzu_choose_downloaded_file)
             secondaryButton.setOnClickListener { pickGrammar.launch(arrayOf("*/*")) }
             doneText.visibility = if (done) View.VISIBLE else View.GONE
             doneIcon.visibility = if (done) View.VISIBLE else View.GONE
