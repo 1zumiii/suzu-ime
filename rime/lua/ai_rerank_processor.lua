@@ -300,7 +300,8 @@ local function fix_lookup(env, text, cur)
     for _, c in utf8.codes(text) do chars[#chars + 1] = utf8.char(c) end
     if not env.fix_rev_tried then
         env.fix_rev_tried = true
-        local ok, db = pcall(function() return ReverseDb("build/rime_ice.reverse.bin") end)
+        local dict = env.engine.schema.config:get_string("translator/dictionary") or "rime_ice"
+        local ok, db = pcall(function() return ReverseDb("build/" .. dict .. ".reverse.bin") end)
         env.fix_rev = ok and db or nil
     end
     if not env.fix_tr then

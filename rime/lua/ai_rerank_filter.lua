@@ -136,13 +136,13 @@ local TONE_BASE = {
 -- 拼音贴合度：把输入按“每个音节取一段前缀”去对齐候选的标准拼音：能对齐 = 精确输入或简拼；
 -- 对不齐 = 靠模糊音（zh/z、ang/an 等）凑出来的候选。
 -- 标准拼音优先取候选的 comment（rime_ice 的 spelling_hints）。来自用户词典的候选（type=user_phrase）comment 为空，
--- 这时退回 ReverseDb（build/rime_ice.reverse.bin，只收单字）：逐字取读音，多音字的各读音都算，任一组合能对齐就不扣分。
+-- 这时退回 ReverseDb（当前方案词典的 reverse.bin，只收单字）：逐字取读音，多音字的各读音都算，任一组合能对齐就不扣分。
 -- 取不到读音时返回 false（不扣分）。
 local reverse = { db = nil, tried = false }
 local function reverse_readings(ch)
     if not reverse.tried then
         reverse.tried = true
-        local ok, db = pcall(function() return ReverseDb("build/rime_ice.reverse.bin") end)
+        local ok, db = pcall(function() return ReverseDb("build/" .. (reverse.dict or "rime_ice") .. ".reverse.bin") end)
         if ok and db then reverse.db = db end
     end
     if not reverse.db then return nil end
@@ -224,6 +224,10 @@ end
 
 local function init_config(env)
     local sc = env.engine.schema.config
+    local dict = sc:get_string("translator/dictionary")
+    if dict and dict ~= "" and dict ~= reverse.dict then
+        reverse.dict, reverse.tried, reverse.db = dict, false, nil
+    end
     local pat = sc:get_string("llm_rerank/code_pattern")
     if pat ~= nil then cfg.code_pattern = pat end
     local v = get_config_number(sc, "llm_rerank/expected_length_weight")
