@@ -8,6 +8,10 @@ local function check(name, cond, extra)
   if not cond then fails = fails + 1 end
 end
 os.execute("rm -rf '" .. tmp .. "' && mkdir -p '" .. tmp .. "'")
+local function set_collecting(on)   -- 归档跟随选词样本开关
+    if on then io.open(tmp .. "/select_corpus.enabled", "w"):close() else os.remove(tmp .. "/select_corpus.enabled") end
+end
+set_collecting(true)
 rime_api = { get_user_data_dir = function() return tmp end, get_distribution_code_name = function() return "Squirrel" end }
 local pp = require("personal_pairs")
 local file = tmp .. "/recent_pairs.tsv"
@@ -132,6 +136,11 @@ local suffix = on_windows and "\\.tsv$" or "\\.tsv\\.gz$"
 local gz = io.popen("ls '" .. tmp .. "' | grep -c 'recent_words.archive-.*" .. suffix .. "'"):read("n")
 check(on_windows and "超过 512 KB 后分卷（Windows 保留明文）" or "超过 512 KB 后分卷并压缩成 .gz", gz == 1, tostring(gz))
 check("分卷后新的归档从空开始", (count_lines(tmp .. "/recent_words.archive.tsv") or 0) == 0)
+-- (d) 没开选词样本：旧记录直接丢弃，不写归档，调用方照常截断
+set_collecting(false)
+check("没开开关时返回成功", arc.append(tmp .. "/recent_words.tsv", {"1\t词"}))
+check("没开开关时不写归档", (count_lines(tmp .. "/recent_words.archive.tsv") or 0) == 0)
+set_collecting(true)
 
 
 -- ===== 纠错记忆 =====
