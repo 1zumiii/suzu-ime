@@ -63,6 +63,16 @@ class SwitchOptionWindow(di: DI) :
                 SwitchOptionEntry.Static.Type.UpdateConfig,
             ),
             SwitchOptionEntry.Static(
+                "从仓库更新",
+                R.drawable.ic_baseline_cloud_download_24,
+                SwitchOptionEntry.Static.Type.RepoUpdate,
+            ),
+            SwitchOptionEntry.Static(
+                "模块状态",
+                R.drawable.ic_baseline_list_alt_24,
+                SwitchOptionEntry.Static.Type.ModuleStatus,
+            ),
+            SwitchOptionEntry.Static(
                 context.getString(R.string.virtual_keyboard),
                 R.drawable.ic_baseline_keyboard_24,
                 SwitchOptionEntry.Static.Type.Keyboard,
@@ -119,6 +129,16 @@ class SwitchOptionWindow(di: DI) :
                                 Toast.makeText(service, R.string.done, Toast.LENGTH_SHORT).show()
                             }
                         }
+
+                        SwitchOptionEntry.Static.Type.RepoUpdate -> context.startActivity(
+                            android.content.Intent(context, com.osfans.trime.update.ConfigUpdateActivity::class.java)
+                                .addFlags(android.content.Intent.FLAG_ACTIVITY_NEW_TASK),
+                        )
+
+                        SwitchOptionEntry.Static.Type.ModuleStatus -> context.startActivity(
+                            android.content.Intent(context, com.osfans.trime.update.ModuleStatusActivity::class.java)
+                                .addFlags(android.content.Intent.FLAG_ACTIVITY_NEW_TASK),
+                        )
 
                         SwitchOptionEntry.Static.Type.Keyboard -> AppUtils.launchMainToKeyboard(context)
 

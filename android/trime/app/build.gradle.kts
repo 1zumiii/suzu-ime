@@ -130,6 +130,8 @@ ksp {
 dependencies {
     ksp(project(":codegen"))
     implementation(libs.kotlinx.coroutines)
+    implementation(libs.shizuku.api)
+    implementation(libs.shizuku.provider)
     implementation(libs.kotlinx.serialization.json)
     implementation(libs.androidx.activity)
     implementation(libs.androidx.appcompat)

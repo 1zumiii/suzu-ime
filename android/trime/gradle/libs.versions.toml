@@ -5,6 +5,7 @@ ksp = "2.3.6"
 navigation = "2.9.8"
 room = "2.7.2"
 splitties = "3.0.0"
+shizuku = "13.1.5"
 aboutlibraries = "14.0.1"
 kotest = "6.0.7"
 iconics = "5.4.0"
@@ -33,6 +34,8 @@ androidx-work-runtime-ktx = { group = "androidx.work", name = "work-runtime-ktx"
 flexbox = { module = "com.google.android.flexbox:flexbox", version = "3.0.0" }
 bravh = { module = "io.github.cymchad:BaseRecyclerViewAdapterHelper4", version = "4.4.1" }
 timber = { module = "com.jakewharton.timber:timber", version = "5.0.1" }
+shizuku-api = { module = "dev.rikka.shizuku:api", version.ref = "shizuku" }
+shizuku-provider = { module = "dev.rikka.shizuku:provider", version.ref = "shizuku" }
 xxpermissions = { module = "com.github.getActivity:XXPermissions", version = "18.5" }
 iconics-core = { module = "com.mikepenz:iconics-core", version.ref = "iconics" }
 community-material-typeface = { module = "com.mikepenz:community-material-typeface", version = "7.0.96.1-kotlin" }

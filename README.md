@@ -90,7 +90,7 @@ Lua 默认值已采用调优后的参数：2 个字母起重排、参与重排�
 | `core/` | 推理核心：推理层、调度层、Lua 模块、守护进程与客户端 |
 | `rime/lua/` | Rime 的 Lua 过滤器与处理器 |
 | `rime/suzu_ime.yaml` | 方案补丁：把上述组件接到任意拼音方案上 |
-| `android/` | 改版 Trime 补丁、APK 构建脚本、守护进程部署脚本 |
+| `android/` | 改版 Trime 源码、APK 构建脚本、守护进程部署脚本 |
 | `macos/`、`windows/` | 各平台的安装、部署与回滚脚本 |
 | `tests/` | 全部测试，`tests/run_all.sh` 一键运行 |
 | `tools/` | 按键仿真、选词语料分析、离线回放、链路审计、基准 |
@@ -99,7 +99,7 @@ Lua 默认值已采用调优后的参数：2 个字母起重排、参与重排�
 
 - 模型与训练：[Suzu](https://github.com/1zumiii/Suzu)。
 - 配置与词库包：[rime-suzu](https://github.com/1zumiii/rime-suzu)，其中的重排 Lua 由本仓库的 `rime/lua/` 同步而来。
-- 原项目：本项目起步于 [rime-llm-rerank](https://github.com/zhanghaozhecn/rime-llm-rerank)，推理核心已重写，Windows 的光标上文读取和部分 Lua 仍取自该项目。Trime 补丁基于 [osfans/trime](https://github.com/osfans/trime) 的固定提交。署名见 [NOTICE.md](NOTICE.md)。
+- 原项目：本项目起步于 [rime-llm-rerank](https://github.com/zhanghaozhecn/rime-llm-rerank)，推理核心已重写，Windows 的光标上文读取和部分 Lua 仍取自该项目。Android 前端硬分叉自 [osfans/trime](https://github.com/osfans/trime)。署名见 [NOTICE.md](NOTICE.md)。
 
 ## 许可
 

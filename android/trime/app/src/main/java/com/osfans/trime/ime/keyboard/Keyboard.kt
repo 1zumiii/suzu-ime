@@ -81,6 +81,9 @@ class Keyboard(
 
     /** Keyboard default ascii mode  */
     val asciiMode = selfConfig?.asciiMode == 1
+
+    /** ascii_mode: 2：切到这个键盘时不改中英文状态（符号页跟随当前语言） */
+    val followAsciiMode = selfConfig?.asciiMode == 2
     val resetAsciiMode = selfConfig?.resetAsciiMode ?: true
     var lastAsciiMode: Boolean = asciiMode
 

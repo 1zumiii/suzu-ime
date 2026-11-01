@@ -99,7 +99,7 @@ class CandidatesView(
             ctx,
             scope,
             onCandidateClick = { index -> rime.launchOnReady { it.selectCandidate(index, global = false) } },
-            onCandidateAction = { index, text, view -> showCandidateActionMenu(index, text, view, global = false) },
+            onCandidateAction = { index, text, comment, view -> showCandidateActionMenu(index, text, view, global = false, comment = comment) },
             onPrevPage = { rime.launchOnReady { it.changeCandidatePage(true) } },
             onNextPage = { rime.launchOnReady { it.changeCandidatePage(false) } },
         )

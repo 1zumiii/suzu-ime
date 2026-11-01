@@ -142,7 +142,7 @@ abstract class BaseUnrolledCandidateWindow(di: DI) :
                 rime.launchOnReady { it.selectCandidate(holder.idx, global = true) }
             }
             setOnLongClickListener { view ->
-                inputView.showCandidateActionMenu(holder.idx, holder.text, view, global = true)
+                inputView.showCandidateActionMenu(holder.idx, holder.text, view, global = true, comment = holder.comment)
                 true
             }
         }

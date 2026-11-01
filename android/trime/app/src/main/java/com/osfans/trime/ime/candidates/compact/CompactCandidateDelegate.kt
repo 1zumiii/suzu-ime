@@ -99,7 +99,7 @@ class CompactCandidateDelegate(override val di: DI) :
                 rime.launchOnReady { it.selectCandidate(position, global = true) }
             }
             setOnItemLongClickListener { _, view, position ->
-                inputView.showCandidateActionMenu(position, items[position].text, view, global = true)
+                inputView.showCandidateActionMenu(position, items[position].text, view, global = true, comment = items[position].comment)
                 true
             }
         }

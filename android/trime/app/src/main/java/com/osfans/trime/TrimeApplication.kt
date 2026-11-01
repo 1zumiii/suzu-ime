@@ -132,6 +132,7 @@ class TrimeApplication : Application() {
             }
         }
         instance = this
+        com.osfans.trime.update.ConfigUpdater.onProcessStart()
         try {
             if (BuildConfig.DEBUG) {
                 Timber.plant(

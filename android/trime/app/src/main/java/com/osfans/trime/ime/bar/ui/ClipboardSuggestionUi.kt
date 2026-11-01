@@ -33,11 +33,12 @@ import splitties.views.imageDrawable
 class ClipboardSuggestionUi(
     override val ctx: Context,
     private val scope: ThemeScope,
+    iconRes: Int = R.drawable.ic_clipboard_24,   // 选错修正建议也用这个样式，换个图标
 ) : Ui {
     private val icon =
         imageView {
             imageDrawable =
-                drawable(R.drawable.ic_clipboard_24)!!.apply {
+                drawable(iconRes)!!.apply {
                     setTint(scope.colors.candidateTextColor)
                 }
         }

@@ -7,6 +7,9 @@ package com.osfans.trime.ime.core
 
 import android.annotation.SuppressLint
 import android.app.Dialog
+import android.content.BroadcastReceiver
+import android.content.Context
+import android.content.Intent
 import android.content.IntentFilter
 import android.content.pm.ActivityInfo
 import android.content.res.Configuration
@@ -97,6 +100,9 @@ open class TrimeInputMethodService : LifecycleInputMethodService() {
 
     private var cursorUpdateIndex = 0
 
+    // 输入法自己最近一次编辑输入框的时间；光标变化发生在它之后很久，说明是用户点击或拖动了光标
+    private var lastOwnEditAt = 0L
+
     private val recreateInputViewPrefs: Array<PreferenceDelegate<*>> = arrayOf(
         prefs.keyboard.expandKeypressArea,
         prefs.keyboard.hideKeySymbol,
@@ -167,7 +173,27 @@ open class TrimeInputMethodService : LifecycleInputMethodService() {
         }
     }
 
+    // 亮屏/熄屏通知 AI 重排：经 Rime 选项 screen_off 传给 Lua，Lua 再转给常驻推理进程（熄屏后更快卸载模型）
+    private val screenStateReceiver =
+        object : BroadcastReceiver() {
+            override fun onReceive(context: Context?, intent: Intent?) {
+                when (intent?.action) {
+                    Intent.ACTION_SCREEN_OFF -> postRimeJob { setRuntimeOption("screen_off", true) }
+                    Intent.ACTION_SCREEN_ON -> postRimeJob { setRuntimeOption("screen_off", false) }
+                }
+            }
+        }
+
     private fun registerReceiver() {
+        ContextCompat.registerReceiver(
+            this,
+            screenStateReceiver,
+            IntentFilter().apply {
+                addAction(Intent.ACTION_SCREEN_OFF)
+                addAction(Intent.ACTION_SCREEN_ON)
+            },
+            ContextCompat.RECEIVER_NOT_EXPORTED,
+        )
         val intentFilter =
             IntentFilter().apply {
                 addAction(RimeIntentReceiver.ACTION_DEPLOY)
@@ -183,6 +209,7 @@ open class TrimeInputMethodService : LifecycleInputMethodService() {
 
     override fun onCreate() {
         rime = RimeDaemon.createSession(javaClass.name)
+        com.osfans.trime.update.ConfigUpdater.runPendingDeploy()
         lifecycleScope.launch {
             jobs.consumeEach { it.join() }
         }
@@ -342,6 +369,7 @@ open class TrimeInputMethodService : LifecycleInputMethodService() {
         ColorManager.removeOnChangedListener(onColorChangeListener)
         super.onDestroy()
         unregisterReceiver(rimeIntentReceiver)
+        unregisterReceiver(screenStateReceiver)
         RimeDaemon.destroySession(javaClass.name)
     }
 
@@ -457,6 +485,15 @@ open class TrimeInputMethodService : LifecycleInputMethodService() {
             candidatesEnd,
         )
         cursorUpdateIndex += 1
+        // 光标位置变了、而且不是输入法自己的编辑引起的（用户点击或拖动了光标，例如回头补充内容）：
+        // 通知 Lua 清空 AI 重排的上文和个人词对的“前一个词”
+        val jumped = oldSelStart != newSelStart && SystemClock.uptimeMillis() - lastOwnEditAt > 500
+        if (jumped) {
+            postRimeJob { setRuntimeOption("ai_ctx_reset", true) }
+        }
+        // 没有未上屏编码时（上屏、退格、移动光标之后），重读光标前的文字作 AI 重排的上文；有编码时读到的会含编码
+        if (candidatesStart == candidatesEnd) refreshAppContext()
+        SuzuFix.onSelection(newSelStart, newSelEnd, candidatesStart != candidatesEnd, jumped)
         handleCursorUpdate(newSelStart, newSelEnd, candidatesStart, candidatesEnd, cursorUpdateIndex)
         inputView?.updateSelection(newSelStart, newSelEnd)
     }
@@ -552,7 +589,28 @@ open class TrimeInputMethodService : LifecycleInputMethodService() {
         composingText = ""
         Timber.d("onStartInput: restarting=$restarting")
         val isNullType = attribute.inputType and InputType.TYPE_MASK_CLASS == InputType.TYPE_NULL
+        // 密码框、数字框、电话框：通知 Lua 不记录输入事件、选词统计与语料（运行时选项 ai_no_log）
+        val inputClass = attribute.inputType and InputType.TYPE_MASK_CLASS
+        val inputVariation = attribute.inputType and InputType.TYPE_MASK_VARIATION
+        val noLog =
+            inputClass == InputType.TYPE_CLASS_NUMBER ||
+                inputClass == InputType.TYPE_CLASS_PHONE ||
+                (
+                    inputClass == InputType.TYPE_CLASS_TEXT &&
+                        (
+                            inputVariation == InputType.TYPE_TEXT_VARIATION_PASSWORD ||
+                                inputVariation == InputType.TYPE_TEXT_VARIATION_VISIBLE_PASSWORD ||
+                                inputVariation == InputType.TYPE_TEXT_VARIATION_WEB_PASSWORD
+                        )
+                )
+        // 光标上文：上面这些框和应用的无痕模式（IME_FLAG_NO_PERSONALIZED_LEARNING）都不读
+        SuzuAppContext.start(noLog || attribute.imeOptions and EditorInfo.IME_FLAG_NO_PERSONALIZED_LEARNING != 0)
+        SuzuFix.inputConnection = { currentInputConnection }
+        SuzuFix.requestLookup = { postRimeJob { setRuntimeOption("suzu_fix_lookup", true) } }
+        SuzuFix.reset(noLog || attribute.imeOptions and EditorInfo.IME_FLAG_NO_PERSONALIZED_LEARNING != 0)
+        refreshAppContext()
         postRimeJob {
+            setRuntimeOption("ai_no_log", noLog)
             if (restarting) {
                 // when input restarts in the same editor, clear previous composition
                 clearComposition()
@@ -613,14 +671,42 @@ open class TrimeInputMethodService : LifecycleInputMethodService() {
             monitorCursorAnchor(false)
         }
         composingText = ""
+        SuzuAppContext.clear()
+        SuzuFix.reset(false)
         postRimeJob {
             clearComposition()
         }
         InputFeedbackManager.finishInput()
     }
 
+    private fun refreshAppContext() {
+        val ic = currentInputConnection ?: return SuzuAppContext.clear()
+        SuzuAppContext.set(runCatching { ic.getTextBeforeCursor(SuzuAppContext.MAX_CHARS, 0) }.getOrNull())
+    }
+
+    // 选错修正建议被采纳：删掉光标前 n 个字符，换成新文字（算作输入法自己的编辑，不触发清空上文）
+    fun replaceBeforeCursor(n: Int, text: String): Boolean {
+        val ic = currentInputConnection ?: return false
+        lastOwnEditAt = SystemClock.uptimeMillis()
+        ic.beginBatchEdit()
+        val ok = ic.deleteSurroundingText(n, 0) && ic.commitText(text, 1)
+        ic.endBatchEdit()
+        return ok
+    }
+
+    // 光标换词：把 [start, end) 整段换成 text，光标停在新词之后
+    fun replaceRange(start: Int, end: Int, text: String): Boolean {
+        val ic = currentInputConnection ?: return false
+        lastOwnEditAt = SystemClock.uptimeMillis()
+        ic.beginBatchEdit()
+        val ok = ic.setComposingRegion(start, end) && ic.commitText(text, 1)
+        ic.endBatchEdit()
+        return ok
+    }
+
     fun commitText(text: String) {
         val ic = currentInputConnection ?: return
+        lastOwnEditAt = SystemClock.uptimeMillis()
 
         // when composing text equals commit content, finish composing text as-is
         if (composingText.isNotEmpty() && composingText == text) {
@@ -629,6 +715,8 @@ open class TrimeInputMethodService : LifecycleInputMethodService() {
             ic.commitText(text, 1)
         }
         lastCommittedText = text
+        SuzuAppContext.append(text)
+        SuzuFix.onCommit(text)
         composingText = ""
         InputFeedbackManager.textCommitSpeak(text)
     }
@@ -666,6 +754,7 @@ open class TrimeInputMethodService : LifecycleInputMethodService() {
         metaState: Int = 0,
     ): Boolean {
         val ic = currentInputConnection ?: return false
+        lastOwnEditAt = SystemClock.uptimeMillis()
         return ic.sendKeyEvent(
             KeyEvent(
                 eventTime,
@@ -688,6 +777,7 @@ open class TrimeInputMethodService : LifecycleInputMethodService() {
         metaState: Int = 0,
     ): Boolean {
         val ic = currentInputConnection ?: return false
+        lastOwnEditAt = SystemClock.uptimeMillis()
         return ic.sendKeyEvent(
             KeyEvent(
                 eventTime,
@@ -959,6 +1049,7 @@ open class TrimeInputMethodService : LifecycleInputMethodService() {
 
     internal fun updateComposingText(text: String) {
         val ic = currentInputConnection ?: return
+        lastOwnEditAt = SystemClock.uptimeMillis()
         ic.beginBatchEdit()
         if (composingText.isNotEmpty() || text.isNotEmpty()) {
             if (!ic.getSelectedText(0).isNullOrEmpty()) {
