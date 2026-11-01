@@ -24,7 +24,6 @@ import com.osfans.trime.ime.broadcast.InputBroadcastReceiver
 import com.osfans.trime.ime.core.TrimeInputMethodService
 import com.osfans.trime.ime.dialog.EnabledSchemaPickerDialog
 import com.osfans.trime.ime.window.BoardWindow
-import com.osfans.trime.ui.main.settings.ThemePickerDialog
 import com.osfans.trime.util.AppUtils
 import kotlinx.coroutines.launch
 import org.kodein.di.DI
@@ -48,11 +47,6 @@ class SwitchOptionWindow(di: DI) :
 
     private val staticEntries by lazy {
         arrayOf(
-            SwitchOptionEntry.Static(
-                context.getString(R.string.theme),
-                R.drawable.ic_baseline_color_lens_24,
-                SwitchOptionEntry.Static.Type.ThemeList,
-            ),
             SwitchOptionEntry.Static(
                 context.getString(R.string.schemata),
                 R.drawable.ic_round_view_list_24,
@@ -142,12 +136,6 @@ class SwitchOptionWindow(di: DI) :
                         )
 
                         SwitchOptionEntry.Static.Type.Keyboard -> AppUtils.launchMainToKeyboard(context)
-
-                        SwitchOptionEntry.Static.Type.ThemeList -> showDialog { r ->
-                            ThemePickerDialog.build(service.lifecycleScope, context) {
-                                r.commitComposition()
-                            }
-                        }
                     }
 
                     is SwitchOptionEntry.Custom -> {

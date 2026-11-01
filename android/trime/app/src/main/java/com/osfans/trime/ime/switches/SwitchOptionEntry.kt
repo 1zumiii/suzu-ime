@@ -21,7 +21,6 @@ sealed class SwitchOptionEntry(
             RepoUpdate,
             ModuleStatus,
             Keyboard,
-            ThemeList,
         }
     }
 

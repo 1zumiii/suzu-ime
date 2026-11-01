@@ -31,19 +31,6 @@ object ThemeManager {
 
     private lateinit var _activeTheme: Theme
 
-    private var _activeFindings: List<ThemeDiagnostics.Finding>? = null
-
-    /**
-     * What static checks found in the active theme, or null when it was read
-     * from its deployed artifact and never checked. Serves the diagnostics
-     * screen: the findings belong to the load that produced the active theme.
-     */
-    val activeFindings: List<ThemeDiagnostics.Finding>?
-        get() {
-            ensureActiveTheme()
-            return _activeFindings
-        }
-
     private fun ensureActiveTheme() {
         if (!::_activeTheme.isInitialized) {
             _activeTheme = evaluateActiveTheme()
@@ -80,12 +67,11 @@ object ThemeManager {
     private data class ResolvedTheme(
         val configId: String,
         val theme: Theme,
-        val findings: List<ThemeDiagnostics.Finding>?,
     )
 
     private fun getThemeById(id: String): ResolvedTheme {
         when (val result = ThemeLoader.loadTheme(id)) {
-            is ThemeLoader.ThemeLoadResult.Success -> return ResolvedTheme(id, result.theme, result.findings)
+            is ThemeLoader.ThemeLoadResult.Success -> return ResolvedTheme(id, result.theme)
             is ThemeLoader.ThemeLoadResult.Failure -> Timber.w(result.error)
         }
 
@@ -93,7 +79,7 @@ object ThemeManager {
             when (val result = ThemeLoader.loadTheme("trime")) {
                 is ThemeLoader.ThemeLoadResult.Success -> {
                     Timber.w("Theme '$id' is unavailable, fallback to default theme 'trime'")
-                    return ResolvedTheme("trime", result.theme, result.findings)
+                    return ResolvedTheme("trime", result.theme)
                 }
 
                 is ThemeLoader.ThemeLoadResult.Failure -> Timber.w(result.error)
@@ -105,7 +91,7 @@ object ThemeManager {
             when (val result = ThemeLoader.loadTheme(fallbackId)) {
                 is ThemeLoader.ThemeLoadResult.Success -> {
                     Timber.w("Theme '$id' is unavailable, fallback to available theme '$fallbackId'")
-                    return ResolvedTheme(fallbackId, result.theme, result.findings)
+                    return ResolvedTheme(fallbackId, result.theme)
                 }
 
                 is ThemeLoader.ThemeLoadResult.Failure -> lastFailure = result.error
@@ -129,9 +115,6 @@ object ThemeManager {
 
     private fun applyTheme(resolvedTheme: ResolvedTheme) {
         val theme = resolvedTheme.theme
-        // The findings describe the file this load read; they are not tied to the
-        // views, so they are refreshed even when the theme itself is unchanged.
-        _activeFindings = resolvedTheme.findings
         // A structurally equal theme suppresses the change notification below, so the
         // UI tree keeps its views and their injected scope. Replace neither the
         // caches nor the scope in that case, or later scheme changes would update

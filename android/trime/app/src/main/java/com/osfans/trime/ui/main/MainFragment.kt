@@ -78,11 +78,6 @@ class MainFragment : PaddingPreferenceFragment() {
                     NavigationRoute.CandidatesWindow,
                 )
                 addDestinationPreference(
-                    R.string.theme,
-                    R.drawable.ic_baseline_color_lens_24,
-                    NavigationRoute.Theme,
-                )
-                addDestinationPreference(
                     R.string.clipboard,
                     R.drawable.ic_clipboard_24,
                     NavigationRoute.Clipboard,

@@ -28,9 +28,7 @@ import com.osfans.trime.ime.dialog.EnabledSchemaPickerDialog
 import com.osfans.trime.ime.switches.SwitchOptionWindow
 import com.osfans.trime.ime.symbol.LiquidWindow
 import com.osfans.trime.ime.window.BoardWindowManager
-import com.osfans.trime.ui.main.settings.ColorPickerDialog
 import com.osfans.trime.ui.main.settings.SoundEffectPickerDialog
-import com.osfans.trime.ui.main.settings.ThemePickerDialog
 import com.osfans.trime.util.AppUtils
 import com.osfans.trime.util.InputMethodUtils
 import com.osfans.trime.util.buildIntentFromAction
@@ -62,22 +60,6 @@ class CommonKeyboardActionListener(override val di: DI) : DIAware {
         rime.launchOnReady { api ->
             service.lifecycleScope.launch {
                 service.showDialog(dialog(api))
-            }
-        }
-    }
-
-    private fun showThemePicker() {
-        showDialog { api ->
-            ThemePickerDialog.build(service.lifecycleScope, context) {
-                api.commitComposition()
-            }
-        }
-    }
-
-    private fun showColorPicker() {
-        showDialog { api ->
-            ColorPickerDialog.build(service.lifecycleScope, context) {
-                api.commitComposition()
             }
         }
     }
@@ -141,7 +123,6 @@ class CommonKeyboardActionListener(override val di: DI) : DIAware {
                         KeyEvent.KEYCODE_LANGUAGE_SWITCH -> handleLanguageSwitch(action)
                         KeyEvent.KEYCODE_FUNCTION -> handleFunctionCommand(action)
                         KeyEvent.KEYCODE_SETTINGS -> handleSettings(action)
-                        KeyEvent.KEYCODE_PROG_RED -> showColorPicker()
                         KeyEvent.KEYCODE_MENU -> showEnabledSchemaPicker()
                         KeyEvent.KEYCODE_VOICE_ASSIST -> switchToVoiceInputMethod()
                         else -> handleDefaultKeyAction(action)
@@ -312,8 +293,6 @@ class CommonKeyboardActionListener(override val di: DI) : DIAware {
 
             private fun handleSettings(action: KeyAction) {
                 when (action.option) {
-                    "theme" -> showThemePicker()
-                    "color" -> showColorPicker()
                     "schema" -> AppUtils.launchMainToSchemaList(context)
                     "sound" -> showSoundEffectPicker()
                     else -> AppUtils.launchMainActivity(service)
