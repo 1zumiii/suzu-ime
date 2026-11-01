@@ -6,6 +6,7 @@
 package com.osfans.trime.suzu
 
 import android.os.Bundle
+import androidx.activity.result.contract.ActivityResultContracts
 import androidx.appcompat.app.AlertDialog
 import androidx.fragment.app.activityViewModels
 import androidx.lifecycle.lifecycleScope
@@ -15,18 +16,27 @@ import com.osfans.trime.util.addCategory
 import com.osfans.trime.util.addPreference
 import com.osfans.trime.util.toast
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.flow.drop
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 
-/** 词库页：列出可用的词库包，点一下切换。方案只有一份，各包只差词库，用户词典共用 */
+/** 词库页：切换词库包，开关附加词库，管理模型下载。方案只有一份，各包只差词库，用户词典共用 */
 class DictPackFragment : PaddingPreferenceFragment() {
     private val viewModel: MainViewModel by activityViewModels()
+
+    private val pickGrammar = registerForActivityResult(ActivityResultContracts.OpenDocument()) { uri ->
+        uri?.let(SuzuAssets::importGrammar)
+    }
 
     override fun onCreatePreferences(
         savedInstanceState: Bundle?,
         rootKey: String?,
     ) {
         build()
+        // 下载进度变化时刷新
+        lifecycleScope.launch {
+            SuzuAssets.states.drop(1).collect { if (isAdded) build() }
+        }
     }
 
     private fun build() {
@@ -52,6 +62,31 @@ class DictPackFragment : PaddingPreferenceFragment() {
                     }
                 }
             }
+            addCategory("附加词库") {
+                isIconSpaceReserved = false
+                for (addon in DictAddon.entries) {
+                    val on = DictAddons.isEnabled(addon)
+                    addPreference(
+                        addon.title,
+                        (if (on) "已启用 · " else "未启用，需要下载约 ${(addon.remote.size + 524288) / 1048576} MB · ") + addon.source,
+                    ) { confirmAddon(addon, !on) }
+                }
+            }
+            addCategory("模型") {
+                isIconSpaceReserved = false
+                for (asset in SuzuAsset.entries) {
+                    val state = SuzuAssets.state(asset)
+                    addPreference(
+                        asset.title,
+                        when {
+                            state is SuzuAssets.State.Downloading -> "下载中：${state.doneMb} / ${state.totalMb} MB，点按取消"
+                            SuzuAssets.isInstalled(asset) -> "已安装，点按删除并关闭这项功能"
+                            state is SuzuAssets.State.Failed -> "下载失败：${state.message}。点按重试"
+                            else -> "未安装，这项功能已关闭。点按下载约 ${asset.sizeMb} MB"
+                        },
+                    ) { onAssetClick(asset) }
+                }
+            }
             addCategory("说明") {
                 isIconSpaceReserved = false
                 addPreference(
@@ -60,6 +95,69 @@ class DictPackFragment : PaddingPreferenceFragment() {
                 )
             }
         }
+    }
+
+    private fun onAssetClick(asset: SuzuAsset) {
+        when {
+            SuzuAssets.state(asset) is SuzuAssets.State.Downloading -> SuzuAssets.cancel(asset)
+            SuzuAssets.isInstalled(asset) ->
+                AlertDialog.Builder(requireContext())
+                    .setTitle("删除${asset.title}？")
+                    .setMessage(
+                        if (asset == SuzuAsset.Model) {
+                            "AI 重排会关闭，打字不受影响。之后可以在这里重新下载。"
+                        } else {
+                            "整句输入的同音字选择会变差，其他功能不受影响。之后可以在这里重新下载。"
+                        },
+                    )
+                    .setNegativeButton(android.R.string.cancel, null)
+                    .setPositiveButton(android.R.string.ok) { _, _ ->
+                        if (asset == SuzuAsset.Model) {
+                            lifecycleScope.launch { viewModel.rime.runOnReady { setRuntimeOption("ai_rerank", false) } }
+                        }
+                        SuzuAssets.delete(asset)
+                        build()
+                    }.show()
+            asset == SuzuAsset.Grammar ->
+                AlertDialog.Builder(requireContext())
+                    .setTitle(asset.title)
+                    .setItems(arrayOf("下载（约 ${asset.sizeMb} MB）", "选择已下载的文件")) { _, which ->
+                        if (which == 0) SuzuAssets.start(asset) else pickGrammar.launch(arrayOf("*/*"))
+                    }.show()
+            else -> SuzuAssets.start(asset)
+        }
+        if (isAdded) build()
+    }
+
+    private fun confirmAddon(addon: DictAddon, enable: Boolean) {
+        val ctx = requireContext()
+        AlertDialog.Builder(ctx)
+            .setTitle(if (enable) "启用${addon.title}词库？" else "关闭${addon.title}词库？")
+            .setMessage("需要重新编译词库，可能需要一分钟，期间键盘暂时不能打字。AI 的简拼补全要等下次启动 AI 服务后才会更新。")
+            .setNegativeButton(android.R.string.cancel, null)
+            .setPositiveButton(android.R.string.ok) { _, _ ->
+                val dialog = AlertDialog.Builder(ctx).setTitle(addon.title).setMessage("准备中").setCancelable(false).show()
+                lifecycleScope.launch {
+                    val result = runCatching {
+                        viewModel.rime.runOnReady {
+                            DictAddons.setEnabled(this, addon, enable) { text ->
+                                lifecycleScope.launch(Dispatchers.Main) { dialog.setMessage(text) }
+                            }
+                        }
+                    }
+                    withContext(Dispatchers.Main) {
+                        dialog.dismiss()
+                        result.onFailure {
+                            AlertDialog.Builder(ctx)
+                                .setTitle("没有成功")
+                                .setMessage(it.message ?: it.toString())
+                                .setPositiveButton(android.R.string.ok, null)
+                                .show()
+                        }
+                        if (isAdded) build()
+                    }
+                }
+            }.show()
     }
 
     private fun confirm(name: String, entry: PackInstaller.Entry?, installed: Boolean) {
