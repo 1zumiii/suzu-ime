@@ -137,23 +137,23 @@ object PackInstaller {
      * 切换到 [pack]：没装就先下载，启用后重新部署（编译词库）。部署失败就启用原来的包再部署一次，并抛出原因。
      * 旧包的文件不删，下次切回来不用再下载。
      */
-    suspend fun switchTo(rime: RimeApi, pack: String, stage: (String) -> Unit) {
+    suspend fun switchTo(rime: RimeApi, pack: String, stage: (String, Int?) -> Unit) {
         if (pack !in DictPacks.installed()) {
             val entry = catalog.firstOrNull { it.name == pack } ?: error("清单里没有词库包 $pack")
-            stage("正在下载 ${entry.title}")
+            stage("正在下载 ${entry.title}", 0)
             download(entry) { done, total ->
-                stage("正在下载 ${entry.title}：${done / 1048576} / ${total / 1048576} MB")
+                stage("正在下载 ${entry.title}：${done / 1048576} / ${total / 1048576} MB", (done * 100 / total).toInt().coerceIn(0, 100))
             }
         }
         val previous = DictPacks.active()
         withContext(Dispatchers.IO) { DictPacks.activate(pack) }
-        stage("正在编译词库，约 15 秒")
+        stage("正在编译词库，约 15 秒", null)
         try {
             rime.deploy()
         } catch (e: Exception) {
             Timber.w(e, "Deploy failed after switching to %s", pack)
             if (previous != null && previous != pack) {
-                stage("编译失败，正在回到 ${title(previous)}")
+                stage("编译失败，正在回到 ${title(previous)}", null)
                 withContext(Dispatchers.IO) { DictPacks.activate(previous) }
                 runCatching { rime.deploy() }
             }

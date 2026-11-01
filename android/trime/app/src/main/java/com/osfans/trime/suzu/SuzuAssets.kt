@@ -65,7 +65,9 @@ object SuzuAssets {
     sealed interface State {
         data object Idle : State
 
-        data class Downloading(val doneMb: Long, val totalMb: Long) : State
+        data class Downloading(val doneMb: Long, val totalMb: Long) : State {
+            val percent: Int get() = if (totalMb > 0) (doneMb * 100 / totalMb).toInt().coerceIn(0, 100) else 0
+        }
 
         data class Failed(val message: String) : State
     }
@@ -92,6 +94,7 @@ object SuzuAssets {
         jobs[asset] = scope.launch {
             val total = asset.files.sumOf { it.size }
             var finished = 0L
+            set(asset, State.Downloading(0, total / 1048576))
             runCatching {
                 userDir.mkdirs()
                 for (file in asset.files) {
@@ -210,7 +213,7 @@ object SuzuAssets {
                             if (n < 0) break
                             out.write(buf, 0, n)
                             done += n
-                            if (done - reported >= 1048576) {
+                            if (done - reported >= 131072) {
                                 progress(done)
                                 reported = done
                             }
