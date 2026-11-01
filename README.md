@@ -38,7 +38,7 @@
 - 统一排序：总分 = Rime 名次先验 + 上文权重 × 模型分 + 个人习惯。关闭 AI 时上文权重为 0，其余项保持不变。
 - 个人习惯：最近使用、词对和纠错记忆均只保存在本机。
 - 输入事件流：默认关闭，开启后在本机记录选词、上屏与删除，用于校准参数。
-- 模块状态页：改版 Trime 可显示守护进程、排序方式和各类记录的状态。
+- 功能状态页：改版 Trime 可显示 AI 服务、排序方式和各类记录的状态。
 
 ## 平台
 
@@ -52,12 +52,15 @@
 
 ## 快速开始
 
+Android 使用改版 Trime，方案、Lua 和默认词库随 APK 提供。安装后可在引导页下载模型，并通过 Shizuku 启动 AI 服务；词库和模型可在“设置 → 词库”中管理，见 [android/README.md](android/README.md)。
+
+macOS 与 Windows 的安装步骤如下：
+
 1. 从 Hugging Face 下载模型 [Suzu-2.4](https://huggingface.co/IzumiThe3rd/Suzu-2.4) 的 `suzu.gguf` 与 `suzu.vocab.txt`。
 2. Rime 的配置、Lua 脚本和词库包使用 [rime-suzu](https://github.com/1zumiii/rime-suzu)，按其说明安装。
 3. 按平台安装推理核心：
    - macOS：`macos/install_llm.sh core/build/rime_llm.so suzu.gguf suzu.vocab.txt`，详见 [macos/README.md](macos/README.md)
    - Windows：见 [windows/README.md](windows/README.md)
-   - Android：见 [android/README.md](android/README.md)。推理在常驻守护进程里，Trime 自己不加载模型，守护进程须借助 adb 或 Shizuku 启动，手机重启后要重新启动一次；没有启动时 AI 重排不生效，输入不受影响。准备好电脑上的 adb，或手机上的 Shizuku，再开始配置。
 4. 核心的构建与接口见 [core/README.md](core/README.md)。
 
 ### 接入已有的 Rime 配置
