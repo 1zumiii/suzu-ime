@@ -52,7 +52,7 @@ local ls = read_lines()
 check("写了一行", #ls == 1)
 local f = {}
 for x in (ls[1] or ""):gmatch("[^\t]+") do f[#f + 1] = x end
-check("15 列（最后一列是方案名，测试环境没有方案名时为 -）", #f == 15 and f[15] == "-", tostring(#f))
+check("16 列（最后两列是方案名与词库目录，测试环境没有时为 -）", #f == 16 and f[15] == "-" and f[16] == "-", tostring(#f))
 check("AI 开、输入 6 个字母、候选 3 个", f[2] == "1" and f[4] == "6" and f[5] == "3")
 check("原顺序第 3 位，最终第 1 位", f[6] == "3" and f[7] == "1")
 check("门控三列：margin×10、未门控、模型首位原位次 3", f[12] == "12" and f[13] == "0" and f[14] == "3", tostring(f[12]) .. "," .. tostring(f[13]) .. "," .. tostring(f[14]))
