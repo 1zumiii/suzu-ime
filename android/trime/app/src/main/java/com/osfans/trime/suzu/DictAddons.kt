@@ -83,21 +83,23 @@ object DictAddons {
     fun enabledIds(): List<String> = DictAddon.entries.filter(::isEnabled).map { it.id }
 
     /** 开关一个附加词库并重新编译；编译失败时恢复原状并抛出原因 */
-    suspend fun setEnabled(rime: RimeApi, addon: DictAddon, enabled: Boolean, stage: (String) -> Unit) {
+    suspend fun setEnabled(rime: RimeApi, addon: DictAddon, enabled: Boolean, stage: (String, Int?) -> Unit) {
         val pack = DictPacks.active() ?: error("还没有启用词库包")
         if (enabled) {
-            stage("正在下载${addon.title}词库")
-            install(addon)
+            stage("正在下载${addon.title}词库", 0)
+            install(addon) { done ->
+                stage("正在下载${addon.title}词库", (done * 100 / addon.remote.size).toInt().coerceIn(0, 100))
+            }
         } else {
             withContext(Dispatchers.IO) { fileOf(addon).delete() }
         }
         withContext(Dispatchers.IO) { DictPacks.activate(pack) }
-        stage("正在编译词库，可能需要一分钟")
+        stage("正在编译词库，可能需要一分钟", null)
         try {
             rime.deploy()
         } catch (e: Exception) {
             if (enabled) {
-                stage("编译失败，正在恢复")
+                stage("编译失败，正在恢复", null)
                 withContext(Dispatchers.IO) {
                     fileOf(addon).delete()
                     DictPacks.activate(pack)
@@ -108,12 +110,12 @@ object DictAddons {
         }
     }
 
-    private suspend fun install(addon: DictAddon) = withContext(Dispatchers.IO) {
+    private suspend fun install(addon: DictAddon, progress: (Long) -> Unit) = withContext(Dispatchers.IO) {
         dir.mkdirs()
         val source = File(dir, addon.remote.name)
         val tmp = File(dir, "${addon.id}.tmp")
         try {
-            SuzuAssets.download(addon.remote, source) {}
+            SuzuAssets.download(addon.remote, source) { progress(it) }
             source.useLines { lines ->
                 tmp.bufferedWriter().use { out ->
                     AddonRules.convert(addon.id, lines).forEach {

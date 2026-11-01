@@ -5,7 +5,11 @@
 
 package com.osfans.trime.suzu
 
+import android.content.Context
 import android.os.Bundle
+import android.widget.LinearLayout
+import android.widget.ProgressBar
+import android.widget.TextView
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.appcompat.app.AlertDialog
 import androidx.fragment.app.activityViewModels
@@ -35,7 +39,23 @@ class DictPackFragment : PaddingPreferenceFragment() {
         build()
         // 下载进度变化时刷新
         lifecycleScope.launch {
-            SuzuAssets.states.drop(1).collect { if (isAdded) build() }
+            SuzuAssets.states.drop(1).collect {
+                // 只更新模型那两行，不重建页面，否则滚动位置会跳回顶部
+                if (isAdded) assetPrefs.forEach { (asset, pref) -> renderAsset(asset, pref) }
+            }
+        }
+    }
+
+    private val assetPrefs = HashMap<SuzuAsset, AssetPreference>()
+
+    private fun renderAsset(asset: SuzuAsset, pref: AssetPreference) {
+        val state = SuzuAssets.state(asset)
+        pref.percent = (state as? SuzuAssets.State.Downloading)?.percent
+        pref.summary = when {
+            state is SuzuAssets.State.Downloading -> "${state.percent}%（${state.doneMb} / ${state.totalMb} MB），点按取消"
+            SuzuAssets.isInstalled(asset) -> "已安装，点按删除并关闭这项功能"
+            state is SuzuAssets.State.Failed -> "下载失败：${state.message}。点按重试"
+            else -> "未安装，这项功能已关闭。点按下载约 ${asset.sizeMb} MB"
         }
     }
 
@@ -75,16 +95,17 @@ class DictPackFragment : PaddingPreferenceFragment() {
             addCategory("模型") {
                 isIconSpaceReserved = false
                 for (asset in SuzuAsset.entries) {
-                    val state = SuzuAssets.state(asset)
-                    addPreference(
-                        asset.title,
-                        when {
-                            state is SuzuAssets.State.Downloading -> "下载中：${state.doneMb} / ${state.totalMb} MB，点按取消"
-                            SuzuAssets.isInstalled(asset) -> "已安装，点按删除并关闭这项功能"
-                            state is SuzuAssets.State.Failed -> "下载失败：${state.message}。点按重试"
-                            else -> "未安装，这项功能已关闭。点按下载约 ${asset.sizeMb} MB"
-                        },
-                    ) { onAssetClick(asset) }
+                    val pref = AssetPreference(ctx).apply {
+                        title = asset.title
+                        isSingleLineTitle = false
+                        setOnPreferenceClickListener {
+                            onAssetClick(asset)
+                            true
+                        }
+                    }
+                    addPreference(pref)
+                    assetPrefs[asset] = pref
+                    renderAsset(asset, pref)
                 }
             }
             addCategory("说明") {
@@ -136,12 +157,12 @@ class DictPackFragment : PaddingPreferenceFragment() {
             .setMessage("需要重新编译词库，可能需要一分钟，期间键盘暂时不能打字。AI 的简拼补全要等下次启动 AI 服务后才会更新。")
             .setNegativeButton(android.R.string.cancel, null)
             .setPositiveButton(android.R.string.ok) { _, _ ->
-                val dialog = AlertDialog.Builder(ctx).setTitle(addon.title).setMessage("准备中").setCancelable(false).show()
+                val dialog = ProgressDialog(ctx, addon.title)
                 lifecycleScope.launch {
                     val result = runCatching {
                         viewModel.rime.runOnReady {
-                            DictAddons.setEnabled(this, addon, enable) { text ->
-                                lifecycleScope.launch(Dispatchers.Main) { dialog.setMessage(text) }
+                            DictAddons.setEnabled(this, addon, enable) { text, percent ->
+                                lifecycleScope.launch(Dispatchers.Main) { dialog.update(text, percent) }
                             }
                         }
                     }
@@ -173,16 +194,12 @@ class DictPackFragment : PaddingPreferenceFragment() {
 
     private fun switch(name: String) {
         val ctx = requireContext()
-        val dialog = AlertDialog.Builder(ctx)
-            .setTitle(PackInstaller.title(name))
-            .setMessage("准备中")
-            .setCancelable(false)
-            .show()
+        val dialog = ProgressDialog(ctx, PackInstaller.title(name))
         lifecycleScope.launch {
             val result = runCatching {
                 viewModel.rime.runOnReady {
-                    PackInstaller.switchTo(this, name) { text ->
-                        lifecycleScope.launch(Dispatchers.Main) { dialog.setMessage(text) }
+                    PackInstaller.switchTo(this, name) { text, percent ->
+                        lifecycleScope.launch(Dispatchers.Main) { dialog.update(text, percent) }
                     }
                 }
             }
@@ -201,4 +218,38 @@ class DictPackFragment : PaddingPreferenceFragment() {
             }
         }
     }
+}
+
+/** 词库下载和编译时的弹窗：知道进度时显示百分比，不知道时显示滚动的进度条 */
+private class ProgressDialog(context: Context, title: String) {
+    private val text = TextView(context)
+    private val bar = ProgressBar(context, null, android.R.attr.progressBarStyleHorizontal).apply {
+        max = 100
+        isIndeterminate = true
+    }
+    private val dialog = AlertDialog.Builder(context)
+        .setTitle(title)
+        .setView(
+            LinearLayout(context).apply {
+                orientation = LinearLayout.VERTICAL
+                val pad = (24 * context.resources.displayMetrics.density).toInt()
+                setPadding(pad, pad / 2, pad, pad / 2)
+                addView(text)
+                addView(bar)
+            },
+        )
+        .setCancelable(false)
+        .show()
+
+    init {
+        text.text = "准备中"
+    }
+
+    fun update(message: String, percent: Int?) {
+        text.text = if (percent != null) "$message（$percent%）" else message
+        bar.isIndeterminate = percent == null
+        if (percent != null) bar.progress = percent
+    }
+
+    fun dismiss() = dialog.dismiss()
 }

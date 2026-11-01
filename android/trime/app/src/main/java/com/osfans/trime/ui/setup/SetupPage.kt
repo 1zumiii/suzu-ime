@@ -57,7 +57,7 @@ enum class SetupPage(val required: Boolean) {
     }
 
     private fun stateText(asset: SuzuAsset, idle: String): String = when (val state = SuzuAssets.state(asset)) {
-        is SuzuAssets.State.Downloading -> "\n\n正在下载：${state.doneMb} / ${state.totalMb} MB。离开这一页也会继续。"
+        is SuzuAssets.State.Downloading -> "\n\n正在下载：${state.percent}%（${state.doneMb} / ${state.totalMb} MB）。离开这一页也会继续。"
         is SuzuAssets.State.Failed -> "\n\n下载失败：${state.message}"
         SuzuAssets.State.Idle -> "\n\n" + if (SuzuAssets.isInstalled(asset)) "已安装。" else idle
     }
@@ -72,6 +72,9 @@ enum class SetupPage(val required: Boolean) {
             AiDaemonLauncher.Availability.SHIZUKU_NOT_RUNNING -> "打开 Shizuku"
         }
     }
+
+    /** 正在下载时的百分比，其他时候为 null */
+    fun downloadPercent(): Int? = asset?.let { (SuzuAssets.state(it) as? SuzuAssets.State.Downloading)?.percent }
 
     /** AI 服务要先有模型 */
     fun isActionAvailable() = this != Ai || SuzuAssets.isInstalled(SuzuAsset.Model)
