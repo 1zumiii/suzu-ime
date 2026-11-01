@@ -6,14 +6,12 @@
 package com.osfans.trime.data.theme
 
 import com.osfans.trime.data.theme.model.GeneralStyle
-import com.osfans.trime.data.theme.model.KeyActionToken
 import com.osfans.trime.data.theme.model.LiquidKeyboard
 import com.osfans.trime.data.theme.model.Preedit
 import com.osfans.trime.data.theme.model.PresetKey
 import com.osfans.trime.data.theme.model.TextKeyboard
 import com.osfans.trime.data.theme.model.ToolBar
 import com.osfans.trime.data.theme.model.Window
-import com.osfans.trime.ime.keyboard.KeyAction
 import kotlinx.serialization.Serializable
 import kotlinx.serialization.Transient
 
@@ -32,17 +30,6 @@ data class Theme(
     val toolBar: ToolBar = ToolBar(),
 ) {
     val fonts by lazy { ThemeFonts(this) }
-
-    @Transient
-    private val actionCache = lazy {
-        mutableMapOf<KeyActionToken, KeyAction>()
-    }
-
-    fun resolveAction(token: KeyActionToken) = actionCache.value.getOrPut(token) {
-        KeyAction(token, presetKeys)
-    }
-
-    fun resolveAction(tokenString: String) = resolveAction(KeyActionToken.Plain(tokenString))
 
     companion object {
         /**

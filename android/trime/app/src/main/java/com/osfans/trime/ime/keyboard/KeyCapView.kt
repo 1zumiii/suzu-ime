@@ -3,7 +3,7 @@
  * SPDX-License-Identifier: GPL-3.0-or-later
  */
 
-package com.osfans.trime.ime.keyboard.v2
+package com.osfans.trime.ime.keyboard
 
 import android.annotation.SuppressLint
 import android.content.Context
@@ -15,8 +15,6 @@ import android.graphics.Rect
 import android.graphics.drawable.GradientDrawable
 import com.mikepenz.iconics.IconicsDrawable
 import com.mikepenz.iconics.utils.sizeDp
-import com.osfans.trime.ime.keyboard.GestureFrame
-import com.osfans.trime.ime.keyboard.KeyBehavior
 import com.osfans.trime.util.sp
 import splitties.dimensions.dp
 
@@ -117,7 +115,7 @@ class KeyCapView(
         if (text.isEmpty()) return
         getLocationInWindow(location)
         bounds.set(location[0], location[1], location[0] + width, location[1] + height)
-        val content = if (text.startsWith(ICON_PREFIX)) text else String(Character.toChars(text.codePointAt(0)))
+        val content = if (text.isIconFont) text else String(Character.toChars(text.codePointAt(0)))
         host.showPreview(id, content, bounds)
     }
 
@@ -141,7 +139,7 @@ class KeyCapView(
     private val centerX get() = (width - paddingLeft - paddingRight) / 2f + paddingLeft
 
     private fun drawLabel(canvas: Canvas, label: String, color: Int) {
-        val isIcon = label.startsWith(ICON_PREFIX)
+        val isIcon = label.isIconFont
         val size = sp(
             spec.textSp.takeIf { it > 0 }
                 ?: if (label.length > 1 && !isIcon) host.metrics.longTextSp else host.metrics.textSp,
@@ -159,7 +157,7 @@ class KeyCapView(
     }
 
     private fun drawIcon(canvas: Canvas, label: String, size: Int, color: Int) {
-        val name = label.replace(ICON_PREFIX, "cmd_")
+        val name = label.toIconName()
         val drawable = icon.takeIf { iconName == name }
             ?: IconicsDrawable(context, name).apply { sizeDp = size }.also {
                 icon = it
@@ -180,9 +178,5 @@ class KeyCapView(
         val metrics = cornerPaint.fontMetrics
         val y = if (isTop) paddingTop - metrics.top else height - paddingBottom - metrics.bottom
         canvas.drawText(text, centerX, y, cornerPaint)
-    }
-
-    private companion object {
-        const val ICON_PREFIX = "ic@"
     }
 }

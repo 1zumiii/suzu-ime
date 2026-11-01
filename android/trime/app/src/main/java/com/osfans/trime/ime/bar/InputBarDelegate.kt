@@ -38,7 +38,7 @@ import com.osfans.trime.ime.broadcast.InputBroadcastReceiver
 import com.osfans.trime.ime.candidates.compact.CompactCandidateDelegate
 import com.osfans.trime.ime.candidates.unrolled.window.FlexboxUnrolledCandidateWindow
 import com.osfans.trime.ime.core.TrimeInputMethodService
-import com.osfans.trime.ime.keyboard.CommonKeyboardActionListener
+import com.osfans.trime.ime.keyboard.KeyCommand
 import com.osfans.trime.ime.keyboard.KeyBehavior
 import com.osfans.trime.ime.keyboard.KeyboardWindow
 import com.osfans.trime.ime.switches.SwitchOptionWindow
@@ -70,7 +70,7 @@ class InputBarDelegate(override val di: DI) :
     private val scope: ThemeScope by instance()
     private val theme: Theme get() = scope.theme
     private val windowManager: BoardWindowManager by instance()
-    private val commonKeyboardActionListener: CommonKeyboardActionListener by instance()
+    private val keyboardWindow: KeyboardWindow by instance()
     private val candidate: CompactCandidateDelegate by instance()
     private val rime: RimeSession by instance()
 
@@ -137,8 +137,9 @@ class InputBarDelegate(override val di: DI) :
 
     private val alwaysUi: AlwaysUi by lazy {
         AlwaysUi(context, scope) { action ->
-            if (action.isNotEmpty()) {
-                commonKeyboardActionListener.listener.onAction(theme.resolveAction(action))
+            val command = TOOLBAR_COMMANDS[action]
+            if (command != null) {
+                keyboardWindow.run(command)
             } else {
                 windowManager.attachWindow(SwitchOptionWindow(di))
             }
@@ -416,6 +417,16 @@ class InputBarDelegate(override val di: DI) :
     }
 
     companion object {
+        /** 工具栏按钮对应的动作；不在表里的（三个点）打开开关面板 */
+        private val TOOLBAR_COMMANDS = mapOf(
+            "Hide" to KeyCommand.Hide,
+            "liquid_keyboard_emoji" to KeyCommand.OpenLiquid("emoji"),
+            "clipboard_window" to KeyCommand.OpenClipboard,
+            "Keyboard_editor" to KeyCommand.ShowPage("editor"),
+            "Mode_switch" to KeyCommand.ToggleAscii,
+            "Settings" to KeyCommand.OpenSettings,
+        )
+
         private const val FIX_CHOICES_INDEX = 3   // view 里的第四个子视图
     }
 }

@@ -2,7 +2,7 @@
 //
 // SPDX-License-Identifier: GPL-3.0-or-later
 
-package com.osfans.trime.ime.keyboard.v2
+package com.osfans.trime.ime.keyboard
 
 import io.kotest.core.spec.style.BehaviorSpec
 import io.kotest.matchers.collections.shouldContainAll
@@ -68,7 +68,7 @@ class KeyModelTest : BehaviorSpec({
         }.filterIsInstance<KeyCommand.ShowPage>().map { it.id }
 
         val seen = linkedSetOf<String>()
-        val queue = ArrayDeque(listOf(Pages.DEFAULT, Pages.NUMBER, "letter"))
+        val queue = ArrayDeque(listOf(Pages.DEFAULT, Pages.NUMBER, "letter", "editor"))
         while (queue.isNotEmpty()) {
             val id = queue.removeFirst()
             if (id == Pages.LAST || !seen.add(id)) continue

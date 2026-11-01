@@ -1,6 +1,6 @@
 // 表情、符号和颜文字。翻页与布局在 SymbolBoard.kt，这里只放内容
 
-package com.osfans.trime.ime.keyboard.v2
+package com.osfans.trime.ime.keyboard
 
 internal object SymbolData {
     val emoji_rw: List<Symbol> by lazy {

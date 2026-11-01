@@ -14,7 +14,6 @@ import com.osfans.trime.data.SymbolHistory
 import com.osfans.trime.data.theme.ThemeScope
 import com.osfans.trime.data.theme.model.LiquidKeyboard
 import com.osfans.trime.ime.core.TrimeInputMethodService
-import com.osfans.trime.ime.keyboard.CommonKeyboardActionListener
 import com.osfans.trime.ime.keyboard.KeyboardWindow
 import com.osfans.trime.ime.window.BoardWindow
 import com.osfans.trime.ime.window.BoardWindowManager
@@ -32,7 +31,7 @@ class LiquidWindow(di: DI) :
     private val rime: RimeSession by instance()
     private val scope: ThemeScope by instance()
     private val windowManager: BoardWindowManager by instance()
-    private val commonKeyboardActionListener: CommonKeyboardActionListener by instance()
+    private val keyboardWindow: KeyboardWindow by instance()
 
     private lateinit var liquidLayout: LiquidLayout
     private val symbolHistory = SymbolHistory(180)
@@ -77,7 +76,7 @@ class LiquidWindow(di: DI) :
     override val key: ResidentWindow.Key
         get() = LiquidWindow
 
-    override fun onCreateView(): View = LiquidLayout(context, scope, commonKeyboardActionListener).apply {
+    override fun onCreateView(): View = LiquidLayout(context, scope, keyboardWindow::run).apply {
         liquidLayout = this
         tabsUi.apply {
             setTags(scope.theme.liquidKeyboard.getTagList())

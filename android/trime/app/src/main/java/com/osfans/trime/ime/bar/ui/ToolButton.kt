@@ -22,7 +22,6 @@ import com.osfans.trime.data.theme.ThemeScope
 import com.osfans.trime.data.theme.model.ToolBar
 import com.osfans.trime.ime.core.AutoScaleTextView
 import com.osfans.trime.ime.keyboard.GestureFrame
-import com.osfans.trime.ime.keyboard.KeyboardWindow
 import splitties.dimensions.dp
 import splitties.views.dsl.core.add
 import splitties.views.dsl.core.imageView
@@ -63,7 +62,6 @@ class ToolButton(context: Context, private val scope: ThemeScope) : GestureFrame
     private var optionStyles: List<String> = listOf()
     private var singleStyle = ""
 
-    private var actionLabel = ""
     private var config: ToolBar.Button? = null
 
     private var fontSize = 0f
@@ -85,18 +83,13 @@ class ToolButton(context: Context, private val scope: ThemeScope) : GestureFrame
         scope: ThemeScope,
     ) : this(context, scope) {
         this.config = config
-        val keyAction = scope.theme.resolveAction(config.action)
-        isRepeatable = keyAction.isRepeatable
-
         val fg = config.foreground
-        val toggle = keyAction.toggle
-        if (toggle.isNotEmpty() && config.foreground.optionStyles.size == 2) {
-            option = toggle
+        if (config.action == "Mode_switch" && config.foreground.optionStyles.size == 2) {
+            option = "ascii_mode"
             optionStyles = fg.optionStyles
         } else {
             singleStyle = fg.style
         }
-        actionLabel = keyAction.getLabel(KeyboardWindow.currentKeyboard)
 
         val padding = dp(fg.padding)
         image.padding = padding
@@ -228,7 +221,7 @@ class ToolButton(context: Context, private val scope: ThemeScope) : GestureFrame
             label.isVisible = false
             image.isVisible = true
         } else { // text icon
-            label.text = if (useLocalImage || style.isEmpty()) actionLabel else style
+            label.text = style
             image.isVisible = false
             label.isVisible = true
         }

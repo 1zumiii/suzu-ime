@@ -12,7 +12,8 @@ import androidx.recyclerview.widget.RecyclerView
 import com.osfans.trime.data.theme.Theme
 import com.osfans.trime.data.theme.ThemeScope
 import com.osfans.trime.data.theme.model.LiquidKeyboard
-import com.osfans.trime.ime.keyboard.CommonKeyboardActionListener
+import com.osfans.trime.ime.keyboard.KeyCommand
+import com.osfans.trime.ime.keyboard.Nav
 import splitties.dimensions.dp
 
 /**
@@ -23,7 +24,7 @@ import splitties.dimensions.dp
 class LiquidLayout(
     context: Context,
     private val scope: ThemeScope,
-    private val commonKeyboardActionListener: CommonKeyboardActionListener,
+    private val runCommand: (KeyCommand) -> Unit,
 ) : LinearLayout(context) {
     private val theme: Theme get() = scope.theme
     private val position = theme.liquidKeyboard.fixedKeyBar.position
@@ -38,21 +39,16 @@ class LiquidLayout(
     val recyclerView = RecyclerView(context)
 
     private fun buildBar(): LinearLayout? {
-        val names = theme.liquidKeyboard.fixedKeyBar.keys
-        if (names.isEmpty()) return null
         return LinearLayout(context).apply {
             orientation = if (barIsVertical) VERTICAL else HORIZONTAL
-            names.forEach { name ->
-                val presetKey = theme.presetKeys[name]
+            BAR_KEYS.forEach { (label, command) ->
                 // 按键条上的文字比格子里的符号小一些、不画按键背景；按钮等分整条
                 val ui = LiquidItemUi(context, scope, textScale = BAR_TEXT_SCALE, flat = true)
                 fixedKeyItems += ui
-                ui.mainText.text = presetKey?.label ?: ""
+                ui.mainText.text = label
                 ui.root.apply {
-                    isRepeatable = presetKey?.repeatable ?: false
-                    onClick = {
-                        commonKeyboardActionListener.listener.onAction(theme.resolveAction(name))
-                    }
+                    isRepeatable = command == KeyCommand.Special(Nav.Backspace)
+                    onClick = { runCommand(command) }
                 }
                 addView(
                     ui.root,
@@ -81,6 +77,14 @@ class LiquidLayout(
     }
 
     private companion object {
+        val BAR_KEYS = listOf(
+            "返回" to KeyCommand.ExitLiquid,
+            "空格" to KeyCommand.Special(Nav.Space),
+            "退格" to KeyCommand.Special(Nav.Backspace),
+            "回车" to KeyCommand.Special(Nav.Return),
+            "剪贴" to KeyCommand.OpenClipboard,
+            "更多" to KeyCommand.OpenLiquid("更多"),
+        )
         const val BAR_TEXT_SCALE = 0.62f
         const val BAR_THICKNESS_DP = 44   // 和表情页底部的导航行差不多高，避免太矮误触
     }

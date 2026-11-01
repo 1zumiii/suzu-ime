@@ -3,7 +3,7 @@
  * SPDX-License-Identifier: GPL-3.0-or-later
  */
 
-package com.osfans.trime.ime.keyboard.v2
+package com.osfans.trime.ime.keyboard
 
 import android.content.Context
 import android.graphics.Rect
@@ -19,7 +19,6 @@ import com.osfans.trime.data.prefs.AppPrefs
 import com.osfans.trime.data.theme.Theme
 import com.osfans.trime.ime.broadcast.EnterKeyDisplayDelegate
 import com.osfans.trime.ime.core.TrimeInputMethodService
-import com.osfans.trime.ime.keyboard.InputFeedbackManager
 import com.osfans.trime.ime.popup.PopupAction
 import com.osfans.trime.ime.popup.PopupDelegate
 import com.osfans.trime.util.AppUtils
@@ -34,6 +33,10 @@ interface KeyboardPanels {
     fun openClipboard()
 
     fun openLiquid(tag: String)
+
+    fun exitLiquid()
+
+    fun openMenu()
 }
 
 /** 新键盘：管理当前页、Shift 状态，并执行按键动作 */
@@ -171,6 +174,8 @@ class SuzuKeyboard(
             is KeyCommand.Editor -> edit(command.op)
             is KeyCommand.ShowPage -> show(command.id)
             is KeyCommand.OpenLiquid -> panels.openLiquid(command.tag)
+            KeyCommand.ExitLiquid -> panels.exitLiquid()
+            KeyCommand.OpenMenu -> panels.openMenu()
             KeyCommand.OpenClipboard -> panels.openClipboard()
             KeyCommand.ToggleAscii -> toggleAscii()
             KeyCommand.PasteClipboard -> clipboardManager.primaryClip?.getItemAt(0)?.coerceToText(service)?.let { service.commitText(it.toString()) }
@@ -186,7 +191,7 @@ class SuzuKeyboard(
     }
 
     private fun keepsShift(command: KeyCommand) =
-        command is KeyCommand.ShowPage || (command as? KeyCommand.Special)?.nav.let { it == Nav.Left || it == Nav.Right }
+        command is KeyCommand.ShowPage || (command as? KeyCommand.Chord)?.repeats == true || (command as? KeyCommand.Special)?.nav?.movesCursor == true
 
     private fun setShift(value: ShiftState) {
         shift = value
@@ -235,7 +240,8 @@ class SuzuKeyboard(
     }
 
     private fun sendChord(chord: KeyCommand.Chord) {
-        val meta = (if (chord.ctrl) KeyEvent.META_CTRL_ON else 0) or (if (chord.shift) KeyEvent.META_SHIFT_ON else 0)
+        val keepsSelection = shift.isActive && (chord.key == "Left" || chord.key == "Right")
+        val meta = (if (chord.ctrl) KeyEvent.META_CTRL_ON else 0) or (if (chord.shift || keepsSelection) KeyEvent.META_SHIFT_ON else 0)
         val mods = KeyModifiers.fromMetaState(meta).modifiers
         val code = RimeKeyEvent.getKeycodeByName(chord.key)
         service.postRimeJob { processKey(code, mods) }
