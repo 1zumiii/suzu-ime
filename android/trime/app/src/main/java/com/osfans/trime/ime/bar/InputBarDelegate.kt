@@ -28,8 +28,11 @@ import com.osfans.trime.data.db.ClipboardHelper
 import com.osfans.trime.data.prefs.AppPrefs
 import com.osfans.trime.data.theme.Theme
 import com.osfans.trime.data.theme.ThemeScope
+import com.osfans.trime.ime.bar.ui.AiStatusButtonAction
 import com.osfans.trime.ime.bar.ui.AlwaysUi
+import com.osfans.trime.ime.core.SuzuFix
 import com.osfans.trime.ime.bar.ui.CandidateUi
+import com.osfans.trime.ime.bar.ui.FixChoicesUi
 import com.osfans.trime.ime.bar.ui.TabUi
 import com.osfans.trime.ime.broadcast.InputBroadcastReceiver
 import com.osfans.trime.ime.candidates.compact.CompactCandidateDelegate
@@ -85,6 +88,7 @@ class InputBarDelegate(override val di: DI) :
 
     private var isClipboardFresh: Boolean = false
     private var isInlineSuggestionPresent: Boolean = false
+    private var isFixPresent: Boolean = false
 
     @Keep
     private val onClipboardUpdateListener = ClipboardHelper.OnClipboardUpdateListener {
@@ -116,6 +120,7 @@ class InputBarDelegate(override val di: DI) :
     private fun evalAlwaysUiState() {
         val newState =
             when {
+                isFixPresent -> AlwaysUi.State.FixSuggestion
                 isClipboardFresh -> AlwaysUi.State.Clipboard
                 isInlineSuggestionPresent -> AlwaysUi.State.InlineSuggestion
                 else -> AlwaysUi.State.Toolbar
@@ -138,6 +143,12 @@ class InputBarDelegate(override val di: DI) :
                 windowManager.attachWindow(SwitchOptionWindow(di))
             }
         }.apply {
+            // AI 重排手动启停：先读方案开关 ai_rerank 的真实值，再设成相反的；Lua 侧会把它同步给常驻推理进程
+            aiToggle = {
+                val target = !rime.run { getRuntimeOption("ai_rerank") }
+                service.postRimeJob { setRuntimeOption("ai_rerank", target) }
+                target
+            }
             hideKeyboardButton.apply {
                 setOnClickListener { service.requestHideSelf(0) }
                 onSwipe = swipeDownHideKeyboardCallback
@@ -157,6 +168,15 @@ class InputBarDelegate(override val di: DI) :
             }
             clipboardUi.dismiss.setOnClickListener {
                 dismissClipboardSuggestion()
+            }
+            fixUi.suggestionView.setOnClickListener {
+                SuzuFix.accept { n, text -> service.replaceBeforeCursor(n, text) }
+            }
+            fixUi.dismiss.setOnClickListener { SuzuFix.dismiss() }
+            SuzuFix.listener = { s ->
+                isFixPresent = s != null
+                if (s != null) fixUi.text.text = "${s.pick.word} → ${s.best}"
+                evalAlwaysUiState()
             }
         }
     }
@@ -179,6 +199,15 @@ class InputBarDelegate(override val di: DI) :
     private val tabUi by lazy {
         TabUi(context, scope)
     }
+
+    // 光标换词（SuzuFix）：没在打字时占用候选栏，像普通候选一样列出光标所在词的同页候选
+    private val fixChoicesUi by lazy {
+        FixChoicesUi(context, scope).apply {
+            onChoose = { i -> SuzuFix.choose(i) { start, end, text -> service.replaceRange(start, end, text) } }
+            dismiss.setOnClickListener { SuzuFix.dismiss() }
+        }
+    }
+    private var isFixChoicesPresent = false
 
     private val barStateMachine =
         QuickBarStateMachine.new {
@@ -223,6 +252,7 @@ class InputBarDelegate(override val di: DI) :
     }
 
     override fun onCandidateListUpdate(data: Candidates.Bulk) {
+        if (data.candidates.isNotEmpty()) SuzuFix.onTyping()
         barStateMachine.push(
             QuickBarStateMachine.TransitionEvent.CandidatesUpdated,
             QuickBarStateMachine.BooleanKey.CandidateEmpty to data.candidates.isEmpty(),
@@ -230,7 +260,7 @@ class InputBarDelegate(override val di: DI) :
     }
 
     private fun switchUiByState(state: QuickBarStateMachine.State) {
-        val index = state.ordinal
+        val index = if (isFixChoicesPresent && state == QuickBarStateMachine.State.Always) FIX_CHOICES_INDEX else state.ordinal
         if (view.displayedChild == index) return
         val new = view.getChildAt(index)
         if (new != tabUi.root) {
@@ -259,6 +289,12 @@ class InputBarDelegate(override val di: DI) :
             add(alwaysUi.root, lParams(matchParent, matchParent))
             add(candidateUi.root, lParams(matchParent, matchParent))
             add(tabUi.root, lParams(matchParent, matchParent))
+            add(fixChoicesUi.root, lParams(matchParent, matchParent))
+            SuzuFix.choicesListener = { c ->
+                isFixChoicesPresent = c != null
+                if (c != null) fixChoicesUi.show(c.options)
+                switchUiByState(barStateMachine.currentState)
+            }
 
             evalAlwaysUiState()
             ClipboardHelper.addOnUpdateListener(onClipboardUpdateListener)
@@ -280,6 +316,7 @@ class InputBarDelegate(override val di: DI) :
         // the compact candidate rows live inside candidateUi and re-bind via the delegate
         candidate.refreshColors()
         tabUi.refreshColors()
+        fixChoicesUi.refreshColors()
     }
 
     override fun onStartInput(info: EditorInfo) {
@@ -376,5 +413,9 @@ class InputBarDelegate(override val di: DI) :
 
     override fun onRimeOptionUpdated(value: RimeMessage.OptionMessage.Data) {
         alwaysUi.updateButtonsStyle(value.option, value.value)
+    }
+
+    companion object {
+        private const val FIX_CHOICES_INDEX = 3   // view 里的第四个子视图
     }
 }

@@ -81,12 +81,12 @@ class ButtonsBarUi(
     }
 
     fun updateStyle(option: String, enabled: Boolean) {
-        root.children.forEach { (it as ToolButton).updateStyle(option, enabled) }
+        root.children.filterIsInstance<ToolButton>().forEach { it.updateStyle(option, enabled) }
     }
 
     /** Restyles the toolbar buttons after a scheme switch. */
     fun refreshColors() {
         firstButton?.refreshColors()
-        root.children.forEach { (it as ToolButton).refreshColors() }
+        root.children.filterIsInstance<ToolButton>().forEach { it.refreshColors() }
     }
 }

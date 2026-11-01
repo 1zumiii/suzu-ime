@@ -18,6 +18,8 @@ sealed class SwitchOptionEntry(
         enum class Type {
             SchemaList,
             UpdateConfig,
+            RepoUpdate,
+            ModuleStatus,
             Keyboard,
             ThemeList,
         }

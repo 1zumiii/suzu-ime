@@ -10,6 +10,7 @@ import android.content.res.Resources
 import android.view.View
 import android.view.WindowInsets
 import android.widget.PopupMenu
+import android.widget.Toast
 import androidx.constraintlayout.widget.ConstraintLayout
 import androidx.core.text.bold
 import androidx.core.text.buildSpannedString
@@ -19,6 +20,7 @@ import androidx.lifecycle.lifecycleScope
 import com.osfans.trime.R
 import com.osfans.trime.core.RimeMessage
 import com.osfans.trime.daemon.RimeSession
+import com.osfans.trime.data.base.DataManager
 import com.osfans.trime.data.prefs.AppPrefs
 import com.osfans.trime.data.theme.Theme
 import com.osfans.trime.data.theme.ThemeManager
@@ -70,7 +72,23 @@ abstract class BaseInputView(
 
     private var candidateActionMenu: PopupMenu? = null
 
-    fun showCandidateActionMenu(idx: Int, text: String, view: View, global: Boolean) {
+    /** 怪词表：用户目录的 weird_words.tsv，每行一个词（后面可带制表符和时间戳）。Lua 重排时把表里的词排到同组候选的最后。 */
+    private fun weirdFile() = DataManager.userDataDir.resolve("weird_words.tsv")
+
+    private fun weirdWords(): List<String> =
+        runCatching { weirdFile().readLines().map { it.substringBefore('\t') }.filter { it.isNotEmpty() } }.getOrDefault(emptyList())
+
+    private fun setWeird(text: String, mark: Boolean) {
+        runCatching {
+            val f = weirdFile()
+            val old = if (f.exists()) f.readLines() else emptyList()
+            val out = old.filter { it.substringBefore('\t') != text }.toMutableList()
+            if (mark) out += "$text\t${System.currentTimeMillis() / 1000}"
+            f.writeText(out.joinToString("\n") + if (out.isEmpty()) "" else "\n")
+        }
+    }
+
+    fun showCandidateActionMenu(idx: Int, text: String, view: View, global: Boolean, comment: String = "") {
         candidateActionMenu?.dismiss()
         candidateActionMenu = null
         val highlightColor = scope.colors.hilitedCandidateTextColor
@@ -89,6 +107,15 @@ abstract class BaseInputView(
                     menu.add(R.string.forget_this_word).setOnMenuItemClickListener {
                         rime.runIfReady { deleteCandidate(idx, global) }
                         true
+                    }
+                    // AI 推理出来的候选（注释里带 ◇ 或 ◈）才提供“怪词”标记；已标记的提供取消
+                    val marked = text in weirdWords()
+                    if (marked || comment.contains("◇") || comment.contains("◈")) {
+                        menu.add(if (marked) "取消怪词标记" else "标记为怪词").setOnMenuItemClickListener {
+                            setWeird(text, !marked)
+                            Toast.makeText(themedContext, if (marked) "已取消怪词标记：$text" else "已标记为怪词：$text", Toast.LENGTH_SHORT).show()
+                            true
+                        }
                     }
                     setOnDismissListener {
                         candidateActionMenu = null

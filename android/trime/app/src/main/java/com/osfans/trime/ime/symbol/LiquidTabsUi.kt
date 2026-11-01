@@ -39,7 +39,7 @@ class LiquidTabsUi(
 
         val text =
             textView {
-                textSize = theme.style.candidateTextSize
+                textSize = theme.style.candidateTextSize * 0.85f
                 typeface = theme.fonts.candidate
                 setTextColor(scope.colors.candidateTextColor)
             }

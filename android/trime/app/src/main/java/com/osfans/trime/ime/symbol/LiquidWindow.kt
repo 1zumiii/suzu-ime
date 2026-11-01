@@ -5,11 +5,9 @@
 
 package com.osfans.trime.ime.symbol
 
+import androidx.transition.Transition
 import android.view.View
 import androidx.core.content.ContextCompat
-import com.google.android.flexbox.FlexDirection
-import com.google.android.flexbox.FlexWrap
-import com.google.android.flexbox.FlexboxLayoutManager
 import com.osfans.trime.daemon.RimeSession
 import com.osfans.trime.daemon.launchOnReady
 import com.osfans.trime.data.SymbolHistory
@@ -23,6 +21,7 @@ import com.osfans.trime.ime.window.BoardWindowManager
 import com.osfans.trime.ime.window.ResidentWindow
 import org.kodein.di.DI
 import org.kodein.di.instance
+import splitties.dimensions.dp
 
 class LiquidWindow(di: DI) :
     BoardWindow.BarBoardWindow(di),
@@ -62,14 +61,18 @@ class LiquidWindow(di: DI) :
         }
     }
 
+    // 网格：每格至少 single_width + 2*margin_x 宽，一行放得下几格就几列，剩余宽度平均分给每一格
     private val mainLayoutManager by lazy {
-        FlexboxLayoutManager(context).apply {
-            flexDirection = FlexDirection.ROW
-            flexWrap = FlexWrap.WRAP
-        }
+        val cfg = scope.theme.liquidKeyboard
+        AutoSpanGridLayoutManager(context, context.dp(cfg.singleWidth) + 2 * context.dp(cfg.marginX.toInt()))
     }
 
     companion object : ResidentWindow.Key
+
+    // 和键盘页面之间的切换一致：不要从顶部滑入
+    override fun enterAnimation(lastWindow: BoardWindow): Transition? = null
+
+    override fun exitAnimation(nextWindow: BoardWindow): Transition? = null
 
     override val key: ResidentWindow.Key
         get() = LiquidWindow

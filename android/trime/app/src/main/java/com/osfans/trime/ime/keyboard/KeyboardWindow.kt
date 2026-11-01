@@ -4,6 +4,7 @@
 
 package com.osfans.trime.ime.keyboard
 
+import androidx.transition.Transition
 import android.graphics.Point
 import android.os.Build
 import android.text.InputType
@@ -75,6 +76,11 @@ class KeyboardWindow(di: DI) :
         lateinit var currentKeyboard: Keyboard
     }
 
+    // 和键盘页面之间的切换一致：不要从顶部滑入
+    override fun enterAnimation(lastWindow: BoardWindow): Transition? = null
+
+    override fun exitAnimation(nextWindow: BoardWindow): Transition? = null
+
     override val key: ResidentWindow.Key
         get() = KeyboardWindow
 
@@ -83,6 +89,7 @@ class KeyboardWindow(di: DI) :
     private var lastKeyboardId = ""
     private var lastLockKeyboardId = ""
     private var tempAsciiMode: Boolean? = null
+    private var leftFollowKeyboard = false
     private val cachedKeyboards = mutableMapOf<String, Pair<Keyboard, KeyboardView>>()
     private val activeKeyboard: Keyboard? get() = cachedKeyboards[currentKeyboardId]?.first
     private val currentKeyboardView: KeyboardView? get() = cachedKeyboards[currentKeyboardId]?.second
@@ -181,8 +188,13 @@ class KeyboardWindow(di: DI) :
             dispatchCapsState(it::setShifted)
 
             val currentMode = rime.run { statusCached }.isAsciiMode
-            val targetMode = if (it.resetAsciiMode) it.asciiMode else it.lastAsciiMode
+            // 进出跟随语言的键盘都保持当前状态，否则从符号页回到字母页会丢掉英文模式
+            val keepMode = it.followAsciiMode || leftFollowKeyboard
+            leftFollowKeyboard = it.followAsciiMode
+            val targetMode = if (keepMode) currentMode else if (it.resetAsciiMode) it.asciiMode else it.lastAsciiMode
 
+            // 中文模式下数字键会选候选，进符号页前先上屏未完成的输入
+            if (it.followAsciiMode && !currentMode) service.postRimeJob { commitComposition() }
             if (currentMode != targetMode) {
                 service.postRimeJob {
                     commitComposition()

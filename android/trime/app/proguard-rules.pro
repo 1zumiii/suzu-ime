@@ -10,6 +10,11 @@
 
 # Keep JNI interface
 -keep class com.osfans.trime.core.* { *; }
+-keep class rikka.shizuku.** { *; }
+# 光标上文的 JNI 入口在 librime_llm.so 里，按类名和方法名查找
+-keep class com.osfans.trime.ime.core.SuzuAppContext { *; }
+# 选错修正建议的 JNI 入口（nativeTake、nativeScore）同在 librime_llm.so 里
+-keep class com.osfans.trime.ime.core.SuzuFix { *; }
 
 # remove kotlin null checks
 -assumenosideeffects class kotlin.jvm.internal.Intrinsics {

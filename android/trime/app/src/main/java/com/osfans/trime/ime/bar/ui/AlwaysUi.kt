@@ -26,6 +26,7 @@ import splitties.views.dsl.core.Ui
 import splitties.views.dsl.core.add
 import splitties.views.dsl.core.lParams
 import splitties.views.dsl.core.matchParent
+import splitties.views.dsl.core.wrapContent
 import timber.log.Timber
 
 class AlwaysUi(
@@ -39,6 +40,7 @@ class AlwaysUi(
         Toolbar,
         Clipboard,
         InlineSuggestion,
+        FixSuggestion,
     }
 
     var currentState = State.Toolbar
@@ -70,6 +72,9 @@ class AlwaysUi(
 
     val inlineSuggestionsUi = InlineSuggestionsUi(ctx)
 
+    // 选错修正建议“A → B”（SuzuFix）
+    val fixUi = ClipboardSuggestionUi(ctx, scope, R.drawable.ic_baseline_edit_24)
+
     val hideKeyboardButton = ToolButton(ctx, R.drawable.ic_baseline_arrow_drop_down_24, scope)
     private val rightMostButton =
         ViewAnimator(ctx).apply {
@@ -82,11 +87,16 @@ class AlwaysUi(
         R.drawable.ic_baseline_more_horiz_24,
     )
 
+    // AI 重排守护进程状态：紧靠左侧按钮（没部署守护进程时自动隐藏）
+    var aiToggle: (() -> Boolean)? = null
+    private val aiStatusButton = AiStatusButton(ctx) { aiToggle?.invoke() ?: false }
+
     private val animator =
         ViewAnimator(ctx).apply {
             add(buttonsUi.root, lParams(matchParent, matchParent))
             add(clipboardUi.root, lParams(matchParent, matchParent))
             add(inlineSuggestionsUi.root, lParams(matchParent, matchParent))
+            add(fixUi.root, lParams(matchParent, matchParent))
         }
 
     override val root: ConstraintLayout = constraintLayout {
@@ -108,9 +118,16 @@ class AlwaysUi(
             },
         )
         add(
+            aiStatusButton,
+            lParams(wrapContent, leftHeight) {
+                after(leftMostButton)
+                centerVertically()
+            },
+        )
+        add(
             animator,
             lParams(matchConstraints, matchParent) {
-                after(leftMostButton)
+                after(aiStatusButton)
                 before(rightMostButton)
                 endOfParent()
                 centerVertically()
@@ -129,7 +146,7 @@ class AlwaysUi(
     fun toggleOptions(): Set<String> = buildSet {
         leftMostButton.option?.let { add(it) }
         buttonsUi.firstButton?.option?.let { add(it) }
-        buttonsUi.root.children.forEach { (it as ToolButton).option?.let { add(it) } }
+        buttonsUi.root.children.filterIsInstance<ToolButton>().forEach { it.option?.let { opt -> add(opt) } }
     }
 
     fun updateState(state: State) {
@@ -146,6 +163,7 @@ class AlwaysUi(
         hideKeyboardButton.refreshColors()
         buttonsUi.refreshColors()
         clipboardUi.refreshColors()
+        fixUi.refreshColors()
     }
 
     private fun updateRightMostButton(state: State) {
