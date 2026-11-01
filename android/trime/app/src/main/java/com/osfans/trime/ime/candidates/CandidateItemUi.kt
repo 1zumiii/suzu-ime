@@ -10,6 +10,7 @@ import android.content.Context
 import android.graphics.Color
 import android.view.View
 import androidx.constraintlayout.widget.ConstraintLayout
+import androidx.core.view.updateLayoutParams
 import androidx.core.view.isVisible
 import com.osfans.trime.core.CandidateProto
 import com.osfans.trime.data.theme.Theme
@@ -174,7 +175,26 @@ class CandidateItemUi(
 
         val commentText = item.comment
         comment.text = commentText
-        comment.setTextColor(cColor)
+        // AI 标记（◇ 等单个符号）用候选字的颜色，在高亮底色上也看得清；并垂直居中，不按基线贴在下沿
+        val badge = commentText.length == 1 && commentText[0] in BADGES
+        comment.setTextColor(if (badge) tColor else cColor)
         comment.isVisible = commentText.isNotEmpty()
+        if (commentPosition == GeneralStyle.CommentPosition.RIGHT) {
+            comment.updateLayoutParams<ConstraintLayout.LayoutParams> {
+                if (badge) {
+                    baselineToBaseline = ConstraintLayout.LayoutParams.UNSET
+                    topToTop = ConstraintLayout.LayoutParams.PARENT_ID
+                    bottomToBottom = ConstraintLayout.LayoutParams.PARENT_ID
+                } else {
+                    topToTop = ConstraintLayout.LayoutParams.UNSET
+                    bottomToBottom = ConstraintLayout.LayoutParams.UNSET
+                    baselineToBaseline = text.id
+                }
+            }
+        }
+    }
+
+    private companion object {
+        const val BADGES = "◇◈❖"
     }
 }
