@@ -339,6 +339,11 @@ class Rime :
 
     private fun handleRimeMessage(it: RimeMessage<*>) {
         when (it) {
+            // 部署结束后模式可能变了，但不一定有选项消息
+            is RimeMessage.DeployMessage -> {
+                if (it.data == RimeMessage.DeployMessage.State.Success) statusCached = getRimeStatus()
+            }
+
             is RimeMessage.SchemaMessage -> {
                 statusCached = getRimeStatus()
                 schemaCached = RimeSchema(it.data.id)
