@@ -2,15 +2,22 @@
 -- 活动文件（recent_words.tsv、recent_pairs.tsv）只保留最近的若干条，用于“最近使用优先”和个人词对；
 -- 被挤出的旧记录追加到同目录的 <名字>.archive.tsv，超过 512 KB 就改名成带时间的分卷并尽力用 gzip 压缩
 -- （没有 gzip 或在 Windows 上时保留明文分卷）。归档只在本机，不会同步，也不会进入仓库。
+-- 归档只用于积累训练语料：用户目录没有 select_corpus.enabled 时不写，旧记录直接丢弃
 local M = {}
 
 local ROTATE_BYTES = 512 * 1024
 
 local function is_windows() return package.config:sub(1, 1) == "\\" end
 
--- 追加成功返回 true；失败返回 false（调用方此时不应删除活动文件里的旧记录）
+local function collecting(path)
+    local f = io.open((path:match("^(.*)[/\\\\]") or ".") .. "/select_corpus.enabled", "r")
+    if f then f:close() end
+    return f ~= nil
+end
+
+-- 追加成功或无须归档时返回 true；失败返回 false（调用方此时不应删除活动文件里的旧记录）
 function M.append(path, lines)
-    if #lines == 0 then return true end
+    if #lines == 0 or not collecting(path) then return true end
     local base = path:gsub("%.tsv$", "")
     local ap = base .. ".archive.tsv"
     local f = io.open(ap, "a")
