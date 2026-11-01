@@ -14,9 +14,6 @@ import androidx.core.content.edit
 import androidx.preference.PreferenceManager
 import com.osfans.trime.R
 import com.osfans.trime.ime.candidates.compact.CompactCandidateMode
-import com.osfans.trime.ime.candidates.popup.PopupCandidatesLayout
-import com.osfans.trime.ime.candidates.popup.PopupCandidatesMode
-import com.osfans.trime.ime.composition.PopupPosition
 import com.osfans.trime.ime.core.InlinePreeditMode
 import com.osfans.trime.util.InputMethodUtils
 import com.osfans.trime.util.appContext
@@ -45,7 +42,6 @@ class AppPrefs(
     val internal = Internal(shared)
     val general = General(shared).register()
     val keyboard = Keyboard(shared).register()
-    val candidates = Candidates(shared).register()
     val clipboard = Clipboard(shared).register()
     val advanced = Advanced(shared).register()
 
@@ -349,20 +345,6 @@ class AppPrefs(
         )
     }
 
-    class Candidates(
-        shared: SharedPreferences,
-    ) : PreferenceDelegateOwner(shared, R.string.candidates_window) {
-        companion object {
-            const val MODE = "show_candidates_window"
-            const val LAYOUT = "candidates_layout"
-            const val POSITION = "candidates_window_position"
-        }
-
-        val mode = enum(R.string.show_candidates_window, MODE, PopupCandidatesMode.DISABLED)
-        val layout = enum(R.string.candidates_layout, LAYOUT, PopupCandidatesLayout.AUTOMATIC)
-        val position = enum(R.string.candidates_window_position, POSITION, PopupPosition.BOTTOM_LEFT)
-    }
-
     class Clipboard(
         shared: SharedPreferences,
     ) : PreferenceDelegateOwner(shared, R.string.clipboard) {
@@ -449,7 +431,6 @@ class AppPrefs(
         sp.edit {
             listOf(
                 keyboard,
-                candidates,
                 clipboard,
             ).forEach { category ->
                 category.preferenceDelegates.forEach {

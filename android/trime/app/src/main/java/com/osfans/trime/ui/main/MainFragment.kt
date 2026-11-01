@@ -73,11 +73,6 @@ class MainFragment : PaddingPreferenceFragment() {
                     NavigationRoute.VirtualKeyboard,
                 )
                 addDestinationPreference(
-                    R.string.candidates_window,
-                    R.drawable.ic_baseline_list_alt_24,
-                    NavigationRoute.CandidatesWindow,
-                )
-                addDestinationPreference(
                     R.string.clipboard,
                     R.drawable.ic_clipboard_24,
                     NavigationRoute.Clipboard,
