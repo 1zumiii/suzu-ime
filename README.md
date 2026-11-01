@@ -52,7 +52,7 @@
 
 ## 快速开始
 
-Android 使用改版 Trime，方案、Lua 和默认词库随 APK 提供。安装后可在引导页下载模型，并通过 Shizuku 启动 AI 服务；词库和模型可在“设置 → 词库”中管理，见 [android/README.md](android/README.md)。
+Android 使用改版 Trime，方案、Lua 和默认词库随 APK 提供，APK 可从[发布页](https://github.com/1zumiii/suzu-ime/releases/tag/android-v0.1.0)下载。安装后可在引导页下载模型，并通过 Shizuku 启动 AI 服务；词库和模型可在“设置 → 词库”中管理，见 [android/README.md](android/README.md)。
 
 macOS 与 Windows 的安装步骤如下：
 
