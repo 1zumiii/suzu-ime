@@ -13,7 +13,6 @@ import androidx.annotation.RequiresApi
 import androidx.core.content.edit
 import androidx.preference.PreferenceManager
 import com.osfans.trime.R
-import com.osfans.trime.data.sync.DataStorageMode
 import com.osfans.trime.ime.candidates.compact.CompactCandidateMode
 import com.osfans.trime.ime.candidates.popup.PopupCandidatesLayout
 import com.osfans.trime.ime.candidates.popup.PopupCandidatesMode
@@ -45,7 +44,6 @@ class AppPrefs(
 
     val internal = Internal(shared)
     val general = General(shared).register()
-    val profile = Profile(shared).register()
     val keyboard = Keyboard(shared).register()
     val candidates = Candidates(shared).register()
     val clipboard = Clipboard(shared).register()
@@ -363,33 +361,6 @@ class AppPrefs(
         val mode = enum(R.string.show_candidates_window, MODE, PopupCandidatesMode.DISABLED)
         val layout = enum(R.string.candidates_layout, LAYOUT, PopupCandidatesLayout.AUTOMATIC)
         val position = enum(R.string.candidates_window_position, POSITION, PopupPosition.BOTTOM_LEFT)
-    }
-
-    /**
-     *  Wrapper class of profile settings.
-     */
-    class Profile(
-        shared: SharedPreferences,
-    ) : PreferenceDelegateOwner(shared) {
-
-        companion object {
-            const val EXTERNAL_RIME_TREE_URI = "profile_external_rime_tree_uri"
-            const val EXTERNAL_RIME_DISPLAY_NAME = "profile_external_rime_display_name"
-            const val DATA_STORAGE_MODE = "profile_data_storage_mode"
-            const val PERIODIC_BACKGROUND_SYNC = "periodic_background_sync"
-            const val PERIODIC_BACKGROUND_SYNC_INTERVAL = "periodic_background_sync_interval"
-            const val LAST_BACKGROUND_SYNC_STATUS = "last_background_sync_status"
-            const val LAST_BACKGROUND_SYNC_TIME = "last_background_sync_time"
-            const val USER_DB_MIGRATED = "profile_user_db_migrated"
-        }
-
-        val dataStorageMode = enum(R.string.data_storage_mode, DATA_STORAGE_MODE, DataStorageMode.EXTERNAL_SYNC)
-        val externalRimeTreeUri = string(EXTERNAL_RIME_TREE_URI, "")
-        val userDbMigrated = bool(USER_DB_MIGRATED, false)
-        val periodicBackgroundSync = bool(PERIODIC_BACKGROUND_SYNC, false)
-        val periodicBackgroundSyncInterval = int(PERIODIC_BACKGROUND_SYNC_INTERVAL, 30)
-        val lastBackgroundSyncStatus = bool(LAST_BACKGROUND_SYNC_STATUS, false)
-        val lastBackgroundSyncTime = long(LAST_BACKGROUND_SYNC_TIME, 0L)
     }
 
     class Clipboard(

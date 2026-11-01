@@ -16,7 +16,6 @@ class MainViewModel : ViewModel() {
 
     val rime = RimeDaemon.createSession(javaClass.name)
 
-    val restartBackgroundSyncWork = MutableLiveData(false)
 
     val toolbarEditButtonVisible = MutableLiveData(false)
 
