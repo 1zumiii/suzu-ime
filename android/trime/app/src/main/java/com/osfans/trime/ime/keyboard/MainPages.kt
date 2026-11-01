@@ -1,8 +1,8 @@
 // 有独立布局的页面。符号类页面见 SymbolBoard.kt
 
-package com.osfans.trime.ime.keyboard.v2
+package com.osfans.trime.ime.keyboard
 
-import com.osfans.trime.ime.keyboard.v2.KeyCommand.*
+import com.osfans.trime.ime.keyboard.KeyCommand.*
 
 internal object MainPages {
     val builders: Map<String, () -> Page> = mapOf(
@@ -11,6 +11,7 @@ internal object MainPages {
         "number" to ::number,
         "numpad" to ::numpad,
         "symbols" to ::symbols,
+        "editor" to ::editor,
     )
 
     private fun default() = Page("default", AsciiPolicy.Chinese, listOf(
@@ -240,6 +241,45 @@ internal object MainPages {
             key(Query("/ey"), width = 12.0f, long = Query("/eyd"), textSp = 16.0f, cornerSp = 8.0f),
             key(Insert("备用"), width = 16.0f, tone = Tone.Gn, composing = Special(Nav.Right)),
             key(Special(Nav.Return), label = EnterLabel, width = 16.0f, tone = Tone.Enter, preview = "↩"),
+        )),
+    ))
+
+    private fun editor() = Page("editor", AsciiPolicy.Ascii, listOf(
+        Row(39.5f, listOf(
+            key(Editor(EditorOp.SelectAll), width = 20.25f),
+            key(Chord("Left", ctrl = true, repeats = true), label = "⇦", width = 20.25f),
+            key(Special(Nav.Up), width = 20.25f),
+            key(Chord("Right", ctrl = true, repeats = true), label = "⇨", width = 20.25f),
+            key(Special(Nav.Space), label = "空格", width = 19.0f),
+        )),
+        Row(39.5f, listOf(
+            key(Editor(EditorOp.Cut), width = 20.25f),
+            key(Special(Nav.Left), width = 20.25f),
+            key(Shift, label = "选择", width = 20.25f, preview = "⇪"),
+            key(Special(Nav.Right), width = 20.25f),
+            key(ShowPage("number"), label = "?123", width = 19.0f),
+        )),
+        Row(39.5f, listOf(
+            key(Editor(EditorOp.Copy), width = 20.25f),
+            key(Special(Nav.Home), width = 20.25f),
+            key(Special(Nav.Down), width = 20.25f),
+            key(Special(Nav.End), width = 20.25f),
+            key(Special(Nav.Backspace), label = "ic@backspace_outline", width = 19.0f, preview = "⇦"),
+        )),
+        Row(39.5f, listOf(
+            key(Editor(EditorOp.Paste), width = 20.25f),
+            key(Editor(EditorOp.Undo), width = 20.25f),
+            key(Special(Nav.Tab), width = 20.25f),
+            key(Chord("z", ctrl = true, shift = true), label = "重做", width = 20.25f),
+            key(Special(Nav.Return), label = EnterLabel, width = 19.0f, preview = "↩"),
+        )),
+        Row(26.5f, listOf(
+            key(ShowPage(Pages.DEFAULT), label = "返回", width = 17.0f, textSp = 14.0f),
+            key(ShowPage(SymbolBoard.PUNCT_CN), label = "中文", width = 16.5f, textSp = 14.0f),
+            key(ShowPage(SymbolBoard.PUNCT_EN), label = "英文", width = 16.5f, textSp = 14.0f),
+            key(ShowPage(SymbolBoard.EMOJI_FIRST), label = "表情", width = 16.5f, textSp = 14.0f),
+            key(ShowPage(SymbolBoard.KAO_FIRST), label = "颜文", width = 16.5f, textSp = 14.0f),
+            key(ShowPage(Pages.LAST), label = "后退", width = 17.0f, textSp = 14.0f),
         )),
     ))
 

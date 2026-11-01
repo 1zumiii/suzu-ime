@@ -30,7 +30,6 @@ import com.osfans.trime.ime.broadcast.InputBroadcastReceiver
 import com.osfans.trime.ime.broadcast.InputBroadcaster
 import com.osfans.trime.ime.candidates.compact.CompactCandidateDelegate
 import com.osfans.trime.ime.composition.PreeditDelegate
-import com.osfans.trime.ime.keyboard.CommonKeyboardActionListener
 import com.osfans.trime.ime.keyboard.KeyboardPrefs.isLandscapeMode
 import com.osfans.trime.ime.keyboard.KeyboardWindow
 import com.osfans.trime.ime.popup.PopupDelegate
@@ -111,7 +110,6 @@ class InputView(
         bindSingleton { PopupDelegate(di) }
         bindSingleton { EnterKeyDisplayDelegate(di) }
         bindSingleton { PreeditDelegate(di) }
-        bindSingleton { CommonKeyboardActionListener(di) }
         bindSingleton { BoardWindowManager(di) }
         bindSingleton { InputBarDelegate(di) }
         bindSingleton { CompactCandidateDelegate(di) }

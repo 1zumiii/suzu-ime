@@ -3,7 +3,7 @@
  * SPDX-License-Identifier: GPL-3.0-or-later
  */
 
-package com.osfans.trime.ime.keyboard.v2
+package com.osfans.trime.ime.keyboard
 
 /** 符号板上的一个符号；[after] 是输入后要按的键，如成对括号之间的左移 */
 data class Symbol(val text: String, val after: List<Nav> = emptyList())

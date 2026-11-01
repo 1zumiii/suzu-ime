@@ -3,7 +3,7 @@
  * SPDX-License-Identifier: GPL-3.0-or-later
  */
 
-package com.osfans.trime.ime.keyboard.v2
+package com.osfans.trime.ime.keyboard
 
 /** 不经过字符映射、直接发给 Rime 的键，名称是 Rime 的键名 */
 enum class Nav(val rimeName: String, val repeats: Boolean = false) {
@@ -16,6 +16,13 @@ enum class Nav(val rimeName: String, val repeats: Boolean = false) {
     Tab("Tab"),
     PageUp("Page_Up"),
     PageDown("Page_Down"),
+    Up("Up"),
+    Down("Down"),
+    Home("Home"),
+    End("End");
+
+    /** 移动光标的键：Shift 不会被消耗，可以连续选择文字 */
+    val movesCursor: Boolean get() = this == Left || this == Right || this == Up || this == Down || this == Home || this == End
 }
 
 enum class EditorOp(val label: String, val letter: Char) {
@@ -23,6 +30,7 @@ enum class EditorOp(val label: String, val letter: Char) {
     Cut("剪切", 'x'),
     Copy("复制", 'c'),
     Paste("粘贴", 'v'),
+    Undo("撤销", 'z'),
 }
 
 /** 按键触发的动作。[KeyCommandRunner] 负责执行，这里只描述“做什么” */
@@ -38,13 +46,17 @@ sealed interface KeyCommand {
     /** 清空当前输入后，把 [input] 作为编码打给 Rime（符号反查） */
     data class Query(val input: String) : KeyCommand
 
-    data class Chord(val key: String, val ctrl: Boolean = false, val shift: Boolean = false) : KeyCommand
+    data class Chord(val key: String, val ctrl: Boolean = false, val shift: Boolean = false, val repeats: Boolean = false) : KeyCommand
 
     data class Editor(val op: EditorOp) : KeyCommand
 
     data class ShowPage(val id: String) : KeyCommand
 
     data class OpenLiquid(val tag: String) : KeyCommand
+
+    data object ExitLiquid : KeyCommand
+
+    data object OpenMenu : KeyCommand
 
     data object Shift : KeyCommand
 
@@ -106,7 +118,8 @@ data class KeySpec(
 ) {
     val isGap: Boolean get() = command == null
 
-    val repeats: Boolean get() = (command as? KeyCommand.Special)?.nav?.repeats == true
+    val repeats: Boolean
+        get() = (command as? KeyCommand.Special)?.nav?.repeats == true || (command as? KeyCommand.Chord)?.repeats == true
 
     val isShift: Boolean get() = command == KeyCommand.Shift
 }
@@ -184,6 +197,10 @@ fun KeyCommand.defaultLabel(state: KeyState): String = when (this) {
         Nav.Backspace -> "ic@backspace_outline"
         Nav.Return -> "Enter"
         Nav.Space -> ""
+        Nav.Up -> "↑"
+        Nav.Down -> "↓"
+        Nav.Home -> "行首"
+        Nav.End -> "行尾"
     }
     KeyCommand.ToggleAscii -> if (state.asciiMode) "西文" else "中文"
     KeyCommand.PasteClipboard -> "粘贴"
@@ -268,3 +285,10 @@ fun layoutPage(page: Page, width: Int, height: Int): List<KeyRect> {
     }
     return result
 }
+
+private const val ICON_PREFIX = "ic@"
+
+/** 以 ic@ 开头的标签是图标名，不是文字 */
+val String.isIconFont: Boolean get() = startsWith(ICON_PREFIX)
+
+fun String.toIconName(): String = replace(ICON_PREFIX, "cmd_")

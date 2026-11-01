@@ -123,7 +123,6 @@ class AppPrefs(
             const val HIDE_INPUT_BAR = "hide_input_bar"
             const val HIDE_KEY_SYMBOL = "hide_key_symbol"
             const val HIDE_KEY_HINT = "hide_key_hint"
-            const val USE_LEGACY_KEYBOARD = "use_legacy_keyboard"
 
             const val SOUND_ON_KEYPRESS = "sound_on_keypress"
             const val KEY_SOUND_VOLUME = "sound_volume"
@@ -137,7 +136,6 @@ class AppPrefs(
             const val SPEAK_ON_KEYPRESS = "speak_on_keypress"
             const val SPEAK_ON_COMMIT = "speak_on_commit"
             const val POPUP_ON_KEY_PRESS = "show_key_popup"
-            const val EXPAND_KEYPRESS_AREA = "expand_keypress_area"
             const val SWIPE_TRAVEL = "key_swipe_travel"
             const val SWIPE_VELOCITY = "key_swipe_velocity"
             const val LONG_PRESS_TIMEOUT = "key_long_press_timeout"
@@ -149,11 +147,6 @@ class AppPrefs(
             const val HOOK_CTRL_CV = "hook_ctrl_cv"
             const val HOOK_CTRL_LR = "hook_ctrl_lr"
             const val HOOK_CTRL_ZY = "hook_ctrl_zy"
-            const val HOOK_SHIFT_SPACE = "hook_shift_space"
-            const val HOOK_SHIFT_NUM = "hook_shift_num"
-            const val HOOK_SHIFT_SYMBOL = "hook_shift_symbol"
-            const val HOOK_SHIFT_ARROW = "hook_shift_arrow"
-            const val HOOK_SHIFT_LOCK = "hook_shift_lock"
 
             const val MAX_SPAN_COUNT = "max_span_count"
             const val MAX_SPAN_COUNT_LANDSCAPE = "max_span_count_landscape"
@@ -174,7 +167,6 @@ class AppPrefs(
         val hideInputBar = switch(R.string.hide_input_bar, HIDE_INPUT_BAR, false)
         val hideKeySymbol = switch(R.string.hide_key_symbol, HIDE_KEY_SYMBOL, false)
         val hideKeyHint = switch(R.string.hide_key_hint, HIDE_KEY_HINT, false)
-        val useLegacyKeyboard = switch(R.string.use_legacy_keyboard, USE_LEGACY_KEYBOARD, false)
 
         val soundOnKeyPress = switch(R.string.sound_on_keypress, SOUND_ON_KEYPRESS, false)
         val soundVolume = int(
@@ -233,7 +225,6 @@ class AppPrefs(
         val speakOnKeyPress = switch(R.string.speak_on_keypress, SPEAK_ON_KEYPRESS, false)
         val speakOnCommit = switch(R.string.speak_on_commit, SPEAK_ON_COMMIT, false)
         val popupOnKeyPress = switch(R.string.popup_on_key_press, POPUP_ON_KEY_PRESS, false)
-        val expandKeypressArea = switch(R.string.expand_keypress_area_to_edge, EXPAND_KEYPRESS_AREA, false)
         val swipeTravel = int(
             R.string.key_swipe_travel,
             SWIPE_TRAVEL,
@@ -326,16 +317,6 @@ class AppPrefs(
         val hookCtrlCV = switch(R.string.hook_ctrl_cv, HOOK_CTRL_CV, false)
         val hookCtrlLR = switch(R.string.hook_ctrl_lr, HOOK_CTRL_LR, false)
         val hookCtrlZY = switch(R.string.hook_ctrl_zy, HOOK_CTRL_ZY, false)
-        val hookShiftSpace = switch(R.string.hook_shift_space, HOOK_SHIFT_SPACE, false)
-        val hookShiftNum = switch(R.string.hook_shift_num, HOOK_SHIFT_NUM, false)
-        val hookShiftSymbol = switch(R.string.hook_shift_symbol, HOOK_SHIFT_SYMBOL, false)
-        val hookShiftArrow = switch(R.string.hook_shift_arrow, HOOK_SHIFT_ARROW, true)
-        val hookShiftLock = switch(
-            R.string.hook_shift_lock,
-            HOOK_SHIFT_LOCK,
-            true,
-            R.string.hook_shift_lock_summary,
-        )
     }
 
     class Clipboard(

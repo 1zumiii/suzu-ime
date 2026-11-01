@@ -34,7 +34,6 @@ class PopupDelegate(override val di: DI) : DIAware {
     private val dismissJobs = HashMap<Int, Job>()
     private val freeEntryUi = LinkedList<PopupEntryUi>()
 
-    private val showingContainerUi = HashMap<Int, PopupContainerUi>()
 
     private val popupBottomMargin by lazy {
         context.dp(theme.style.popupBottomMargin)
@@ -112,50 +111,7 @@ class PopupDelegate(override val di: DI) : DIAware {
         showingEntryUi[viewId]?.setText(content)
     }
 
-    private fun showKeyboard(viewId: Int, keys: List<String>, bounds: Rect) {
-        // clear popup preview text         OR create empty popup preview
-        showingEntryUi[viewId]?.setText("") ?: showPopup(viewId, "", bounds)
-        reallyShowKeyboard(viewId, keys, bounds)
-    }
-
-    private fun reallyShowKeyboard(viewId: Int, keys: List<String>, bounds: Rect) {
-        val labels = keys
-        val keyboardUi = PopupKeyboardUi(
-            context,
-            scope,
-            rootBounds,
-            bounds,
-            { dismissPopup(viewId) },
-            popupRadius,
-            popupWidth,
-            popupKeyHeight,
-            // position popup keyboard higher, because of [^1]
-            popupHeight + popupBottomMargin,
-            keys,
-            labels,
-        )
-        showPopupContainer(viewId, keyboardUi)
-    }
-
-    private fun showPopupContainer(viewId: Int, ui: PopupContainerUi) {
-        root.apply {
-            add(
-                ui.root,
-                lParams {
-                    leftMargin = ui.triggerBounds.left + ui.offsetX - rootBounds.left
-                    topMargin = ui.triggerBounds.top + ui.offsetY - rootBounds.top
-                },
-            )
-        }
-        showingContainerUi[viewId] = ui
-    }
-
-    private fun changeFocus(viewId: Int, x: Float, y: Float): Boolean = showingContainerUi[viewId]?.changeFocus(x, y) ?: false
-
-    private fun triggerFocused(viewId: Int): String? = showingContainerUi[viewId]?.onTrigger()
-
     private fun dismissPopup(viewId: Int) {
-        dismissPopupContainer(viewId)
         showingEntryUi[viewId]?.also {
             val timeLeft = it.lastShowTime + hideThreshold - System.currentTimeMillis()
             if (timeLeft <= 0L) {
@@ -167,13 +123,6 @@ class PopupDelegate(override val di: DI) : DIAware {
                     dismissJobs.remove(viewId)
                 }
             }
-        }
-    }
-
-    private fun dismissPopupContainer(viewId: Int) {
-        showingContainerUi[viewId]?.also {
-            showingContainerUi.remove(viewId)
-            root.removeView(it.root)
         }
     }
 
@@ -190,10 +139,6 @@ class PopupDelegate(override val di: DI) : DIAware {
         }
         dismissJobs.clear()
         // too
-        showingContainerUi.forEach { (_, container) ->
-            root.removeView(container.root)
-        }
-        showingContainerUi.clear()
         // too too
         showingEntryUi.forEach { (_, entry) ->
             root.removeView(entry.root)
@@ -206,18 +151,14 @@ class PopupDelegate(override val di: DI) : DIAware {
     fun refreshColors() {
         freeEntryUi.forEach { it.refreshColors() }
         showingEntryUi.values.forEach { it.refreshColors() }
-        showingContainerUi.values.forEach { it.refreshColors() }
     }
 
     val listener = PopupActionListener { action ->
         with(action) {
             when (this) {
-                is PopupAction.ChangeFocusAction -> outResult = changeFocus(viewId, x, y)
                 is PopupAction.DismissAction -> dismissPopup(viewId)
                 is PopupAction.PreviewAction -> showPopup(viewId, content, bounds)
                 is PopupAction.PreviewUpdateAction -> updatePopup(viewId, content)
-                is PopupAction.ShowKeyboardAction -> showKeyboard(viewId, keys, bounds)
-                is PopupAction.TriggerAction -> outAction = triggerFocused(viewId)
             }
         }
     }

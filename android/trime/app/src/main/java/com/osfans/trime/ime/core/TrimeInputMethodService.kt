@@ -88,10 +88,8 @@ open class TrimeInputMethodService : LifecycleInputMethodService() {
     private var lastOwnEditAt = 0L
 
     private val recreateInputViewPrefs: Array<PreferenceDelegate<*>> = arrayOf(
-        prefs.keyboard.expandKeypressArea,
         prefs.keyboard.hideKeySymbol,
         prefs.keyboard.hideKeyHint,
-        prefs.keyboard.useLegacyKeyboard,
         prefs.keyboard.hideInputBar,
         prefs.advanced.ignoreSystemGestureInsets,
     )
