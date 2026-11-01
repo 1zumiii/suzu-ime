@@ -1,6 +1,8 @@
 # suzu-ime
 
-为 Rime 输入法提供候选排序与生成的小模型推理核心，支持 macOS、Windows 和 Android。
+基于 Rime 的本地 AI 拼音输入法：包含 Android App（改版同文输入法）和 macOS、Windows 共用的推理核心，按上文重排候选、补全简拼。
+
+Android 版可从[发布页](https://github.com/1zumiii/suzu-ime/releases/tag/android-v0.1.0)下载。其他平台的配置和安装包见 [rime-suzu](https://github.com/1zumiii/rime-suzu)。
 
 简拼输入时，Rime 只按词库权重排列候选，目标词常常不在第一页。本项目使用 4000 万参数的字符级模型 [Suzu](https://github.com/1zumiii/Suzu)，根据光标前的文字为同音候选打分，并补充简拼中 Rime 未给出的词。模型文件 44 MB，三端均在本机运行，输入内容不出设备。
 
