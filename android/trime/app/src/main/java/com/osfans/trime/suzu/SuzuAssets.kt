@@ -8,6 +8,7 @@ package com.osfans.trime.suzu
 import android.content.Intent
 import android.net.Uri
 import android.provider.OpenableColumns
+import com.osfans.trime.R
 import com.osfans.trime.receiver.RimeIntentReceiver
 import com.osfans.trime.data.base.DataManager
 import com.osfans.trime.util.appContext
@@ -128,12 +129,12 @@ object SuzuAssets {
             val part = File(target.parentFile, target.name + ".part")
             runCatching {
                 val (name, size) = resolver.query(uri, null, null, null, null)?.use { c ->
-                    check(c.moveToFirst()) { "读不到这个文件" }
+                    check(c.moveToFirst()) { appContext.getString(R.string.suzu_file_unreadable) }
                     c.getString(c.getColumnIndexOrThrow(OpenableColumns.DISPLAY_NAME)) to
                         c.getLong(c.getColumnIndexOrThrow(OpenableColumns.SIZE))
-                } ?: error("读不到这个文件")
-                check(name.endsWith(".gram")) { "请选择 .gram 文件" }
-                check(size >= MIN_GRAMMAR_BYTES) { "文件太小，不像语法模型" }
+                } ?: error(appContext.getString(R.string.suzu_file_unreadable))
+                check(name.endsWith(".gram")) { appContext.getString(R.string.suzu_grammar_file_required) }
+                check(size >= MIN_GRAMMAR_BYTES) { appContext.getString(R.string.suzu_grammar_file_too_small) }
                 userDir.mkdirs()
                 resolver.openInputStream(uri)!!.use { input ->
                     part.outputStream().use { out ->
@@ -153,7 +154,7 @@ object SuzuAssets {
                         }
                     }
                 }
-                check(part.renameTo(target)) { "无法写入 ${target.name}" }
+                check(part.renameTo(target)) { appContext.getString(R.string.suzu_file_save_failed) }
                 requestDeploy()
             }.onSuccess {
                 set(asset, State.Idle)
@@ -200,7 +201,7 @@ object SuzuAssets {
             val code = conn.responseCode
             // 服务器不支持续传，或临时文件已经完整（416）时从头开始
             if (code == 416 || code == 200) have = 0
-            check(code == 200 || code == 206 || code == 416) { "下载失败：HTTP $code" }
+            check(code == 200 || code == 206 || code == 416) { appContext.getString(R.string.suzu_download_http_error, code) }
             if (code != 416) {
                 conn.inputStream.use { input ->
                     java.io.FileOutputStream(part, have > 0).use { out ->
@@ -226,9 +227,9 @@ object SuzuAssets {
         }
         if (sha256(part) != file.sha256) {
             part.delete()
-            error("校验失败：${file.name} 不完整或来源已更新")
+            error(appContext.getString(R.string.suzu_file_checksum_failed))
         }
-        check(part.renameTo(target)) { "无法写入 ${file.name}" }
+        check(part.renameTo(target)) { appContext.getString(R.string.suzu_file_save_failed) }
     }
 
     private fun sha256(file: File): String {

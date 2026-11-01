@@ -19,6 +19,7 @@ import android.widget.Button
 import android.widget.LinearLayout
 import android.widget.ScrollView
 import android.widget.TextView
+import com.osfans.trime.R
 import com.osfans.trime.data.base.DataManager
 import org.json.JSONObject
 import java.io.File
@@ -139,7 +140,7 @@ class ModuleStatusActivity : Activity() {
 
     private fun render() {
         body.removeAllViews()
-        add(title("模块状态"))
+        add(title(getString(R.string.suzu_module_status)))
         val dir = DataManager.userDataDir
 
         add(section("AI 重排"))
@@ -151,13 +152,13 @@ class ModuleStatusActivity : Activity() {
             }
         val age = if (j != null) System.currentTimeMillis() / 1000 - j.optLong("ts", 0) else Long.MAX_VALUE
         if (j == null || age > 30) {
-            add(row(RED, "推理守护进程", if (j == null) "没有状态文件" else "无响应（${age} 秒前）"))
+            add(row(RED, "AI 服务", if (j == null) "尚未获取到状态" else "状态未更新（${age} 秒前）"))
         } else {
             val loaded = j.optBoolean("model_loaded")
             val enabled = j.optBoolean("enabled", true)
             val color = if (!enabled) GRAY else if (loaded) GREEN else YELLOW
             val value = if (!enabled) "已关闭" else if (loaded) "模型在线" else "模型未加载"
-            add(row(color, "推理守护进程", value))
+            add(row(color, "AI 服务", value))
             val up = j.optLong("uptime_s")
             add(row(GREEN, "运行时间 / 内存", "${up / 3600} 时 ${up % 3600 / 60} 分 / ${j.optLong("rss_kb") / 1024} MB"))
             val e = j.optJSONObject("engine")
@@ -168,7 +169,7 @@ class ModuleStatusActivity : Activity() {
                 val total = ok + skipped
                 val rate = if (total > 0) "%.1f%%".format(skipped * 100.0 / total) else "-"
                 add(row(if (total > 0 && skipped * 100.0 / total > 5) YELLOW else GREEN, "打分 / 跳过", "$ok / $skipped（$rate）"))
-                add(row(GREEN, "无上文（不计入跳过）", "${e.optInt("no_context")}"))
+                add(row(GREEN, "上文不足（不计入跳过）", "${e.optInt("no_context")}"))
                 val w = e.optJSONObject("wait_ms")
                 if (w != null) {
                     val p99 = w.optDouble("p99")
@@ -177,7 +178,7 @@ class ModuleStatusActivity : Activity() {
             }
             if (c != null) {
                 val over = c.optInt("wait_over_50ms")
-                add(row(if (over > 0) YELLOW else GREEN, "客户端等待超过 50 ms", "$over 次"))
+                add(row(if (over > 0) YELLOW else GREEN, "等待超过 50 ms", "$over 次"))
             }
         }
         val sz = when (AiDaemonLauncher.availability()) {
@@ -185,7 +186,7 @@ class ModuleStatusActivity : Activity() {
             AiDaemonLauncher.Availability.NEEDS_PERMISSION -> YELLOW to "运行中，待授权"
             AiDaemonLauncher.Availability.SHIZUKU_NOT_RUNNING -> GRAY to "未运行"
         }
-        add(row(sz.first, "Shizuku（拉起守护进程）", sz.second))
+        add(row(sz.first, "Shizuku（启动 AI 服务）", sz.second))
 
         add(section("排序"))
         val schema = dir.resolve("build/${DictPacks.SCHEMA}.schema.yaml")
@@ -199,18 +200,18 @@ class ModuleStatusActivity : Activity() {
         add(row(if (ranker == "unified") GREEN else GRAY, "排序方式", if (ranker == "unified") "统一排序" else "旧排序（$ranker）"))
         val gen = j?.optJSONObject("engine")?.optJSONObject("gen")
         if (gen == null) {
-            add(row(GRAY, "候选生成", "核心未支持或守护进程离线"))
+            add(row(GRAY, "候选生成", "AI 服务离线或不支持此功能"))
         } else {
             add(row(GREEN, "候选生成", "成功 ${gen.optInt("ok")} 次，超时 ${gen.optInt("timeout")} 次"))
         }
         val gram = dir.resolve("wanxiang-lts-zh-hans.gram")
         add(row(if (gram.exists()) GREEN else GRAY, "语法模型", if (gram.exists()) "${gram.length() / 1048576} MB" else "没有"))
         val weird = lines(dir.resolve("weird_words.tsv"))
-        add(row(GRAY, "已标记的怪词", "$weird 个"))
+        add(row(GRAY, "已降低排序的候选", "$weird 个"))
 
         add(section("记录（只在本机）"))
-        toggle("输入事件流", "input_log.enabled", "input_log.jsonl")
-        toggle("选词语料", "select_corpus.enabled", "select_corpus.tsv")
+        toggle("输入过程记录", "input_log.enabled", "input_log.jsonl")
+        toggle("选词样本", "select_corpus.enabled", "select_corpus.tsv")
         toggle("选词统计", "select_stats.enabled", "select_stats.tsv")
         add(row(GRAY, "最近使用词 / 词对", "${lines(dir.resolve("recent_words.tsv"))} / ${lines(dir.resolve("recent_pairs.tsv"))}"))
 
@@ -232,13 +233,13 @@ class ModuleStatusActivity : Activity() {
         val failed = migration["failed"]
         when {
             failed != null -> {
-                add(row(RED, "旧数据迁移", "没有完成：$failed，正在用旧配置"))
+                add(row(RED, "旧数据迁移", "未完成，仍使用旧配置。原因：$failed"))
                 add(
                     Button(this).apply {
-                        text = "下次启动时重试迁移"
+                        text = "下次启动时重试"
                         setOnClickListener {
                             SuzuMigration.clearFailure()
-                            text = "已安排，重新部署或重启手机后生效"
+                            text = "已安排重试，请重新部署或重启手机"
                         }
                     },
                 )
@@ -255,8 +256,8 @@ class ModuleStatusActivity : Activity() {
         add(
             row(
                 if (overriding.isEmpty()) GREEN else YELLOW,
-                "用户目录覆盖文件",
-                if (overriding.isEmpty()) "没有" else "${overriding.size} 个盖住了 APK 配置：${overriding.joinToString("、")}",
+                "自定义配置覆盖",
+                if (overriding.isEmpty()) "没有" else "${overriding.size} 个文件优先于内置配置：${overriding.joinToString("、")}",
             ),
         )
     }

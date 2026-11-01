@@ -52,10 +52,10 @@ class DictPackFragment : PaddingPreferenceFragment() {
         val state = SuzuAssets.state(asset)
         pref.percent = (state as? SuzuAssets.State.Downloading)?.percent
         pref.summary = when {
-            state is SuzuAssets.State.Downloading -> "${state.percent}%（${state.doneMb} / ${state.totalMb} MB），点按取消"
-            SuzuAssets.isInstalled(asset) -> "已安装，点按删除并关闭这项功能"
-            state is SuzuAssets.State.Failed -> "下载失败：${state.message}。点按重试"
-            else -> "未安装，这项功能已关闭。点按下载约 ${asset.sizeMb} MB"
+            state is SuzuAssets.State.Downloading -> "正在下载 ${state.percent}%（${state.doneMb} / ${state.totalMb} MB），点按取消"
+            SuzuAssets.isInstalled(asset) -> "已安装，点按可删除并关闭此功能"
+            state is SuzuAssets.State.Failed -> "下载失败：${state.message}\n点按重试"
+            else -> "未安装，此功能已关闭。点按下载（约 ${asset.sizeMb} MB）"
         }
     }
 
@@ -111,8 +111,8 @@ class DictPackFragment : PaddingPreferenceFragment() {
             addCategory("说明") {
                 isIconSpaceReserved = false
                 addPreference(
-                    "切换后会重新编译词库",
-                    "手机上约 15 秒。所有词库包共用一份用户词典，切换不会丢失已学习的词。下载的包会留在手机上，切回来不用再下载。",
+                    "切换词库时需等待编译完成",
+                    "编译期间暂时无法打字，耗时取决于词库大小和设备性能。切换会保留已学习的词，已下载的词库包可直接切回，无需重新下载。",
                 )
             }
         }
@@ -126,9 +126,9 @@ class DictPackFragment : PaddingPreferenceFragment() {
                     .setTitle("删除${asset.title}？")
                     .setMessage(
                         if (asset == SuzuAsset.Model) {
-                            "AI 重排会关闭，打字不受影响。之后可以在这里重新下载。"
+                            "删除后关闭 AI 重排，仍可正常打字。之后可在此页重新下载。"
                         } else {
-                            "整句输入的同音字选择会变差，其他功能不受影响。之后可以在这里重新下载。"
+                            "删除后，整句输入不再使用语法模型辅助选字，其他功能不受影响。之后可在此页重新下载。"
                         },
                     )
                     .setNegativeButton(android.R.string.cancel, null)
@@ -154,7 +154,7 @@ class DictPackFragment : PaddingPreferenceFragment() {
         val ctx = requireContext()
         AlertDialog.Builder(ctx)
             .setTitle(if (enable) "启用${addon.title}词库？" else "关闭${addon.title}词库？")
-            .setMessage("需要重新编译词库，可能需要一分钟，期间键盘暂时不能打字。AI 的简拼补全要等下次启动 AI 服务后才会更新。")
+            .setMessage("需要重新编译词库，期间暂时无法打字。耗时取决于词库大小和设备性能。AI 简拼补全将在下次启动 AI 服务后更新。")
             .setNegativeButton(android.R.string.cancel, null)
             .setPositiveButton(android.R.string.ok) { _, _ ->
                 val dialog = ProgressDialog(ctx, addon.title)
@@ -170,7 +170,7 @@ class DictPackFragment : PaddingPreferenceFragment() {
                         dialog.dismiss()
                         result.onFailure {
                             AlertDialog.Builder(ctx)
-                                .setTitle("没有成功")
+                                .setTitle("词库更新失败")
                                 .setMessage(it.message ?: it.toString())
                                 .setPositiveButton(android.R.string.ok, null)
                                 .show()
@@ -183,10 +183,10 @@ class DictPackFragment : PaddingPreferenceFragment() {
 
     private fun confirm(name: String, entry: PackInstaller.Entry?, installed: Boolean) {
         val title = PackInstaller.title(name)
-        val download = if (installed || entry == null) "" else "需要先下载约 ${(entry.size + 524288) / 1048576} MB，"
+        val download = if (installed || entry == null) "" else "需先下载约 ${(entry.size + 524288) / 1048576} MB。"
         AlertDialog.Builder(requireContext())
             .setTitle("切换到$title？")
-            .setMessage("${download}然后重新编译词库，约 15 秒。期间键盘暂时不能打字。")
+            .setMessage("${download}切换时需重新编译词库，期间暂时无法打字。耗时取决于词库大小和设备性能。")
             .setNegativeButton(android.R.string.cancel, null)
             .setPositiveButton(android.R.string.ok) { _, _ -> switch(name) }
             .show()
@@ -209,7 +209,7 @@ class DictPackFragment : PaddingPreferenceFragment() {
                     .onSuccess { ctx.toast("已切换到${PackInstaller.title(name)}") }
                     .onFailure {
                         AlertDialog.Builder(ctx)
-                            .setTitle("没有切换成功")
+                            .setTitle("词库切换失败")
                             .setMessage(it.message ?: it.toString())
                             .setPositiveButton(android.R.string.ok, null)
                             .show()

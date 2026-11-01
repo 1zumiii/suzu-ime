@@ -113,20 +113,20 @@ object SuzuMigration {
         if (state["merged"] != "1" && sources.isNotEmpty()) {
             // 原生层出错会直接结束进程：连续两次没走完就不再自动尝试，免得每次启动都崩
             val attempts = (state["attempts"]?.toIntOrNull() ?: 0) + 1
-            if (attempts > 2) return fail(state, "合并连续 2 次中途退出")
+            if (attempts > 2) return fail(state, "数据合并连续 2 次中断，已暂停自动重试")
             state["attempts"] = attempts.toString()
             save(state)
             // levers 的 backup 要用同步目录与 installation_id，它们由 installation_update 设置。
             // 没有 installation.yaml 时它只新建文件、不设同步目录（留下相对路径 sync），所以再跑一次
             val fresh = !userDir.resolve("installation.yaml").isFile
             if (!Rime.runRimeTask("installation_update") || (fresh && !Rime.runRimeTask("installation_update"))) {
-                return fail(state, "installation_update 失败")
+                return fail(state, "无法准备旧数据，请在功能状态页安排重试")
             }
             val counts = sources.associateWith { count(it) }
             for (src in sources) {
                 val snapshot = snapshotOf(src)
                 if (snapshot == null) {
-                    return fail(state, "无法生成 $src 的快照")
+                    return fail(state, "无法备份旧词库，请检查存储空间后重试")
                 }
                 snapshot.copyTo(backup.resolve(snapshot.name), overwrite = true)
                 val renamed = backup.resolve("$src.as-suzu.userdb.txt")
@@ -136,7 +136,7 @@ object SuzuMigration {
                     },
                 )
                 if (!UserDictManager.restoreUserDict(renamed.absolutePath)) {
-                    return fail(state, "合并 $src 失败")
+                    return fail(state, "旧词库合并失败，已保留原数据")
                 }
             }
             val merged = count(DictPacks.SCHEMA)
@@ -144,7 +144,7 @@ object SuzuMigration {
             counts.forEach { (k, v) -> state["count.$k"] = v.toString() }
             state["count.suzu"] = merged.toString()
             if (merged < need * MIN_RATIO) {
-                return fail(state, "合并后 $merged 条，少于来源最多的 $need 条")
+                return fail(state, "合并后有 $merged 条记录，与原词库最多的 $need 条相比未通过核对")
             }
             state["merged"] = "1"
             state.remove("failed")

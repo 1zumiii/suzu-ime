@@ -38,38 +38,38 @@ enum class SetupPage(val required: Boolean) {
     fun getStepText(context: Context): CharSequence = when (this) {
         Enable -> context.getText(R.string.setup__step_one)
         Select -> context.getText(R.string.setup__step_two)
-        else -> "第 ${ordinal + 1} 步（可选）"
+        else -> context.getString(R.string.suzu_setup_optional_step, ordinal + 1)
     }
 
     fun getHintText(context: Context): CharSequence = when (this) {
         Enable -> context.getText(R.string.setup__enable_ime_hint)
         Select -> context.getText(R.string.setup__select_ime_hint)
-        Model -> "下载 Suzu 模型（约 ${SuzuAsset.Model.sizeMb} MB），按上文调整候选顺序。" + stateText(SuzuAsset.Model, "不下载时 AI 重排保持关闭，打字不受影响。")
-        Grammar -> "下载语法模型（约 ${SuzuAsset.Grammar.sizeMb} MB，建议连接 Wi-Fi），改善整句输入的同音字选择。" + stateText(SuzuAsset.Grammar, "不下载时不使用语法模型，其他功能不受影响。")
+        Model -> context.getString(R.string.suzu_setup_model_hint, SuzuAsset.Model.sizeMb) + stateText(context, SuzuAsset.Model, context.getString(R.string.suzu_setup_model_skip))
+        Grammar -> context.getString(R.string.suzu_setup_grammar_hint, SuzuAsset.Grammar.sizeMb) + stateText(context, SuzuAsset.Grammar, context.getString(R.string.suzu_setup_grammar_skip))
         Ai -> when {
-            !SuzuAssets.isInstalled(SuzuAsset.Model) -> "AI 服务需要先下载 Suzu 模型，可以跳过这一步。"
+            !SuzuAssets.isInstalled(SuzuAsset.Model) -> context.getString(R.string.suzu_setup_ai_needs_model)
             else -> when (AiDaemonLauncher.availability()) {
-                AiDaemonLauncher.Availability.READY -> "Shizuku 已就绪，点按即可启动 AI 服务。手机重启后要先启动 Shizuku。"
-                AiDaemonLauncher.Availability.NEEDS_PERMISSION -> "AI 服务要经 Shizuku 启动，请授权。"
-                AiDaemonLauncher.Availability.SHIZUKU_NOT_RUNNING -> "AI 服务要经 Shizuku 启动。请安装并启动 Shizuku，再回到这里。不用 Shizuku 时 AI 重排保持关闭，打字不受影响。"
+                AiDaemonLauncher.Availability.READY -> context.getString(R.string.suzu_setup_ai_ready)
+                AiDaemonLauncher.Availability.NEEDS_PERMISSION -> context.getString(R.string.suzu_setup_ai_permission)
+                AiDaemonLauncher.Availability.SHIZUKU_NOT_RUNNING -> context.getString(R.string.suzu_setup_ai_shizuku)
             }
         }
     }
 
-    private fun stateText(asset: SuzuAsset, idle: String): String = when (val state = SuzuAssets.state(asset)) {
-        is SuzuAssets.State.Downloading -> "\n\n正在下载：${state.percent}%（${state.doneMb} / ${state.totalMb} MB）。离开这一页也会继续。"
-        is SuzuAssets.State.Failed -> "\n\n下载失败：${state.message}"
-        SuzuAssets.State.Idle -> "\n\n" + if (SuzuAssets.isInstalled(asset)) "已安装。" else idle
+    private fun stateText(context: Context, asset: SuzuAsset, idle: String): String = when (val state = SuzuAssets.state(asset)) {
+        is SuzuAssets.State.Downloading -> "\n\n" + context.getString(R.string.suzu_setup_downloading, state.percent, state.doneMb, state.totalMb)
+        is SuzuAssets.State.Failed -> "\n\n" + context.getString(R.string.suzu_setup_download_failed, state.message)
+        SuzuAssets.State.Idle -> "\n\n" + if (SuzuAssets.isInstalled(asset)) context.getString(R.string.suzu_setup_installed) else idle
     }
 
     fun getButtonText(context: Context): CharSequence = when (this) {
         Enable -> context.getText(R.string.setup__enable_ime)
         Select -> context.getText(R.string.setup__select_ime)
-        Model, Grammar -> if (SuzuAssets.state(asset!!) is SuzuAssets.State.Downloading) "取消下载" else "下载"
+        Model, Grammar -> context.getText(if (SuzuAssets.state(asset!!) is SuzuAssets.State.Downloading) R.string.suzu_cancel_download else R.string.suzu_download)
         Ai -> when (AiDaemonLauncher.availability()) {
-            AiDaemonLauncher.Availability.READY -> "启动 AI 服务"
-            AiDaemonLauncher.Availability.NEEDS_PERMISSION -> "授权"
-            AiDaemonLauncher.Availability.SHIZUKU_NOT_RUNNING -> "打开 Shizuku"
+            AiDaemonLauncher.Availability.READY -> context.getText(R.string.suzu_start_ai)
+            AiDaemonLauncher.Availability.NEEDS_PERMISSION -> context.getText(R.string.suzu_grant_permission)
+            AiDaemonLauncher.Availability.SHIZUKU_NOT_RUNNING -> context.getText(R.string.suzu_open_shizuku)
         }
     }
 

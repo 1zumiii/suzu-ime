@@ -52,7 +52,7 @@ object AddonRules {
     fun composeMainDict(main: String, addons: List<String>): String {
         if (addons.isEmpty()) return main
         val lines = addons.joinToString("") { "  - $DIR/$it\n" }
-        check("import_tables:\n" in main) { "主词典没有导入列表" }
+        check("import_tables:\n" in main) { "词库配置不完整，无法添加附加词库" }
         return main.replaceFirst("import_tables:\n", "import_tables:\n$lines")
     }
 }
@@ -84,7 +84,7 @@ object DictAddons {
 
     /** 开关一个附加词库并重新编译；编译失败时恢复原状并抛出原因 */
     suspend fun setEnabled(rime: RimeApi, addon: DictAddon, enabled: Boolean, stage: (String, Int?) -> Unit) {
-        val pack = DictPacks.active() ?: error("还没有启用词库包")
+        val pack = DictPacks.active() ?: error("请先选择一个词库包，再启用附加词库")
         if (enabled) {
             stage("正在下载${addon.title}词库", 0)
             install(addon) { done ->
@@ -94,7 +94,7 @@ object DictAddons {
             withContext(Dispatchers.IO) { fileOf(addon).delete() }
         }
         withContext(Dispatchers.IO) { DictPacks.activate(pack) }
-        stage("正在编译词库，可能需要一分钟", null)
+        stage("正在编译词库，请稍候", null)
         try {
             rime.deploy()
         } catch (e: Exception) {
@@ -106,7 +106,7 @@ object DictAddons {
                 }
                 runCatching { rime.deploy() }
             }
-            throw IllegalStateException("编译失败，词库没有改动", e)
+            throw IllegalStateException("词库编译失败，请检查词库状态后重试", e)
         }
     }
 
@@ -124,7 +124,7 @@ object DictAddons {
                     }
                 }
             }
-            check(tmp.renameTo(fileOf(addon))) { "无法写入词库文件" }
+            check(tmp.renameTo(fileOf(addon))) { "无法保存词库，请检查存储空间后重试" }
         } finally {
             source.delete()
             tmp.delete()

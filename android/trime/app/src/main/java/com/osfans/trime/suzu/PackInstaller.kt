@@ -55,7 +55,7 @@ object PackInstaller {
         try {
             fetch(entry, zip, progress)
             val digest = sha256(zip)
-            check(digest == entry.sha256) { "校验失败：下载的文件不完整或被改动" }
+            check(digest == entry.sha256) { "下载文件校验失败，请重新下载" }
             install(entry.name, zip)
         } finally {
             zip.delete()
@@ -113,19 +113,19 @@ object PackInstaller {
             ZipFile(zip).use { zf ->
                 for (e in zf.entries()) {
                     val name = e.name
-                    check(name.startsWith("$prefix/") || name.startsWith("${prefix}_")) { "压缩包里有不属于这个词库包的文件" }
-                    check(!name.contains("..")) { "压缩包里有非法路径" }
+                    check(name.startsWith("$prefix/") || name.startsWith("${prefix}_")) { "词库包内容不符，无法安装" }
+                    check(!name.contains("..")) { "词库包包含不安全的文件路径，无法安装" }
                     if (e.isDirectory) continue
                     val out = tmp.resolve(name)
                     out.parentFile?.mkdirs()
                     zf.getInputStream(e).use { i -> out.outputStream().use { o -> i.copyTo(o) } }
                 }
             }
-            check(tmp.resolve(prefix).resolve("pack.main.yaml").isFile) { "压缩包里没有主词典" }
+            check(tmp.resolve(prefix).resolve("pack.main.yaml").isFile) { "词库包缺少必要文件，请重新下载" }
             for (dir in tmp.listFiles().orEmpty()) {
                 val target = userDir.resolve(dir.name)
                 target.deleteRecursively()
-                check(dir.renameTo(target)) { "无法放入 ${dir.name}" }
+                check(dir.renameTo(target)) { "无法保存词库，请检查存储空间后重试" }
             }
         } finally {
             tmp.deleteRecursively()
@@ -139,7 +139,7 @@ object PackInstaller {
      */
     suspend fun switchTo(rime: RimeApi, pack: String, stage: (String, Int?) -> Unit) {
         if (pack !in DictPacks.installed()) {
-            val entry = catalog.firstOrNull { it.name == pack } ?: error("清单里没有词库包 $pack")
+            val entry = catalog.firstOrNull { it.name == pack } ?: error("找不到词库包 $pack 的下载信息")
             stage("正在下载 ${entry.title}", 0)
             download(entry) { done, total ->
                 stage("正在下载 ${entry.title}：${done / 1048576} / ${total / 1048576} MB", (done * 100 / total).toInt().coerceIn(0, 100))
@@ -147,17 +147,17 @@ object PackInstaller {
         }
         val previous = DictPacks.active()
         withContext(Dispatchers.IO) { DictPacks.activate(pack) }
-        stage("正在编译词库，约 15 秒", null)
+        stage("正在编译词库，请稍候", null)
         try {
             rime.deploy()
         } catch (e: Exception) {
             Timber.w(e, "Deploy failed after switching to %s", pack)
             if (previous != null && previous != pack) {
-                stage("编译失败，正在回到 ${title(previous)}", null)
+                stage("编译失败，正在恢复 ${title(previous)}", null)
                 withContext(Dispatchers.IO) { DictPacks.activate(previous) }
                 runCatching { rime.deploy() }
             }
-            throw IllegalStateException("编译失败，已回到原来的词库", e)
+            throw IllegalStateException("词库编译失败，请重新选择词库后重试", e)
         }
     }
 }

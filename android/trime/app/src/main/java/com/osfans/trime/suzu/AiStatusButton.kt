@@ -66,7 +66,7 @@ class AiStatusButton(context: Context, private val onToggle: () -> Boolean) : Te
             pendingTarget = target
             pendingUntil = SystemClock.uptimeMillis() + PENDING_MS
             pop()
-            if (target) show(YELLOW, "AI 重排：开启中，正在加载模型…", "◐ AI") else show(GRAY, "AI 重排：关闭中…", "○ AI")
+            if (target) show(YELLOW, "AI 服务：正在加载模型…", "◐ AI") else show(GRAY, "AI 服务：正在关闭…", "○ AI")
             handler.removeCallbacks(tick)
             handler.postDelayed(tick, FAST_MS)
         }
@@ -118,12 +118,12 @@ class AiStatusButton(context: Context, private val onToggle: () -> Boolean) : Te
     private fun startDaemon(userInitiated: Boolean) {
         when (AiDaemonLauncher.availability()) {
             AiDaemonLauncher.Availability.SHIZUKU_NOT_RUNNING ->
-                if (userInitiated) Toast.makeText(context, "Shizuku 没有运行：先启动 Shizuku", Toast.LENGTH_LONG).show()
+                if (userInitiated) Toast.makeText(context, "Shizuku 未运行，请先启动 Shizuku", Toast.LENGTH_LONG).show()
             AiDaemonLauncher.Availability.NEEDS_PERMISSION ->
                 if (userInitiated) AiDaemonLauncher.requestPermission { startDaemon(true) }   // 弹出 Shizuku 的授权请求
             AiDaemonLauncher.Availability.READY -> {
                 startingUntil = SystemClock.uptimeMillis() + START_MS
-                show(YELLOW, "AI 重排：正在启动守护进程…", "◐ AI")
+                show(YELLOW, "AI 服务：正在启动…", "◐ AI")
                 if (userInitiated) pop()
                 handler.removeCallbacks(tick)
                 handler.postDelayed(tick, FAST_MS)
@@ -175,9 +175,9 @@ class AiStatusButton(context: Context, private val onToggle: () -> Boolean) : Te
                     if (target) {
                         blinkOn = !blinkOn
                         alpha = if (blinkOn) 1f else 0.35f          // 加载中：闪烁
-                        show(YELLOW, "AI 重排：开启中，正在加载模型…", "◐ AI")
+                        show(YELLOW, "AI 服务：正在加载模型…", "◐ AI")
                     } else {
-                        show(GRAY, "AI 重排：关闭中…", "○ AI")
+                        show(GRAY, "AI 服务：正在关闭…", "○ AI")
                     }
                     return
                 }
@@ -190,7 +190,7 @@ class AiStatusButton(context: Context, private val onToggle: () -> Boolean) : Te
             if (now < startingUntil) {                    // 刚经 Shizuku 启动，等它写出第一份状态
                 blinkOn = !blinkOn
                 alpha = if (blinkOn) 1f else 0.35f
-                show(YELLOW, "AI 重排：正在启动守护进程…", "◐ AI")
+                show(YELLOW, "AI 服务：正在启动…", "◐ AI")
                 return
             }
             // 键盘弹出时发现守护进程不在：每分钟最多自动经 Shizuku 拉起一次（授权过的情况下）
@@ -209,22 +209,22 @@ class AiStatusButton(context: Context, private val onToggle: () -> Boolean) : Te
         val history = if (restarts > 0) "·重启$restarts" else ""
         when {
             fresh && !enabled ->
-                show(GRAY, "AI 重排：已关闭\n点一下开启，模型已卸载", "○ AI")
+                show(GRAY, "AI 服务：已关闭\n点按开启，当前未加载模型", "○ AI")
             !fresh ->
                 show(
                     RED,
-                    "AI 重排：离线$history\n点一下经 Shizuku 启动",
+                    "AI 服务：离线$history\n点按通过 Shizuku 启动",
                 )
             j!!.optString("role") == "supervisor" ->
-                show(YELLOW, "AI 重排：重启中\n上次退出 $lastExit，共 $restarts 次")
+                show(YELLOW, "AI 服务：正在重启\n上次退出 $lastExit，共 $restarts 次")
             loaded ->
                 show(
                     GREEN,
-                    "AI 重排：在线（${modelName()}）\n${j.optLong("rss_kb") / 1024} MB·均${"%.0f".format(j.optDouble("avg_score_ms"))} ms·" +
+                    "AI 服务：在线（${modelName()}）\n${j.optLong("rss_kb") / 1024} MB·均${"%.0f".format(j.optDouble("avg_score_ms"))} ms·" +
                         "跳${j.optLong("skipped")}错${j.optLong("errors")}$history",
                 )
             else ->
-                show(GRAY, "AI 重排：待机$history\n打字时自动加载模型")
+                show(GRAY, "AI 服务：待机$history\n输入时自动加载模型")
         }
     }
 
