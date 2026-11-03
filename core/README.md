@@ -144,7 +144,7 @@ AVX2 覆盖约 2013 年以后的 Intel 与 2015 年以后的 AMD CPU，在 Ryzen
 
 ### Android（同文输入法）
 
-依赖 Android NDK r27d（`27.3.13750724`）。完整的 APK 构建由 [android/trime/build_apk.sh](../android/trime/build_apk.sh) 完成；只编守护进程与客户端：
+依赖 Android NDK r28c（`28.2.13676358`）。完整的 APK 构建由 [android/trime/build_apk.sh](../android/trime/build_apk.sh) 完成；只编守护进程与客户端：
 
 ```bash
 cmake -G Ninja -S core -B build_android \

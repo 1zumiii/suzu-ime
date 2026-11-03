@@ -44,7 +44,7 @@ cmd_deploy() {
 }
 
 llvm_strip() {
-  local s="${NDK:-$HOME/Library/Android/sdk/ndk/27.3.13750724}/toolchains/llvm/prebuilt/darwin-x86_64/bin/llvm-strip"
+  local s="${NDK:-$HOME/Library/Android/sdk/ndk/28.2.13676358}/toolchains/llvm/prebuilt/darwin-x86_64/bin/llvm-strip"
   [[ -x "$s" ]] && "$s" --strip-unneeded -o "$2" "$1"
 }
 
