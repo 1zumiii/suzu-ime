@@ -90,7 +90,7 @@ Trime（改版 APK）                              rimellmd（shell 身份，由
 
 ## 构建与测试
 
-整套产物（改版 APK、客户端库、守护进程）由 `trime/build_apk.sh` 一次完成。前提：JDK 17、Android NDK r27d（`27.3.13750724`，默认取 Android SDK 的 `ndk/` 目录）、CMake 3.31.6，以及 llama.cpp 与 Lua 源码（布局见 [core/README.md](../core/README.md)）。CMake 和第三方源码默认放在 `~/Dev/ime-deps`，可用环境变量 `IME_DEPS` 指定；工作目录默认是仓库旁边的 `rime-android-port/`，可用 `WORK` 指定。推理部分默认按通用指令集 `armv8.2-a+dotprod+fp16` 编译；只装支持 i8mm 的手机时，可用环境变量 `ARM_ARCH` 指定更高的指令集，如骁龙 8 Gen 2 用 `ARM_ARCH=armv8.6-a+dotprod+fp16+i8mm`。没有 i8mm 的芯片运行这种包会直接崩溃。
+整套产物（改版 APK、客户端库、守护进程）由 `trime/build_apk.sh` 一次完成。前提：JDK 17、Android NDK r28c（`28.2.13676358`，默认取 Android SDK 的 `ndk/` 目录）、CMake 3.31.6，以及 llama.cpp 与 Lua 源码（布局见 [core/README.md](../core/README.md)）。CMake 和第三方源码默认放在 `~/Dev/ime-deps`，可用环境变量 `IME_DEPS` 指定；工作目录默认是仓库旁边的 `rime-android-port/`，可用 `WORK` 指定。推理部分默认按通用指令集 `armv8.2-a+dotprod+fp16` 编译；只装支持 i8mm 的手机时，可用环境变量 `ARM_ARCH` 指定更高的指令集，如骁龙 8 Gen 2 用 `ARM_ARCH=armv8.6-a+dotprod+fp16+i8mm`。没有 i8mm 的芯片运行这种包会直接崩溃。
 
 单独编译守护进程和客户端的命令见 core/README.md 的 Android 一节。`SUZU_LUA_HOST_LIB` 指向 Trime 的 `librime_jni.so`，使加载器把客户端中的 `lua_*` 符号解析到它。
 
@@ -106,7 +106,7 @@ Trime（改版 APK）                              rimellmd（shell 身份，由
 
 ### 移植时的推理核心测试
 
-推理核心在手机上可运行（`rime_llm.so` 用 NDK r27d 交叉编译，arm64，`+dotprod+i8mm+fp16`；现在默认按通用指令集编译，见上文“构建与测试”）：
+推理核心在手机上可运行（`rime_llm.so` 用 NDK r28c 交叉编译，arm64，`+dotprod+i8mm+fp16`；现在默认按通用指令集编译，见上文“构建与测试”）：
 
 | 项目 | 结果 |
 | --- | --- |

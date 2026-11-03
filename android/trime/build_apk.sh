@@ -2,15 +2,15 @@
 # 从源码编出带 AI 重排的 Trime APK（arm64-v8a）：
 #   本目录的 Trime 源码（硬分叉自上游 ad5a14be）+ 客户端库 librime_llm.so + 守护进程 librimellmd.so（均由 core/ 构建）→ Gradle → 签名
 # 用法：android/trime/build_apk.sh [输出.apk]
-# 前提：JDK 17（brew install openjdk@17）、Android SDK（Gradle 会自动装 NDK 28 / 平台）、NDK r27d（交叉编译推理部分）、
+# 前提：JDK 17（brew install openjdk@17）、Android SDK（Gradle 会自动装平台）、NDK r28c（Trime 与推理部分共用）、
 #       CMake 3.31.6 的官方预编译包、llama.cpp 与 Lua 源码（见 core/README.md）、签名密钥（见 sign_apk.sh）。
-# 路径都可以用环境变量覆盖：工作目录 WORK 默认是仓库旁边的 rime-android-port/；CMake 与第三方源码在 IME_DEPS（默认 ~/Dev/ime-deps）；NDK 在 Android SDK 的 ndk/27.3.13750724。
+# 路径都可以用环境变量覆盖：工作目录 WORK 默认是仓库旁边的 rime-android-port/；CMake 与第三方源码在 IME_DEPS（默认 ~/Dev/ime-deps）；NDK 在 Android SDK 的 ndk/28.2.13676358。
 set -euo pipefail
 
 REPO="$(cd "$(dirname "$0")/../.." && pwd)"
 W="${WORK:-$(dirname "$REPO")/rime-android-port}"
 IME_DEPS="${IME_DEPS:-$HOME/Dev/ime-deps}"
-NDK="${NDK:-$HOME/Library/Android/sdk/ndk/27.3.13750724}"
+NDK="${NDK:-$HOME/Library/Android/sdk/ndk/28.2.13676358}"
 JAVA_HOME="${JAVA_HOME:-/opt/homebrew/opt/openjdk@17}"
 CMAKE_DIR="${CMAKE_DIR:-$IME_DEPS/cmake-3.31.6-macos-universal/CMake.app/Contents}"
 OUT="${1:-$W/apk_work/trime-mod.apk}"
