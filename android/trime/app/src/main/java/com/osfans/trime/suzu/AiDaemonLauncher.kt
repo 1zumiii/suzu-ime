@@ -9,6 +9,7 @@ import android.content.Context
 import android.content.pm.PackageManager
 import android.os.Handler
 import android.os.Looper
+import android.util.Log
 import com.osfans.trime.data.base.DataManager
 import rikka.shizuku.Shizuku
 import java.io.File
@@ -39,6 +40,11 @@ object AiDaemonLauncher {
     @Volatile
     var lastResult: String = "尚未启动"
         private set
+
+    private const val TAG = "SuzuAi"
+
+    @Volatile
+    private var checked = false
 
     fun availability(): Availability =
         try {
@@ -73,7 +79,14 @@ object AiDaemonLauncher {
         """
         D=/data/local/tmp/rimellm
         mkdir -p ${'$'}D || exit 11
-        if pidof rimellmd >/dev/null 2>&1; then echo RUNNING; exit 0; fi
+        if pidof rimellmd >/dev/null 2>&1; then
+          cmp -s "$libDir/librimellmd.so" ${'$'}D/rimellmd && { echo RUNNING; exit 0; }
+          # 正在跑的是别的版本（APK 升级后，或早先用 adb 推的）：停掉，下面换上安装包里的
+          kill ${'$'}(pidof rimellmd) 2>/dev/null
+          i=0; while pidof rimellmd >/dev/null 2>&1 && [ ${'$'}i -lt 50 ]; do sleep 0.1; i=${'$'}((i+1)); done
+          pidof rimellmd >/dev/null 2>&1 && { echo KILL_FAIL; exit 16; }
+          echo REPLACED
+        fi
         cp "$libDir/librimellmd.so" ${'$'}D/rimellmd.new && chmod 755 ${'$'}D/rimellmd.new && mv -f ${'$'}D/rimellmd.new ${'$'}D/rimellmd || { echo COPY_FAIL; exit 12; }
         [ -f "$rimeDir/$STUDENT_MODEL" ] && [ -f "$rimeDir/$STUDENT_VOCAB" ] || { echo NO_MODEL; exit 13; }
         cp "$rimeDir/$STUDENT_MODEL" ${'$'}D/suzu.gguf && cp "$rimeDir/$STUDENT_VOCAB" ${'$'}D/suzu.vocab.txt || { echo MODEL_COPY_FAIL; exit 14; }
@@ -90,6 +103,7 @@ object AiDaemonLauncher {
     fun start(context: Context, onResult: (Result) -> Unit) {
         lastAttemptMs = System.currentTimeMillis()
         Thread {
+            var replaced = false
             val result =
                 try {
                     val libDir = context.applicationInfo.nativeLibraryDir
@@ -110,9 +124,12 @@ object AiDaemonLauncher {
                         val out = proc.inputStream.bufferedReader().readText().trim()
                         val err = proc.errorStream.bufferedReader().readText().trim()
                         val code = proc.waitFor()
+                        replaced = out.contains("REPLACED")
                         when {
                             out.contains("RUNNING") -> Result.AlreadyRunning
                             out.contains("STARTED") -> Result.Started
+                            out.contains("KILL_FAIL") ->
+                                Result.Failed("旧版 AI 服务停不下来，请重启手机后再试")
                             out.contains("NO_MODEL") ->
                                 Result.Failed("模型文件不完整，请到“设置 → 词库”重新下载 Suzu 模型")
                             else -> Result.Failed("AI 服务启动失败（错误码 $code）：${(out + " " + err).trim().take(120)}")
@@ -123,11 +140,28 @@ object AiDaemonLauncher {
                 }
             lastResult =
                 when (result) {
-                    Result.Started -> "已启动"
+                    Result.Started -> if (replaced) "已换成安装包里的版本并启动" else "已启动"
                     Result.AlreadyRunning -> "已在运行"
                     is Result.Failed -> "启动失败：${result.reason}"
                 }
+            if (result is Result.Failed) Log.w(TAG, lastResult) else Log.i(TAG, lastResult)
             main.post { onResult(result) }
         }.start()
     }
+
+    /**
+     * 本进程第一次显示键盘时要静默启动一次（返回 true 仅一次）：守护进程是旧版本就换掉，没在跑就拉起，
+     * 已是安装包里的版本则什么都不做。APK 升级后输入法进程会重启，正好走到这里。
+     */
+    fun takeFirstCheck(): Boolean {
+        if (checked || availability() != Availability.READY) return false
+        checked = true
+        Log.i(TAG, "首次检查守护进程版本")
+        return true
+    }
+
+    /** 记一条日志（logcat 标签 SuzuAi），给启动器以外的调用方用，例如 Shizuku 未就绪时的点击 */
+    fun log(msg: String) = Log.w(TAG, msg)
+
+    fun info(msg: String) = Log.i(TAG, msg)
 }

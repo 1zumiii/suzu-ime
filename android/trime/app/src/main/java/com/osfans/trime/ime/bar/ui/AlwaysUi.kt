@@ -92,7 +92,8 @@ class AlwaysUi(
 
     // AI 重排守护进程状态：紧靠左侧按钮（没部署守护进程时自动隐藏）
     var aiToggle: (() -> Boolean)? = null
-    private val aiStatusButton = AiStatusButton(ctx) { aiToggle?.invoke() ?: false }
+    var aiLoad: (() -> Unit)? = null
+    private val aiStatusButton = AiStatusButton(ctx, { aiToggle?.invoke() ?: false }, { aiLoad?.invoke() })
 
     private val animator =
         ViewAnimator(ctx).apply {

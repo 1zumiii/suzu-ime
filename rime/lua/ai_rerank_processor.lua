@@ -185,11 +185,15 @@ local function load_llm(env)
             if v == "true" then return true elseif v == "false" then return false end
             return nil     -- 守护进程没起来或是旧版本，拿不到状态
         end
+        -- 徽标手动切换时，Trime 先设临时选项 _ai_manual 再改 ai_rerank：这是用户的操作，不受 3 秒窗口限制，直接推送。
+        -- （键盘刚弹出时第一次点徽标会触发会话建立，点击正好落在窗口里，以前会被改回去，要点好几次才生效。）
         local settle_until = os.time() + 3
         c.option_update_notifier:connect(function(cc, name)
             if name ~= "ai_rerank" then return end
             local v = cc:get_option("ai_rerank")
-            if os.time() <= settle_until then
+            local manual = cc:get_option("_ai_manual")
+            if manual then cc:set_option("_ai_manual", false) end
+            if not manual and os.time() <= settle_until then
                 local s = daemon_enabled()
                 if s ~= nil then
                     if s ~= v then cc:set_option("ai_rerank", s) end

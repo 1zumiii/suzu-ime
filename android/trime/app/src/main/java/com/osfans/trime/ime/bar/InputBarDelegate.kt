@@ -135,14 +135,23 @@ class InputBarDelegate(override val di: DI) :
         }
     }
 
+    // 徽标的手动切换：先设临时选项 _ai_manual，Lua 侧据此认出是用户操作，不按会话刚建立时的保护规则改回去
+    private fun setAiRerankManually(value: Boolean) =
+        service.postRimeJob {
+            setRuntimeOption("_ai_manual", true)
+            setRuntimeOption("ai_rerank", value)
+        }
+
     private val alwaysUi: AlwaysUi by lazy {
         AlwaysUi(context, scope) { command -> keyboardWindow.run(command) }.apply {
             // AI 重排手动启停：先读方案开关 ai_rerank 的真实值，再设成相反的；Lua 侧会把它同步给常驻推理进程
             aiToggle = {
                 val target = !rime.run { getRuntimeOption("ai_rerank") }
-                service.postRimeJob { setRuntimeOption("ai_rerank", target) }
+                setAiRerankManually(target)
                 target
             }
+            // 待机时立即加载：开关保持开启，再设一次即可（值不变也会触发 Lua 侧的同步，守护进程收到“开启”就开始加载）
+            aiLoad = { setAiRerankManually(true) }
             hideKeyboardButton.apply {
                 setOnClickListener { service.requestHideSelf(0) }
                 onSwipe = swipeDownHideKeyboardCallback
