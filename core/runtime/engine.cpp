@@ -136,7 +136,11 @@ void Engine::set_lexicon_dir(const std::string & dir) {
 
 void Engine::set_enabled(bool on) {
     std::lock_guard<std::mutex> lk(mu_);
-    if (enabled_ == on) return;
+    if (enabled_ == on) {
+        // 已开启但模型没在内存里（空闲卸载后的待机）：再“开启”一次 = 立刻加载，徽标点待机就是走这里
+        if (on) { request_load_locked(); cv_.notify_all(); }
+        return;
+    }
     enabled_ = on;
     if (!on) {
         vocab_.reset();

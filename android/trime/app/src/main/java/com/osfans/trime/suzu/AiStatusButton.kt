@@ -23,13 +23,21 @@ object AiStatusButtonAction {
 }
 
 /**
- * AI 重排守护进程（rimellmd）的状态指示和手动启停。读用户目录里的 ai_status.json：
- * 绿 = 模型在线；黄 = 加载中/重启中；灰 = 已关闭或空闲已卸载；红 = 守护进程没有响应。
- * 点一下：开/关（立刻有触感和动画，开启时黄色闪烁直到模型加载完成）；长按：看详情。
- * 从没部署过守护进程（文件不存在）时不显示。
+ * AI 重排守护进程（rimellmd）的状态指示和手动启停。读用户目录里的 ai_status.json。
+ * 颜色表示开关与健康，实心/空心表示模型在不在内存里：
+ *   绿● 在线（点 = 关闭）；绿○ 开着但模型已卸载（点 = 立即加载）；黄◐ 加载中/启动中/重启中；
+ *   灰○ 已关闭（点 = 开启）；红● 守护进程不在或已停止（点 = 经 Shizuku 启动）。
+ * 点一下立刻有触感和动画；长按：看详情。从没部署过守护进程（文件不存在）时不显示。
  */
-/** [onToggle] 执行切换并返回切换后的目标状态（以输入法方案开关的真实值为准，不看徽标当前显示什么）。 */
-class AiStatusButton(context: Context, private val onToggle: () -> Boolean) : TextView(context) {
+/**
+ * [onToggle] 执行开关切换并返回切换后的目标状态（以输入法方案开关的真实值为准，不看徽标当前显示什么）；
+ * [onLoad] 保持开启并让守护进程立刻加载模型。
+ */
+class AiStatusButton(
+    context: Context,
+    private val onToggle: () -> Boolean,
+    private val onLoad: () -> Unit,
+) : TextView(context) {
     private val handler = Handler(Looper.getMainLooper())
     private var detail = ""
 
@@ -41,6 +49,9 @@ class AiStatusButton(context: Context, private val onToggle: () -> Boolean) : Te
     // 守护进程离线时，点一下 = 经 Shizuku 启动它；启动期间显示"启动中"
     private var offlineNow = false
     private var startingUntil = 0L
+
+    // 开着但模型已卸载（待机）：点一下 = 立即加载，而不是关掉
+    private var standbyNow = false
 
     private val tick = object : Runnable {
         override fun run() {
@@ -58,11 +69,18 @@ class AiStatusButton(context: Context, private val onToggle: () -> Boolean) : Te
         visibility = GONE
         setOnClickListener {
             performHapticFeedback(HapticFeedbackConstants.CONTEXT_CLICK)
+            AiDaemonLauncher.info("点按徽标：offline=$offlineNow standby=$standbyNow pending=$pendingTarget")
             if (offlineNow) {
                 startDaemon(userInitiated = true)
                 return@setOnClickListener
             }
-            val target = onToggle()
+            val target =
+                if (standbyNow) {
+                    onLoad()
+                    true
+                } else {
+                    onToggle()
+                }
             pendingTarget = target
             pendingUntil = SystemClock.uptimeMillis() + PENDING_MS
             pop()
@@ -97,10 +115,12 @@ class AiStatusButton(context: Context, private val onToggle: () -> Boolean) : Te
 
     override fun onAttachedToWindow() {
         super.onAttachedToWindow()
+        AiDaemonLauncher.info("徽标挂载")
         handler.post(tick)
     }
 
     override fun onDetachedFromWindow() {
+        AiDaemonLauncher.info("徽标卸载")
         handler.removeCallbacks(tick)
         animate().cancel()
         alpha = 1f
@@ -118,9 +138,15 @@ class AiStatusButton(context: Context, private val onToggle: () -> Boolean) : Te
     private fun startDaemon(userInitiated: Boolean) {
         when (AiDaemonLauncher.availability()) {
             AiDaemonLauncher.Availability.SHIZUKU_NOT_RUNNING ->
-                if (userInitiated) Toast.makeText(context, "Shizuku 未运行，请先启动 Shizuku", Toast.LENGTH_LONG).show()
+                if (userInitiated) {
+                    AiDaemonLauncher.log("点按启动：Shizuku 未运行或尚未连上")
+                    Toast.makeText(context, "Shizuku 未运行，请先启动 Shizuku", Toast.LENGTH_LONG).show()
+                }
             AiDaemonLauncher.Availability.NEEDS_PERMISSION ->
-                if (userInitiated) AiDaemonLauncher.requestPermission { startDaemon(true) }   // 弹出 Shizuku 的授权请求
+                if (userInitiated) {
+                    AiDaemonLauncher.log("点按启动：没有 Shizuku 授权，弹出授权请求")
+                    AiDaemonLauncher.requestPermission { startDaemon(true) }   // 弹出 Shizuku 的授权请求
+                }
             AiDaemonLauncher.Availability.READY -> {
                 startingUntil = SystemClock.uptimeMillis() + START_MS
                 show(YELLOW, "AI 服务：正在启动…", "◐ AI")
@@ -154,6 +180,7 @@ class AiStatusButton(context: Context, private val onToggle: () -> Boolean) : Te
             visibility = GONE
             return
         }
+        if (AiDaemonLauncher.takeFirstCheck()) startDaemon(userInitiated = false)
         val j =
             try {
                 JSONObject(f.readText())
@@ -161,9 +188,13 @@ class AiStatusButton(context: Context, private val onToggle: () -> Boolean) : Te
                 null
             }
         val age = if (j != null) System.currentTimeMillis() / 1000 - j.optLong("ts", 0) else Long.MAX_VALUE
-        val fresh = j != null && age <= STALE_S
+        // 守护进程退出时最后写一份 state=stopped：时间戳虽新，进程已经不在，按离线处理
+        val stopped = j?.optString("state") == "stopped"
+        val fresh = j != null && age <= STALE_S && !stopped
         val enabled = j?.optBoolean("enabled", true) ?: true
         val loaded = j?.optBoolean("model_loaded") ?: false
+        val loading = j?.optJSONObject("engine")?.optString("state") == "loading"
+        standbyNow = fresh && enabled && !loaded && !loading && j?.optString("role") != "supervisor"
 
         // 点击之后：状态文件还没追上之前，显示"进行中"，追上了就收尾；超时则放弃等待，按真实状态显示
         pendingTarget?.let { target ->
@@ -213,7 +244,7 @@ class AiStatusButton(context: Context, private val onToggle: () -> Boolean) : Te
             !fresh ->
                 show(
                     RED,
-                    "AI 服务：离线$history\n点按通过 Shizuku 启动",
+                    (if (stopped) "AI 服务：已停止$history" else "AI 服务：离线$history") + "\n点按通过 Shizuku 启动",
                 )
             j!!.optString("role") == "supervisor" ->
                 show(YELLOW, "AI 服务：正在重启\n上次退出 $lastExit，共 $restarts 次")
@@ -223,8 +254,13 @@ class AiStatusButton(context: Context, private val onToggle: () -> Boolean) : Te
                     "AI 服务：在线（${modelName()}）\n${j.optLong("rss_kb") / 1024} MB·均${"%.0f".format(j.optDouble("avg_score_ms"))} ms·" +
                         "跳${j.optLong("skipped")}错${j.optLong("errors")}$history",
                 )
+            loading -> {
+                blinkOn = !blinkOn
+                alpha = if (blinkOn) 1f else 0.35f
+                show(YELLOW, "AI 服务：正在加载模型…", "◐ AI")
+            }
             else ->
-                show(GRAY, "AI 服务：待机$history\n输入时自动加载模型")
+                show(GREEN, "AI 服务：待机，模型已卸载$history\n点按立即加载，输入时也会自动加载", "○ AI")
         }
     }
 
