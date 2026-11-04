@@ -22,6 +22,8 @@ import com.osfans.trime.util.readText
 import com.osfans.trime.util.subprocess
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.Job
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.runBlocking
 import kotlinx.coroutines.withContext
@@ -38,7 +40,7 @@ import kotlin.concurrent.withLock
  * and must use [RimeSession] to access rime functionalities.
  *
  * The instance of [Rime] always exists,but whether the dispatcher runs and callback works depend on clients, i.e.
- * if no clients are connected, [Rime.finalize] will be called.
+ * if no clients are connected for [IDLE_STOP_MS], [Rime.finalize] will be called.
  *
  * Functions are thread-safe in this class.
  *
@@ -53,6 +55,12 @@ object RimeDaemon {
     private val sessions = mutableMapOf<String, RimeSession>()
 
     private val lock = ReentrantLock()
+
+    // 最后一个会话断开后，等这么久没人再连上才关掉 Rime。切到私密空间、工作资料等其他用户的应用时，
+    // 系统会解绑输入法服务，回来时再重建；立刻关掉的话，每次重建都要重新启动 Rime，弹一次部署通知。
+    private const val IDLE_STOP_MS = 30 * 60 * 1000L
+
+    private var pendingStop: Job? = null
 
     private fun establish(name: String) = object : RimeSession {
         private inline fun <T> ensureEstablished(block: () -> T) = if (name in sessions) {
@@ -87,6 +95,8 @@ object RimeDaemon {
         if (name in sessions) {
             return@withLock sessions.getValue(name)
         }
+        pendingStop?.cancel()
+        pendingStop = null
         if (realRime.lifecycle.currentState == RimeLifecycle.State.STOPPED) {
             Timber.d("RimeDaemon start rime")
             realRime.startup()
@@ -102,8 +112,16 @@ object RimeDaemon {
         }
         sessions -= name
         if (sessions.isEmpty()) {
-            Timber.d("RimeDaemon stop rime")
-            realRime.finalize()
+            pendingStop?.cancel()
+            pendingStop = TrimeApplication.getInstance().coroutineScope.launch {
+                delay(IDLE_STOP_MS)
+                lock.withLock {
+                    if (sessions.isEmpty()) {
+                        Timber.d("RimeDaemon stop rime")
+                        realRime.finalize()
+                    }
+                }
+            }
         }
     }
 
