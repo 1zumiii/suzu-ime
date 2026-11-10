@@ -162,7 +162,8 @@ function M.attach(env)
     pcall(flush_commits, st, ctx, true)   -- 建立快照：会话开始前的历史不会被当成新上屏
     write(st, { k = "start" })
 
-    ctx.select_notifier:connect(function(c)
+    st.conns = {}
+    st.conns[1] = ctx.select_notifier:connect(function(c)
         pcall(function()
             flush_commits(st, c)
             local s = select_info.resolve(c, "log")   -- 整段上屏时由过滤器信息补全
@@ -177,7 +178,16 @@ function M.attach(env)
             })
         end)
     end)
-    ctx.commit_notifier:connect(function(c) pcall(flush_commits, st, c) end)
+    st.conns[2] = ctx.commit_notifier:connect(function(c) pcall(flush_commits, st, c) end)
+end
+
+-- 组件销毁（会话结束、换方案）时断开通知：换方案后上下文对象不变，不断开的话同一次选词会被记两遍
+function M.detach(env)
+    local st = env.input_log
+    if not st then return end
+    for _, conn in pairs(st.conns or {}) do pcall(function() conn:disconnect() end) end
+    st.conns = nil
+    env.input_log = nil
 end
 
 -- 点击或拖动光标（改版 Trime 置 ai_ctx_reset，由 ai_rerank_processor 清上文后调用）：记一次失步
