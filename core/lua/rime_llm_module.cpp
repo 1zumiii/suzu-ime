@@ -28,9 +28,6 @@ double g_budget_ms = 40;
 double g_sync_budget_ms = 70;
 int g_open_count = 0;           // 打开的模块表个数；最后一个被回收时停止工作线程并释放模型
 
-// 旧接口里只做记录、对 Suzu 不起作用的属性
-long long g_max_ctx = 10, g_min_tokens = 1, g_n_ctx = 128;
-
 Engine & engine() { return suzu::shared_engine(); }
 
 // 没有设置词表时，按模型文件名找同名词表（suzu.gguf → suzu.vocab.txt）
@@ -130,9 +127,6 @@ int l_index(lua_State * L) {
     else if (!strcmp(k, "log_dir")) lua_pushstring(L, suzu::log_dir().c_str());
     else if (!strcmp(k, "budget_ms")) lua_pushnumber(L, g_budget_ms);
     else if (!strcmp(k, "sync_budget_ms")) lua_pushnumber(L, g_sync_budget_ms);
-    else if (!strcmp(k, "max_ctx")) lua_pushinteger(L, g_max_ctx);
-    else if (!strcmp(k, "min_tokens")) lua_pushinteger(L, g_min_tokens);
-    else if (!strcmp(k, "n_ctx")) lua_pushinteger(L, g_n_ctx);
     else lua_pushnil(L);
     return 1;
 }
@@ -144,9 +138,7 @@ void apply_property(const char * k, const PropValue & v) {
     if (!strcmp(k, "log_dir")) { suzu::log_set_dir(v.s); return; }
     if (!strcmp(k, "budget_ms")) { g_budget_ms = v.d; return; }
     if (!strcmp(k, "sync_budget_ms")) { g_sync_budget_ms = v.d; return; }
-    if (!strcmp(k, "max_ctx")) { g_max_ctx = v.i; return; }
-    if (!strcmp(k, "min_tokens")) { g_min_tokens = v.i; return; }
-    if (!strcmp(k, "n_ctx")) { g_n_ctx = v.i; return; }
+    if (!strcmp(k, "lexicon_dir")) { engine().set_lexicon_dir(v.s); return; }   // 目录没变时核对文件有没有变
     suzu::EngineConfig c = engine().config();
     if (!strcmp(k, "model_path")) {
         c.model_path = v.s;
@@ -158,9 +150,8 @@ void apply_property(const char * k, const PropValue & v) {
     else if (!strcmp(k, "n_seq_max")) c.max_candidates = v.i > 2 ? (int)v.i - 1 : 2;   // 旧口径：候选数上限 = n_seq_max - 1
     else if (!strcmp(k, "idle_unload_sec")) c.idle_unload_sec = v.i > 0 ? (int)v.i : 0;
     else if (!strcmp(k, "use_repack")) c.repack = v.b;
-    else if (!strcmp(k, "lexicon_dir")) c.lexicon_dir = v.s;
     else if (!strcmp(k, "gen_beam")) c.gen_beam = v.i > 0 ? (int)v.i : 0;
-    else return;   // 未知属性：忽略（与旧核心一致）
+    else return;   // 其余属性（旧脚本会设置 max_ctx、min_tokens、n_ctx）：接受并忽略
     engine().set_config(c);
 }
 

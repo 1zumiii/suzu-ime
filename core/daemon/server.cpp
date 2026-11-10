@@ -106,7 +106,7 @@ struct Worker {
         if (key == "idle_unload_sec" && v >= 0 && v <= 86400) { idle_normal = (int)v; apply_idle(); return; }
         if (key == "n_threads" && v >= 1 && v <= 8) { c.n_threads = (int)v; engine.set_config(c); return; }
         if (key == "gen_beam" && v >= 0 && v <= 64) { c.gen_beam = (int)v; engine.set_config(c); return; }
-        // max_ctx、min_tokens 是 Qwen 时代的配置，对 Suzu 无作用：接受但忽略
+        // 其余的键（旧客户端还会下发 max_ctx、min_tokens）：应答 OK，不做任何事
     }
 
     // 候选生成的词典：rime 目录下的子目录名（如 cn_dicts、cn_dicts_frost），只接受单层的安全名字
@@ -193,7 +193,7 @@ struct Worker {
     }
 
     void status_loop() {
-        long long next = 0, missing_since = 0;
+        long long last = -100000, missing_since = 0;
         while (!g_stop.load()) {
             long long now = ipc::mono_ms();
             // 孤儿保护：Trime 被卸载后它的数据目录会消失，没人能再关掉这个进程
@@ -209,10 +209,11 @@ struct Worker {
                     break;
                 }
             }
-            if (now >= next) {
+            // 平时 5 秒一次（/sdcard 是 fuse，写得越少越省）；手动切换后的 15 秒内 0.3 秒一次。
+            // 间隔每一圈都按当前是否在快速期重算：切换发生在两次写入之间时，不必等满原先排好的 5 秒
+            if (now >= last + (now < st.fast_status_until_ms.load() ? 300 : 5000)) {
                 write_file_atomic(status_path(opt), build_daemon_status(opt, st, engine, "running"), 0664);
-                // 平时 5 秒一次（/sdcard 是 fuse，写得越少越省）；手动切换后的 15 秒内 0.3 秒一次
-                next = now + (now < st.fast_status_until_ms.load() ? 300 : 5000);
+                last = now;
             }
             usleep(100 * 1000);
         }

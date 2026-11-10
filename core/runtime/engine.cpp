@@ -1,5 +1,6 @@
 #include "runtime/engine.h"
 
+#include <algorithm>
 #include <cstdio>
 #include <cstdlib>
 #include <filesystem>
@@ -128,10 +129,54 @@ void Engine::set_config(const EngineConfig & cfg) {
     cv_.notify_all();   // 空闲时限可能变了：让工作线程重算
 }
 
+// 候选生成读哪些文件：base 与 ext；目录里有 extra.dict.yaml（本项目自己的补充词条，由词库包安装脚本放入）就一并读；
+// 再加上词库目录旁边 suzu_addons/ 里的附加词库（App 下载，所有词库包共用）。顺序固定，签名才可比较
+static std::vector<std::string> lexicon_files(const std::string & dir) {
+    std::vector<std::string> files = {dir + "/base.dict.yaml", dir + "/ext.dict.yaml"};
+    if (FILE * fx = fopen((dir + "/extra.dict.yaml").c_str(), "rb")) { fclose(fx); files.push_back(dir + "/extra.dict.yaml"); }
+    std::error_code ec;
+    std::vector<std::string> extra;
+    const std::filesystem::path addons = std::filesystem::path(dir).parent_path() / "suzu_addons";
+    for (std::filesystem::directory_iterator it(addons, ec), end; !ec && it != end; it.increment(ec)) {
+        if (it->path().extension() == ".yaml") extra.push_back(it->path().string());
+    }
+    std::sort(extra.begin(), extra.end());
+    files.insert(files.end(), extra.begin(), extra.end());
+    return files;
+}
+
+// 各文件的路径、大小与修改时间；不存在的文件记为 -
+static std::string lexicon_signature(const std::string & dir) {
+    std::string sig;
+    for (const std::string & f : lexicon_files(dir)) {
+        std::error_code e1, e2;
+        auto size = std::filesystem::file_size(f, e1);
+        auto mtime = std::filesystem::last_write_time(f, e2);
+        sig += f;
+        sig += '\t';
+        if (e1 || e2) sig += "-";
+        else sig += std::to_string((unsigned long long)size) + "," + std::to_string((long long)mtime.time_since_epoch().count());
+        sig += '\n';
+    }
+    return sig;
+}
+
 void Engine::set_lexicon_dir(const std::string & dir) {
     EngineConfig c = config();
-    c.lexicon_dir = dir;
-    set_config(c);
+    if (c.lexicon_dir != dir) {
+        c.lexicon_dir = dir;
+        set_config(c);
+        return;
+    }
+    // 目录没变。输入法每次初始化都会再下发一次目录名，绝大多数时候文件没动：只做几次 stat。
+    // 没读过词典（模型未加载、未开生成）时不用管，之后加载时读到的就是当前的文件
+    if (dir.empty()) return;
+    std::string sig = lexicon_signature(dir);
+    std::lock_guard<std::mutex> lk(mu_);
+    if (!worker_running_ || lexicon_sig_.empty() || sig == lexicon_sig_ || cfg_.lexicon_dir != dir) return;
+    log_event("lexicon files changed: rereading");
+    relex_requested_ = true;
+    cv_.notify_all();
 }
 
 void Engine::set_enabled(bool on) {
@@ -570,19 +615,12 @@ void Engine::do_load(const EngineConfig & cfg) {
 // 读完若模型已换代或已卸载就丢弃。调用时持有 mu_。
 void Engine::start_lexicon_load_locked(const EngineConfig & cfg, uint64_t gen) {
     std::shared_ptr<const Vocab> vocab = vocab_;
+    lexicon_sig_ = lexicon_signature(cfg.lexicon_dir);   // 在读之前取：读的途中文件又变了的话，下一次核对会发现
     lexicon_thread_ = std::thread([this, cfg, gen, vocab] {
         const Clock::time_point tl = Clock::now();
         auto lex = std::make_shared<Lexicon>();
         std::string err;
-        // base 与 ext 之外，目录里有 extra.dict.yaml（本项目自己的补充词条，由词库包安装脚本放入）就一并读
-        std::vector<std::string> files = {cfg.lexicon_dir + "/base.dict.yaml", cfg.lexicon_dir + "/ext.dict.yaml"};
-        if (FILE * fx = fopen((cfg.lexicon_dir + "/extra.dict.yaml").c_str(), "rb")) { fclose(fx); files.push_back(cfg.lexicon_dir + "/extra.dict.yaml"); }
-        // 附加词库在词库目录旁边的 suzu_addons/（App 下载），所有词库包共用
-        std::error_code ec;
-        const std::filesystem::path addons = std::filesystem::path(cfg.lexicon_dir).parent_path() / "suzu_addons";
-        for (std::filesystem::directory_iterator it(addons, ec), end; !ec && it != end; it.increment(ec)) {
-            if (it->path().extension() == ".yaml") files.push_back(it->path().string());
-        }
+        std::vector<std::string> files = lexicon_files(cfg.lexicon_dir);
         bool ok = lex->load(files, *vocab, kGenMinChars, kGenMaxChars, &err);
         double ms = ms_between(tl, Clock::now());
         std::lock_guard<std::mutex> lk(mu_);
