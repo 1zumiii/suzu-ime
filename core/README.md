@@ -71,9 +71,9 @@
 | `use_repack` | llama.cpp 的 CPU 权重重排，加载前设置才生效 |
 | `log_dir` | 日志目录，日志文件为 `rime_llm_log.txt` |
 | `budget_ms`、`sync_budget_ms` | 新增：两种打分请求的时限 |
-| `lexicon_dir` | 候选生成的词典目录（雾凇的 `cn_dicts`）；空为不生成。从一个目录换成另一个目录只重读词典索引，不重载模型，换的期间生成返回 `no_lexicon`。守护进程没有这个属性，客户端用 `set_lexicon(目录名)` 指定 rime 目录下的子目录。词典索引在模型就绪后由单独的线程加载，打分不必等它；主机上 36.7 万词约 0.5 秒，常驻内存约多 17 MB |
+| `lexicon_dir` | 候选生成的词典目录（雾凇的 `cn_dicts`）；空为不生成。从一个目录换成另一个目录只重读词典索引，不重载模型，换的期间生成返回 `no_lexicon`。再次设成同一个目录时，核对词典文件（含旁边 `suzu_addons/` 里的附加词库）的清单、大小与修改时间，有变化才重读，重读期间继续用旧索引。守护进程没有这个属性，客户端用 `set_lexicon(目录名)` 指定 rime 目录下的子目录。词典索引在模型就绪后由单独的线程加载，打分不必等它；主机上 36.7 万词约 0.5 秒，常驻内存约多 17 MB |
 | `gen_beam` | 候选生成每层最多展开的节点数（两字词即展开的首字数）；0 为不生成。序列池按它的 2 倍预留 |
-| `max_ctx`、`min_tokens`、`n_ctx` | 只为兼容而保留，对 Suzu 无作用 |
+| `max_ctx`、`min_tokens`、`n_ctx` | 旧脚本会设置的属性。赋值被接受并忽略，读取得到 `nil` |
 
 守护进程模式下，客户端另有 `set_enabled(开关)`、`screen_off(熄屏)`、`connected()`、`port` 属性，`backend` 为 `"daemon-client"`；进程内模块的 `backend` 为 `"inproc"`。
 
@@ -159,7 +159,7 @@ cmake --build build_android --target rimellmd rime_llm_client
 ## 发布
 
 1. 用发布配置构建（`SUZU_TEST_HOOKS` 保持 OFF）。
-2. 在 Linux 或 macOS 上跑 `tests/run_all.sh`，结果须为 `ALL OK`，其中留出集首选一致率不低于 99.9%。
+2. 在 Linux 或 macOS 上跑 `tests/run_all.sh`，结果须为 `ALL OK`，其中留出集首选一致率不低于 99.9%（基准是 Suzu-2.4 的，用别的权重时这一项跳过）。
 3. macOS：`macos/install_llm.sh` 安装后重启鼠须管，用 `status()` 确认 `"state":"ready"`。
 4. Android：`android/trime/build_apk.sh` 出包并安装，点 AI 徽标启动守护进程，长按徽标确认在线；`ai_status.json` 的 `engine` 与 `client` 两个对象记录新核心的统计。
 5. Windows：按上一节构建并实测。

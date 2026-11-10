@@ -36,7 +36,7 @@ Connection & conn() {
 int g_budget_ms = 45;
 int g_sync_budget_ms = 70;
 std::string g_model_path;   // 只记录：模型由守护进程的启动参数决定
-long long g_max_ctx = 10, g_min_tokens = 1, g_n_threads = 2, g_idle_unload_sec = 0, g_n_ctx = 128, g_n_seq_max = 12;
+long long g_n_threads = 2, g_idle_unload_sec = 0, g_n_seq_max = 12;
 
 long long g_ready_at = -100000;
 bool g_ready = false;
@@ -296,10 +296,7 @@ int l_false(lua_State * L) { lua_pushboolean(L, 0); return 1; }
 int l_index(lua_State * L) {
     const char * k = luaL_checkstring(L, 2);
     if (!strcmp(k, "model_path")) lua_pushstring(L, g_model_path.c_str());
-    else if (!strcmp(k, "max_ctx")) lua_pushinteger(L, g_max_ctx);
-    else if (!strcmp(k, "min_tokens")) lua_pushinteger(L, g_min_tokens);
     else if (!strcmp(k, "n_threads")) lua_pushinteger(L, g_n_threads);
-    else if (!strcmp(k, "n_ctx")) lua_pushinteger(L, g_n_ctx);
     else if (!strcmp(k, "n_seq_max")) lua_pushinteger(L, g_n_seq_max);
     else if (!strcmp(k, "idle_unload_sec")) lua_pushinteger(L, g_idle_unload_sec);
     else if (!strcmp(k, "log_dir")) lua_pushstring(L, conn().token_dir().c_str());
@@ -321,12 +318,10 @@ int l_newindex(lua_State * L) {
     if (!strcmp(k, "port")) conn().set_port((int)v);
     else if (!strcmp(k, "budget_ms")) g_budget_ms = v > 0 ? (int)v : 1;
     else if (!strcmp(k, "sync_budget_ms")) g_sync_budget_ms = v > 0 ? (int)v : 1;
-    else if (!strcmp(k, "max_ctx")) { g_max_ctx = v; conn().remember_config("max_ctx", v, 100); }
-    else if (!strcmp(k, "min_tokens")) { g_min_tokens = v; conn().remember_config("min_tokens", v, 100); }
     else if (!strcmp(k, "n_threads")) { g_n_threads = v; conn().remember_config("n_threads", v, 100); }
     else if (!strcmp(k, "idle_unload_sec")) { g_idle_unload_sec = v; conn().remember_config("idle_unload_sec", v, 100); }
-    else if (!strcmp(k, "n_ctx")) g_n_ctx = v;
     else if (!strcmp(k, "n_seq_max")) g_n_seq_max = v;
+    // 其余属性（旧脚本会设置 max_ctx、min_tokens、n_ctx）：接受并忽略，不下发给守护进程
     return 0;
 }
 

@@ -47,8 +47,7 @@ bool parse_options(int argc, char ** argv, Options * o, int * exit_code) {
         else if (a == "--sync-budget-ms") o->sync_budget_ms = atoi(v);
         else if (a == "--heartbeat-ms") o->heartbeat_ms = atoi(v);
         else if (a == "--max-backoff-s") o->max_backoff_s = atoi(v);
-        else if (a == "--max-ctx") o->max_ctx = atoi(v);
-        else if (a == "--n-ctx") o->n_ctx = atoi(v);
+        else if (a == "--max-ctx" || a == "--n-ctx") continue;   // 旧启动脚本可能还带着：接受并忽略，不传给子进程
         else {
             fprintf(stderr, "unknown option %s\n", a.c_str());
             print_usage();

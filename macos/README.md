@@ -12,7 +12,7 @@ macos/install_llm.sh core/build/rime_llm.so <suzu.gguf> <suzu.vocab.txt>
 
 脚本将 `rime_llm.so` 安装到 `~/Library/Rime/lua/`，将模型与词表分别以 `suzu.gguf`、`suzu.vocab.txt` 命名，放入 `~/Library/Rime/`。处理器检测到这两个文件后即启用 Suzu；文件缺失时不重排，输入不受影响。
 
-也可用 `llm_rerank/student_model`、`llm_rerank/student_vocab` 指定路径，或用 `llm_rerank/student: false` 关闭。Lua 脚本与方案配置由配置仓库的 `install.sh` 安装。
+也可用 `llm_rerank/student_model`、`llm_rerank/student_vocab` 指定路径。Lua 脚本与方案配置由配置仓库的 `install.sh` 安装。
 
 重启鼠须管后生效。AI 重排默认开启，`Control+Shift+5` 在当前输入框临时开关，也可在方案菜单（F4 或 ``Control+` ``）中选择“AI 关/开”。
 
