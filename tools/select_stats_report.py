@@ -97,7 +97,7 @@ for r in rows:
     models[r["model"]].append(r)
 if len(models) > 1:
     for m, rs in models.items():
-        block({"q": "Qwen 0.8B", "s": "学生模型"}.get(m, m), rs)
+        block({"q": "Qwen 0.8B（旧记录）", "s": "Suzu", "-": "模型未知"}.get(m, m), rs)
 for lo, hi, name in [(1, 3, "输入 1~3 个字母"), (4, 6, "输入 4~6 个字母"), (7, 99, "输入 7 个字母以上")]:
     rs = [r for r in rows if lo <= r["inlen"] <= hi]
     if rs:

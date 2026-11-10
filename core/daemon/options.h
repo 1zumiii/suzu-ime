@@ -30,8 +30,6 @@ struct Options {
     int restarts = 0;
     std::string last_exit = "none";
     std::vector<std::string> raw_args;   // 原样传给子进程的参数
-    // 只为兼容旧参数而接受、对 Suzu 无作用
-    int max_ctx = 10, n_ctx = 0;
 };
 
 // 解析失败时打印用法并返回 false（exit_code 置为 64）
