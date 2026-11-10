@@ -1,5 +1,5 @@
--- 留出集逐题打分：输出与 reference/holdout-parity/res_q8.tsv 同格式（编号 \t 0 \t 词:分|词:分…，按分数降序）。
--- 新旧核心都能跑（只用 score/get_scores），用于核对两者逐题一致。
+-- 留出集逐题打分：输出与 tests/parity/data/ 里的基准同格式（编号 \t 0 \t 词:分|词:分…，按分数降序）。
+-- 只用 score/get_scores；用于核对核心改动前后逐题一致，也用来生成新基准。
 -- 用法：lua run_cases.lua <rime_llm.so 所在目录> <suzu.gguf> <suzu.vocab.txt> <cases.tsv> <输出> [线程数]
 local so_dir, model, vocab, cases, outp, threads = arg[1], arg[2], arg[3], arg[4], arg[5], tonumber(arg[6] or "4")
 package.cpath = so_dir .. "/?.so;" .. package.cpath

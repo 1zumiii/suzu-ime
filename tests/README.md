@@ -24,14 +24,15 @@ tests/run_all.sh <core 的构建目录> <suzu.gguf> <suzu.vocab.txt> [--quick]
 | `gen_test.lua` | 候选生成：适用范围（全拼不生成）、简拼、混合输入、隔音符、三字词、词频名次、词表外字；束宽足够大时与逐个打分一致 | 是 |
 | `filter_test.lua` | 模拟 Rime 环境中的处理器与过滤器端到端测试 | 是 |
 | `unified_order_test.lua` | 统一排序加候选生成时的输出顺序：生成出新词或组内有重复文字时，英文与 emoji 候选留在原位（桩核心） | 否 |
+| `session_test.lua` | 同一个 Lua 状态里的多个会话与中途换方案：第二个会话也接上熄屏与 AI 开关的通知，换方案后词典目录与过滤器配置跟着换，组件销毁时断开通知（桩核心） | 否 |
 | `idle_test.lua` | 空闲卸载、内存归还、透明重载 | 是 |
 | `concurrency_test.lua` | 卸载与输入交错、加载中输入、模块重新初始化、配置反复切换、退出 | 是 |
 | `pairs_test.lua`、`select_stats_test.lua` | 个人词对、选词统计 | 否 |
 | `input_log_test.lua` | 输入事件流：开关、事件内容、失步判断；`tools/input_log.py` 推导的句子、纠错、词对 | 否 |
 | `replay_test.lua` | 回放数据的记录内容；`tools/replay.py` 用记录里的参数逐条复现最终首位；`tools/corpus_report.py` 可运行且不输出文字 | 是 |
-| `parity/run_cases.lua`、`parity/compare.py` | 1293 题留出集逐题打分与对照 | 是 |
+| `parity/run_cases.lua`、`parity/compare.py`、`parity/data/` | 1293 题留出集逐题打分，与 Suzu-2.4 的基准对照 | 是 |
 | `keysim.lua` | 按键仿真：跳过率、等待时间分布；`chaos=` 可做故障注入（配合 `chaos_daemon.sh`） | 是 |
-| `test_daemon.py` | 守护进程：协议、认证、非法输入、时限、并发；`--chaos` 做 kill -9、SIGSTOP、删除模型的恢复测试。`--host` 在本机运行，不加则经 adb 测手机上的守护进程 | 是 |
+| `test_daemon.py` | 守护进程：协议、认证、非法输入、时限、并发、换词典与附加词库变化后重读；`--chaos` 做 kill -9、SIGSTOP、删除模型的恢复测试。`--host` 在本机运行，不加则经 adb 测手机上的守护进程 | 是 |
 | `test_student.py` | 在手机上另起一个守护进程核对排序与延迟（经 adb） | 是 |
 
 ## 与旧核心相比改写的检查
@@ -49,4 +50,18 @@ tests/run_all.sh <core 的构建目录> <suzu.gguf> <suzu.vocab.txt> [--quick]
 
 对于含词表外字（编码为 `<unk>`）的候选，核心返回无效分（-1e12），由 Lua 排到同组末尾。`<unk>` 在训练语料中很常见，单个 `<unk>` 的对数概率远高于任何真实词语。若直接采用该分数，生僻字候选（如“𦜳”“蚍蜉”“噼噼”）会被错误地排到首位。
 
-此规则改变了 1293 题留出集中 8 题的首选，首选准确率由 92.42% 升到 92.73%。逐题对照的基准文件 `res_q8.tsv` 已按此规则重新生成，旧基准另存为 `res_q8.pre-oov.tsv`。
+此规则改变了 1293 题留出集中 8 题的首选，Suzu-2.1 的首选准确率由 92.42% 升到 92.73%。逐题对照的基准按此规则生成。
+
+## 留出集对照
+
+`tests/parity/data/cases.tsv` 有 1293 题，每行为编号、占位列、上文和用 `|` 分隔的同音候选。句子取自模型仓库 Suzu 的 `tests/holdout` 与 `tests/domain`（自编，不含个人数据），候选由雾凇拼音的词典按读音列出。`res_suzu-2.4.tsv` 是 Suzu-2.4（Q8_0）逐题的排序与分数。
+
+`run_all.sh` 先核对模型文件的 sha256 前缀，是 Suzu-2.4 才跑这一项，否则跳过；通过的条件是首选一致率不低于 99.9%。它检查的是核心改动前后打分不变，不是准确率。同一份权重在 macOS 上重复运行、换线程数，结果逐题相同。
+
+换模型版本时重新生成基准，并修改 `run_all.sh` 里的 `PARITY_BASE` 与 `PARITY_SHA`：
+
+```bash
+cd tests && lua parity/run_cases.lua <构建目录> <suzu.gguf> <suzu.vocab.txt> parity/data/cases.tsv parity/data/res_<版本>.tsv 2
+```
+
+环境变量 `SUZU_PARITY_DIR` 可指向另一套题目与基准。
