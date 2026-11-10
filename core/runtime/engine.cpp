@@ -327,6 +327,7 @@ GenResult Engine::generate(const std::string & context, const std::string & inpu
     std::shared_ptr<const Vocab> vocab;
     std::shared_ptr<const Lexicon> lex;
     int chars, beam;
+    uint64_t lex_gen;
     {
         std::lock_guard<std::mutex> lk(mu_);
         stats_.gen_requests++;
@@ -339,6 +340,7 @@ GenResult Engine::generate(const std::string & context, const std::string & inpu
         }
         vocab = vocab_;
         lex = lexicon_;
+        lex_gen = lexicon_gen_;
         chars = cfg_.context_chars;
         beam = cfg_.gen_beam;
     }
@@ -372,7 +374,9 @@ GenResult Engine::generate(const std::string & context, const std::string & inpu
 
     std::unique_lock<std::mutex> lk(mu_);
     if (job->ctx.empty()) { res.status = ScoreStatus::NoContext; return res; }
-    job->key = ResultCache::make_key(job->ctx, {"\x01gen", input, std::to_string(beam), std::to_string(job->k)});
+    // 缓存的值是词条在这份词典匹配结果里的下标：键里必须带词典的代次，否则换词典后会把旧分数套到新词上
+    job->key = ResultCache::make_key(job->ctx, {"\x01gen", input, std::to_string(beam), std::to_string(job->k),
+                                                std::to_string(lex_gen)});
     std::vector<double> flat;
     if (cache_.get(job->key, &flat)) {
         stats_.gen_ok++;
@@ -586,6 +590,7 @@ void Engine::start_lexicon_load_locked(const EngineConfig & cfg, uint64_t gen) {
         if (gen != loaded_gen_ || state_ != EngineState::Ready) return;
         if (cfg_.lexicon_dir != cfg.lexicon_dir) return;   // 读的期间方案又换了：丢弃，新目录的读取已排队
         lexicon_ = std::move(lex);
+        lexicon_gen_++;
 #if defined(__GLIBC__)
         malloc_trim(0);   // 解析词典时的临时内存还给系统（glibc 默认留着不还）
 #endif
