@@ -5,7 +5,9 @@
 -- 隐私：本文件维护的上文只存在内存里，来自 Rime 自己的 commit_history；应用里光标前的文字由 ai_rerank_app_ctx 另行接入。
 --       默认写入用户目录的只有纠错记忆（recent_choices.tsv，见 personal_pairs.lua）和不含输入内容的诊断信息；
 --       选词统计、训练语料与回放数据默认关闭，须在本机手动开启，说明见下文“选词统计与训练语料”。全部只留本机。
--- 配置（llm_rerank 节点）：idle_unload_minutes 空闲多少分钟后卸载模型，默认 20，0 = 不卸载。
+-- 配置（llm_rerank 节点）：student_model / student_vocab 模型与词表的路径（默认用户目录里的 suzu.gguf、suzu.vocab.txt）；
+--       cpu_cores 推理线程数；idle_unload_minutes_student 空闲多少分钟后卸载模型，默认 0 = 不卸载；
+--       generate / gen_beam / lexicon_dir 候选生成，见 apply_config。
 -- 在 engine/processors 增加 - lua_processor@*ai_rerank_processor（放在最前面）
 
 local select_info = require("select_info")   -- 选词通知里取“这一次选了什么”（含整段上屏的补全）
@@ -90,9 +92,30 @@ local function trigger_prepare()
     end
 end
 
+-- 通知接线：连接记在 env 里，组件销毁（会话结束、换方案）时由 fini 断开。
+-- 换方案时 librime 重建全部组件，但上下文对象不变；不断开的话，旧组件的回调会留在同一个上下文上，同一件事被处理两次。
+local function connect(env, notifier, fn)
+    local conn = notifier:connect(fn)
+    if conn then
+        env.ai_conns = env.ai_conns or {}
+        env.ai_conns[#env.ai_conns + 1] = conn
+    end
+    return conn
+end
+
+local function schema_id(env)
+    local ok, sid = pcall(function() return env.engine.schema.schema_id end)
+    return (ok and type(sid) == "string") and sid or ""
+end
+
+-- librime-lua 的 Lua 状态由所有会话共用，本文件只加载一次。因此分三步：
+--   load_module     加载 rime_llm 模块，整个 Lua 状态只做一次；
+--   apply_config    把方案里的 llm_rerank 配置交给核心，方案变了就重做（核心是单例，以当前会话的方案为准）；
+--   wire_session    接上这个会话的通知（熄屏、AI 开关），每个会话各做一次。
+
 -- 加载 rime_llm.so（放在用户目录的 lua/ 下），只尝试一次
-local function load_llm(env)
-    if load_tried then return end
+local function load_module()
+    if load_tried then return llm_prep end
     load_tried = true
     local ud = user_dir()
     if ud then
@@ -115,18 +138,25 @@ local function load_llm(env)
                 local fh = io.open(ud .. "/llm_load_error.txt", "w")
                 if fh then fh:write(tostring(err1), "\n", tostring(err2), "\n"); fh:close() end
             end
-            return
+            return nil
         end
     end
+    if ud then cpp.log_dir = ud end                    -- 日志只含模型路径与耗时，不含输入内容
+    llm_prep = cpp
+    _G.ai_rerank_llm = cpp
+    return cpp
+end
+
+local applied_schema = nil
+local function apply_config(env, cpp)
+    local ud = user_dir()
     local sc = env.engine.schema.config
-    local mp = sc:get_string("llm_rerank/model_path")
-    if mp and mp ~= "" then cpp.model_path = mp
-    elseif ud then cpp.model_path = ud .. "/Qwen3.5-0.8B-Q4_K_M.gguf" end   -- 默认：用户目录下的模型（macOS 即 ~/Library/Rime）
-    -- Suzu 学生模型（字符级小模型）：桌面端（进程内加载）用户目录里有 suzu.gguf 和 suzu.vocab.txt 就自动使用，否则用上面的 Qwen；
-    -- 也可用 llm_rerank/student_model、llm_rerank/student_vocab 指定路径，llm_rerank/student: false 强制不用。
-    -- 安卓不走这里：守护进程启动时自己按同名文件选择模型。
-    local student = false
-    if ud and not cpp.set_enabled and sc:get_bool("llm_rerank/student") ~= false then
+    applied_schema = schema_id(env)
+    -- 模型（桌面端，进程内加载）：用户目录里的 suzu.gguf 与 suzu.vocab.txt（macOS 即 ~/Library/Rime），
+    -- 也可用 llm_rerank/student_model、llm_rerank/student_vocab 指定路径。两个文件不全时退回 llm_rerank/model_path
+    -- （词表按同名规则找）；都没有时核心返回 no_model，输入不受影响。核心只支持 Suzu。
+    -- 安卓不走这里：守护进程启动时自己按同名文件找模型。
+    if not cpp.set_enabled then
         local function exists(path)
             local fh = path and io.open(path, "rb")
             if fh then fh:close() return true end
@@ -134,16 +164,17 @@ local function load_llm(env)
         end
         local sm = sc:get_string("llm_rerank/student_model")
         local sv = sc:get_string("llm_rerank/student_vocab")
-        if not sm or sm == "" then sm = ud .. "/suzu.gguf" end
-        if not sv or sv == "" then sv = ud .. "/suzu.vocab.txt" end
+        if (not sm or sm == "") and ud then sm = ud .. "/suzu.gguf" end
+        if (not sv or sv == "") and ud then sv = ud .. "/suzu.vocab.txt" end
         if exists(sm) and exists(sv) then
             cpp.model_path = sm
             cpp.student_vocab = sv
-            student = true
+        else
+            local mp = sc:get_string("llm_rerank/model_path")
+            if not mp or mp == "" then mp = sm end
+            if mp and mp ~= "" then cpp.model_path = mp end
         end
     end
-    local mt = sc:get_int("llm_rerank/max_tokens")
-    if mt then cpp.max_ctx = mt end
     local cores = sc:get_int("llm_rerank/cpu_cores")
     if cores then cpp.n_threads = cores end
     -- 候选生成（llm_rerank/generate）：词典是用户目录里随方案部署的词库目录，默认 cn_dicts（雾凇）；
@@ -152,7 +183,6 @@ local function load_llm(env)
     local gen_on = sc:get_bool("llm_rerank/generate")
     if gen_on == nil then gen_on = true end        -- 默认开启；核心没有生成接口时下面的赋值无效，过滤器会自动跳过
     if gen_on then
-        local ud = user_dir()
         local gb = sc:get_int("llm_rerank/gen_beam") or 20
         local lex = sc:get_string("llm_rerank/lexicon_dir")
         if not lex or not lex:match("^[%w_%-]+$") then lex = "cn_dicts" end
@@ -160,17 +190,19 @@ local function load_llm(env)
         elseif ud then pcall(function() cpp.lexicon_dir = ud .. "/" .. lex end) end
         pcall(function() cpp.gen_beam = gb end)
     end
-    if ud then cpp.log_dir = ud end                    -- 日志只含模型路径与耗时，不含输入内容
-    -- 空闲多少分钟没用就卸载模型（释放约 320 MB 内存），下次打字时自动加载回来（约 0.5~1 秒，期间不重排）。
-    -- 0 = 不卸载。默认 20 分钟。
-    local idle = sc:get_int("llm_rerank/idle_unload_minutes")
-    if idle == nil then idle = 20 end
-    -- 学生模型只占一百多 MB，默认常驻（不卸载）；llm_rerank/idle_unload_minutes_student 可改
-    if student then idle = sc:get_int("llm_rerank/idle_unload_minutes_student") or 0 end
+    -- 空闲多少分钟没用就卸载模型，下次打字时自动加载回来（期间不重排）。0 = 不卸载，这是默认值：Suzu 只占一百多 MB，常驻即可。
+    -- 键名是 idle_unload_minutes_student；旧键 idle_unload_minutes 是给已移除的大模型用的，不再读取，
+    -- 已有配置里留着它也不会让 Suzu 被卸载。
+    local idle = sc:get_int("llm_rerank/idle_unload_minutes_student") or 0
     cpp.idle_unload_sec = math.max(0, idle) * 60
+end
+
+local function wire_session(env, cpp)
+    if env.ai_llm_wired then return end
+    env.ai_llm_wired = true
     -- Android：Trime 在亮屏/熄屏时设置 Rime 选项 screen_off；转给常驻推理进程，熄屏后它会更快卸载模型（其他平台没有这个函数）
     if cpp.screen_off then
-        env.engine.context.option_update_notifier:connect(function(c, name)
+        connect(env, env.engine.context.option_update_notifier, function(c, name)
             if name == "screen_off" then pcall(cpp.screen_off, c:get_option("screen_off")) end
         end)
     end
@@ -190,7 +222,7 @@ local function load_llm(env)
         -- 徽标手动切换时，Trime 先设临时选项 _ai_manual 再改 ai_rerank：这是用户的操作，不受 3 秒窗口限制，直接推送。
         -- （键盘刚弹出时第一次点徽标会触发会话建立，点击正好落在窗口里，以前会被改回去，要点好几次才生效。）
         local settle_until = os.time() + 3
-        c.option_update_notifier:connect(function(cc, name)
+        connect(env, c.option_update_notifier, function(cc, name)
             if name ~= "ai_rerank" then return end
             local v = cc:get_option("ai_rerank")
             local manual = cc:get_option("_ai_manual")
@@ -214,15 +246,24 @@ local function load_llm(env)
         env.switch_align_pending = not env.switch_align()
         env.switch_align_tries, env.switch_align_at = 0, 0
     end
-    llm_prep = cpp
-    _G.ai_rerank_llm = cpp
+end
+
+-- 会话初始化与按键时都走这里：模块没加载就加载，方案变了就重新下发配置，这个会话没接线就接上
+local function load_llm(env)
+    local cpp = load_module()
+    if not cpp then return end
+    if applied_schema ~= schema_id(env) then
+        local ok, err = pcall(apply_config, env, cpp)
+        if not ok then diag_line("apply_config error: " .. tostring(err)) end
+    end
+    wire_session(env, cpp)
 end
 
 -- === 光标被点动后清空上文（安卓）===
 -- 改版 Trime 发现光标位置变化不是输入法自己的编辑引起的（用户点击或拖动了光标，例如回头补充内容），
 -- 就把运行时选项 ai_ctx_reset 置 true；这里收到后清空上文和个人词对的“前一个词”，避免把别处的词当成当前位置的上文。
 local function setup_ctx_reset(env)
-    env.engine.context.option_update_notifier:connect(function(c, name)
+    connect(env, env.engine.context.option_update_notifier, function(c, name)
         if name == "ai_ctx_reset" and c:get_option(name) then
             c:set_option(name, false)
             reset_history()
@@ -242,7 +283,7 @@ local function setup_choice_memory(env)
     local okp, pp = pcall(require, "personal_pairs")
     if not okp then return end
     pcall(pp.init)
-    env.engine.context.select_notifier:connect(function(ctx)
+    connect(env, env.engine.context.select_notifier, function(ctx)
         pcall(function()
             if ctx:get_option("ai_no_log") then return end   -- 密码框、数字框等不记
             local s = select_info.resolve(ctx, "choice")
@@ -264,7 +305,7 @@ end
 local function setup_fix_note(env)
     local llm = _G.ai_rerank_llm
     if not (llm and llm.fix_note) then return end
-    env.engine.context.select_notifier:connect(function(ctx)
+    connect(env, env.engine.context.select_notifier, function(ctx)
         pcall(function()
             local s = select_info.resolve(ctx, "fix")
             local info = s and s.info
@@ -404,7 +445,7 @@ end
 local function setup_fix_lookup(env)
     local llm = _G.ai_rerank_llm
     if not (llm and llm.lookup_take) then return end
-    env.engine.context.option_update_notifier:connect(function(ctx, name)
+    connect(env, env.engine.context.option_update_notifier, function(ctx, name)
         if name ~= "suzu_fix_lookup" then return end
         pcall(function()
             local id, text, cur = llm.lookup_take()
@@ -421,7 +462,7 @@ end
 
 -- === 选词统计与训练语料（默认关闭）===
 -- 一、select_stats.tsv（纯数字）：用真实输入评估重排有没有帮助。开关：用户目录里存在空文件 select_stats.enabled。
---     每次选词一行：时间戳、AI 开关、模型（q = Qwen，s = 学生）、输入字母数、参与重排的候选数、所选候选在原顺序和最终顺序里的位次、
+--     每次选词一行：时间戳、AI 开关、模型（s = Suzu，- = 核心没加载或拿不到状态；旧记录里的 q 是已移除的 Qwen）、输入字母数、参与重排的候选数、所选候选在原顺序和最终顺序里的位次、
 --     上文长度档、候选字数、候选类型、是否命中缓存，以及置信度门控用的三列：模型首位比原首位高出的融合分（×10 取整，没有则为 -）、
 --     是否被门控保持了原顺序、模型首位在原顺序里的位次。不含任何输入的文字、拼音和候选文字。
 -- 二、select_corpus.tsv（明文）：为将来微调积累“模型排错”的样本。开关：用户目录里存在空文件 select_corpus.enabled（独立于上一个）。
@@ -458,7 +499,7 @@ local function setup_select_stats(env)
     if not _G.ai_select_stats_on then return end
     local spath, cpath, rpath = ud .. "/select_stats.tsv", ud .. "/select_corpus.tsv", ud .. "/select_replay.jsonl"
     local anchor_rate = env.engine.schema.config:get_double("llm_rerank/select_anchor_rate") or 0.1
-    local model_cache, model_ts = "q", 0
+    local model_cache, model_ts = "-", 0
     local function model_kind()
         local now = os.time()
         if now - model_ts > 60 then
@@ -466,7 +507,7 @@ local function setup_select_stats(env)
             local llm = _G.ai_rerank_llm
             if llm and llm.status then
                 local ok, st = pcall(llm.status)
-                model_cache = (ok and type(st) == "string" and st:find('"student":true', 1, true)) and "s" or "q"
+                model_cache = (ok and type(st) == "string" and st:find('"student":true', 1, true)) and "s" or "-"
             end
         end
         return model_cache
@@ -489,12 +530,12 @@ local function setup_select_stats(env)
     local last_key, last_t = "", 0
     local prev_commit_t = os.time()
     local seq, last_corpus_id, last_corpus_t = 0, nil, 0
-    env.engine.context.commit_notifier:connect(function() prev_commit_t = os.time() end)
+    connect(env, env.engine.context.commit_notifier, function() prev_commit_t = os.time() end)
     -- 诊断：记录统计功能是否初始化、选词通知是否到达、回调是否出错（只写事件名与错误信息，不含任何输入和候选文字）。
     local fired = 0
     local diag = diag_line
     diag(string.format("init stats_on=%s corpus_on=%s", tostring(stats_on), tostring(corpus_on)))
-    env.engine.context.select_notifier:connect(function(ctx)
+    connect(env, env.engine.context.select_notifier, function(ctx)
         fired = fired + 1
         if fired <= 3 then diag("select_notifier fired #" .. fired) end
         xpcall(function()
@@ -616,9 +657,9 @@ local function processor(key, env)
     if okilog and env.input_log then input_log.key(env, key) end   -- 输入事件流（默认关闭，与 AI 开关无关）
 
     local ctx = env.engine.context
-    -- 开关关闭：不加载模型、不记录
-    -- 先加载模块（不加载模型）：开关处于关闭状态时，也要把"关"同步给常驻推理进程
-    if not llm_prep then load_llm(env) end
+    -- 先加载模块（不加载模型）：开关处于关闭状态时，也要把"关"同步给常驻推理进程。
+    -- 另一个会话用的是别的方案时，核心的配置在这里换回本会话的方案
+    if not env.ai_llm_wired or applied_schema ~= schema_id(env) then load_llm(env) end
 
     -- 下面两件事与 AI 开关无关，开关关闭时也要做：
     -- 1) 编辑位置变化键（退格、方向键、回车等，且没有未上屏编码）：个人词对的“前一个词”作废
@@ -699,6 +740,12 @@ return setmetatable({
         xpcall(setup_select_stats, function(e) diag_line("setup_select_stats error: " .. tostring(e)) end, env)
         pcall(setup_fix_note, env); pcall(setup_fix_lookup, env)
         if okilog then xpcall(input_log.attach, function(e) diag_line("input_log error: " .. tostring(e)) end, env) end
+    end,
+    -- 组件销毁（会话结束、换方案）：断开这个组件接的全部通知
+    fini = function(env)
+        for _, conn in ipairs(env.ai_conns or {}) do pcall(function() conn:disconnect() end) end
+        env.ai_conns = nil
+        if okilog and input_log.detach then pcall(input_log.detach, env) end
     end,
     func = processor,
 }, { __call = function(_, key, env) return processor(key, env) end })   -- 仍可当函数直接调用（测试脚本这样用）

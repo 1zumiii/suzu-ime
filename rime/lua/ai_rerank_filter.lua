@@ -12,7 +12,6 @@
 --   max_candidates          参与重排的候选数，默认 10（单字等同音词多的输入，正确的字常在词库第 6 到 8 位：5 个时约 77% 进得来，8 个约 95%）
 --   generate                候选生成（只在 ranker: unified 下），默认 true；核心没有生成接口或没有词典时自动不生成；gen_k 每次生成的词数，默认 10；
 --                           gen_beam 核心每层展开的节点数（processor 读取），默认 20。见 add_generated
---   max_tokens              上文 token 数，默认 10
 --   expected_length_weight  预期词长加成，全拼设 0（默认 0）
 --   freq_beta               词频融合系数，默认 1.5
 --   pair_gamma              个人词对融合系数（前一个词 → 当前词，见 personal_pairs.lua），默认 1.5，0 = 关闭
@@ -29,9 +28,9 @@
 --   stage2_context_chars    第二阶段只用最后 N 个字作为上文，默认 8（现场解码，越短越快）
 --   stage2_min_rest         剩余拼音至少 N 个字母才跑第二阶段，默认 4
 --   badge / badge2          首选候选的注释标记：模型参与了排序的首选（含与 Rime 原首位相同的）/ 两阶段拼出来的首选，默认 ◇ / ◈（单字符，省空间；❖ 仍表示语法模型整句）
---   model_path / cpu_cores  见 ai_rerank_processor
+--   student_model / student_vocab / cpu_cores / idle_unload_minutes_student  见 ai_rerank_processor
 
-local cfg = {
+local DEFAULTS = {
     code_pattern = '[a-z]{2,}',
     max_candidates = 10,
     expected_length_weight = 0,
@@ -53,7 +52,17 @@ local cfg = {
     debug_latency = false,
 }
 
-_G.ai_rerank_cfg = cfg   -- 供测试脚本在运行中调整配置
+-- 配置按方案各存一份。librime-lua 的 Lua 状态由所有会话共用，本模块只加载一次；会话之间方案可以不同，
+-- 同一个会话也会中途换方案，所以每次调用按 env 的方案取对应的那份（见 use_config）。cfg 指向当前这一份。
+local function new_cfg()
+    local t = {}
+    for k, v in pairs(DEFAULTS) do t[k] = v end
+    return t
+end
+local cfg = new_cfg()
+local cfg_by_schema = {}
+
+_G.ai_rerank_cfg = cfg   -- 供测试脚本在运行中调整配置（当前方案的那一份）
 
 -- 结果缓存：同一 (上文, 输入) 的评分复用（翻页/候选窗重建不重复推理）。
 -- 存 _G 以便 ai_rerank_processor 在编辑操作后清空。
@@ -227,9 +236,7 @@ end
 local function init_config(env)
     local sc = env.engine.schema.config
     local dict = sc:get_string("translator/dictionary")
-    if dict and dict ~= "" and dict ~= reverse.dict then
-        reverse.dict, reverse.tried, reverse.db = dict, false, nil
-    end
+    if dict and dict ~= "" then cfg.dict = dict end   -- 拼音贴合度查单字读音用的词典，随方案换（见 use_config）
     local pat = sc:get_string("llm_rerank/code_pattern")
     if pat ~= nil then cfg.code_pattern = pat end
     local v = get_config_number(sc, "llm_rerank/expected_length_weight")
@@ -269,6 +276,26 @@ local function init_config(env)
     if okru then cfg.uni = ru.load(sc) end
     local dl = sc:get_bool("llm_rerank/debug_latency")
     if dl ~= nil then cfg.debug_latency = dl end
+end
+
+-- 取 env 所在方案的配置：这个方案第一次出现时读一次，之后直接用存下的那份。
+-- 没有的键用默认值，不沿用上一个方案的；方案的词典变了，单字读音库跟着重开。
+local function use_config(env)
+    local oks, sid = pcall(function() return env.engine.schema.schema_id end)
+    if not oks or type(sid) ~= "string" then sid = "" end
+    local c = cfg_by_schema[sid]
+    if not c then
+        -- 第一个方案沿用模块加载时的那张表（测试脚本可能已经拿到它的引用）
+        c = (next(cfg_by_schema) == nil) and cfg or new_cfg()
+        cfg = c
+        init_config(env)
+        cfg_by_schema[sid] = c
+    end
+    if c ~= cfg then cfg = c end
+    if _G.ai_rerank_cfg ~= c then _G.ai_rerank_cfg = c end
+    if c.dict and c.dict ~= reverse.dict then
+        reverse.dict, reverse.tried, reverse.db = c.dict, false, nil
+    end
 end
 
 -- 编码匹配：优先用 .so 的 std::regex（ECMAScript），不可用时回退 Lua 模式
@@ -484,10 +511,7 @@ end
 
 local function inner(translation, env)
     weird_load()
-    if not cfg._inited then
-        init_config(env)
-        cfg._inited = true
-    end
+    use_config(env)
 
     local all = {}
     for cand in translation:iter() do table.insert(all, cand) end
@@ -944,10 +968,7 @@ end
 -- 取尽会卡），其余候选保持惰性透传；先收集、再 yield（Rime 只拉取窗口所需数量，之后会丢弃协程）；
 -- inner 出错时退回原生顺序，不让候选窗变空。
 return function(translation, env)
-    if not cfg._inited then
-        init_config(env)
-        cfg._inited = true
-    end
+    use_config(env)
     -- 关 AI：旧模式原样透传；统一排序照常排序，只是不用模型（λ = 0）
     if not env.engine.context:get_option("ai_rerank") and cfg.ranker ~= "unified" then
         dbg("filter called: switch OFF in this session")
