@@ -13,6 +13,7 @@
 #include <cstdio>
 #include <cstdlib>
 #include <cstring>
+#include <random>
 #include <string>
 #include <thread>
 #include <vector>
@@ -29,6 +30,7 @@ namespace {
 
 constexpr int kMaxClients = 8;              // 客户端通常只有 1 个
 constexpr int kConnIdleMs = 120000;         // 空闲 120 秒没有请求就断开，客户端按需重连
+constexpr int kPreAuthIdleMs = 3000;        // 认证之前只等 3 秒：没有令牌的连接不能长时间占着连接名额（心跳一问一答就走，不受影响）
 constexpr int kMaxBudgetMs = 1000;
 
 std::atomic<bool> g_stop{false};
@@ -124,7 +126,7 @@ struct Worker {
         setsockopt(fd, IPPROTO_TCP, TCP_NODELAY, &one, sizeof one);
         bool authed = false;
         std::vector<std::string> f;
-        while (!g_stop.load() && ipc::recv_frame(fd, f, kConnIdleMs, 3000) && !f.empty() && !f[0].empty()) {
+        while (!g_stop.load() && ipc::recv_frame(fd, f, authed ? kConnIdleMs : kPreAuthIdleMs, 3000) && !f.empty() && !f[0].empty()) {
             st.requests++;
             st.last_request_s.store((long long)time(nullptr));
             char op = f[0][0];
@@ -219,8 +221,13 @@ struct Worker {
 
 std::string make_token() {
     unsigned char b[16] = {0};
+    size_t got = 0;
     FILE * f = fopen("/dev/urandom", "rb");
-    if (f) { size_t r = fread(b, 1, sizeof b, f); (void)r; fclose(f); }
+    if (f) { got = fread(b, 1, sizeof b, f); fclose(f); }
+    if (got != sizeof b) {   // 读不到时不能留下全零的令牌
+        std::random_device rd;
+        for (unsigned char & c : b) c = (unsigned char)rd();
+    }
     static const char * hex = "0123456789abcdef";
     std::string t;
     for (unsigned char c : b) { t.push_back(hex[c >> 4]); t.push_back(hex[c & 15]); }
