@@ -128,6 +128,7 @@ def unified_top(rec, p):
                                     and lam * (rp["s2x"] - rp["s2n"]) > p["alpha"] * math.log(2))
         if win:
             return rp["s2"], True
+    # cat == 1 只出现在旧记录里（当时个数不等就把重排结果整体排在最前）；现在的记录是 0 或 2，组外候选留在原位
     if rp.get("cat") == 1 or rp.get("gp1") == 1:
         return w1, True
     return rp.get("n1", rec["of"]), True

@@ -23,6 +23,7 @@ tests/run_all.sh <core 的构建目录> <suzu.gguf> <suzu.vocab.txt> [--quick]
 | `student_test.lua`、`model_test.lua` | 加载、几组同音词的排序、粗略耗时 | 是 |
 | `gen_test.lua` | 候选生成：适用范围（全拼不生成）、简拼、混合输入、隔音符、三字词、词频名次、词表外字；束宽足够大时与逐个打分一致 | 是 |
 | `filter_test.lua` | 模拟 Rime 环境中的处理器与过滤器端到端测试 | 是 |
+| `unified_order_test.lua` | 统一排序加候选生成时的输出顺序：生成出新词或组内有重复文字时，英文与 emoji 候选留在原位（桩核心） | 否 |
 | `idle_test.lua` | 空闲卸载、内存归还、透明重载 | 是 |
 | `concurrency_test.lua` | 卸载与输入交错、加载中输入、模块重新初始化、配置反复切换、退出 | 是 |
 | `pairs_test.lua`、`select_stats_test.lua` | 个人词对、选词统计 | 否 |
