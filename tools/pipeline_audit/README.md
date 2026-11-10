@@ -6,7 +6,7 @@
 
 - librime 与 librime-lua 插件。macOS 用鼠须管自带的 `librime.1.dylib` 与 `rime-plugins/librime-lua.dylib`，librime 的头文件（`rime_api.h`）需另取。
 - 一份用户目录的副本：含方案、词库、`lua/`（含新核心 `rime_llm.so`）、`suzu.gguf` 与 `suzu.vocab.txt`。不要直接用真实的用户目录，探测会写入用户词典与统计文件。
-- 留出集 `cases.tsv` 与 `meta.json`（不在仓库内）。
+- 留出集 `cases.tsv`（在 `tests/parity/data/`）与 `meta.json`（各题的答案与领域，不在仓库内）。
 
 ## 测试钩子
 

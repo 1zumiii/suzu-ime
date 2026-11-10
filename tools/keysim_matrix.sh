@@ -12,7 +12,7 @@ while getopts "n:r:s:o:" o; do
 done
 shift $((OPTIND - 1))
 MODEL="$1"; VOCAB="$2"; shift 2
-CASES="$REPO/../reference/holdout-parity/cases.tsv"
+CASES="$REPO/tests/parity/data/cases.tsv"
 LUA="${LUA:-lua}"
 port=17970
 

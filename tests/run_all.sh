@@ -67,6 +67,7 @@ lua_tests() {
   run "input_log_test"        "$LUA" input_log_test.lua "$REPO" "$(d ilog)"
   run "replay_test"           "$LUA" replay_test.lua "$REPO" "$B" "$MODEL" "$VOCAB" "$(d replay)"
   run "unified_order_test"    "$LUA" unified_order_test.lua "$REPO" "$(d uorder)"
+  run "session_test"          "$LUA" session_test.lua "$REPO" "$(d session)"
   run "filter_test"           "$LUA" filter_test.lua "$REPO" "$UD" "$UD/suzu.gguf"
   run "idle_test"             "$LUA" idle_test.lua "$B" "$MODEL" "$(d idle)" exit
   local c
@@ -75,17 +76,20 @@ lua_tests() {
   done
 }
 
-# 第二组：留出集与基准逐题核对（首选一致率不低于 99.9%）
+# 第二组：留出集与基准逐题核对（首选一致率不低于 99.9%）。换模型版本时重新生成基准（见 tests/README.md），并改这两行
+PARITY_BASE="res_suzu-2.4.tsv"
+PARITY_SHA="a2ff2c46110c7ba4"      # Suzu-2.4 suzu.gguf 的 sha256 前 16 位
 parity() {
-  local REF="$REPO/../reference/holdout-parity"
-  [[ -f "$REF/cases.tsv" ]] || { echo "skip  holdout parity（找不到 ${REF}）"; return; }
-  # 基准分数是 Suzu-2.1（Q8_0）的；换了别的权重逐题必然有差异，此项只对 2.1 有意义
+  # 题目与基准在 tests/parity/data/；换一套时用环境变量 SUZU_PARITY_DIR 指向含 cases.tsv 与基准文件的目录
+  local REF="${SUZU_PARITY_DIR:-$REPO/tests/parity/data}"
+  [[ -f "$REF/cases.tsv" && -f "$REF/$PARITY_BASE" ]] || { echo "skip  holdout parity（${REF} 里没有 cases.tsv 或 ${PARITY_BASE}）"; return; }
+  # 基准分数是 Suzu-2.4（Q8_0）的；换了别的权重逐题必然有差异，此项只对这份权重有意义
   local sha; sha="$( (shasum -a 256 "$MODEL" 2>/dev/null || sha256sum "$MODEL" 2>/dev/null) | cut -c1-16)"
-  if [[ -n "$sha" && "$sha" != e5c8d551ee35d08b ]]; then echo "skip  holdout parity（基准是 Suzu-2.1 的，当前权重 sha256 前缀 ${sha}）"; return; fi
+  if [[ -n "$sha" && "$sha" != "$PARITY_SHA" ]]; then echo "skip  holdout parity（基准是 Suzu-2.4 的，当前权重 sha256 前缀 ${sha}）"; return; fi
   local t0=$SECONDS
   "$LUA" parity/run_cases.lua "$B" "$MODEL" "$VOCAB" "$REF/cases.tsv" "$T/parity.tsv" 2 >/dev/null 2>&1
   local line pct
-  line="$(python3 -I parity/compare.py "$REF/res_q8.tsv" "$T/parity.tsv" | grep "top-1 agreement")"
+  line="$(python3 -I parity/compare.py "$REF/$PARITY_BASE" "$T/parity.tsv" | grep "top-1 agreement")"
   pct="$(sed -E 's/.*= ([0-9.]+)%.*/\1/' <<<"$line")"
   if python3 -c "import sys; sys.exit(0 if float('${pct:-0}') >= 99.9 else 1)"; then echo "ok    holdout parity ($line, $((SECONDS - t0))s)"
   else echo "FAIL  holdout parity ($line)"; echo parity >> "$T/failed"; fi
