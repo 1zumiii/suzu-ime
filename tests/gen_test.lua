@@ -119,6 +119,18 @@ repeat
   r, why = m.generate(CTX, "jl", 10, true)
 until (r and #r == 2) or os.time() - t0 > 60
 check("换词典目录后 jl 只剩新词典里的两个词", r and #r == 2, r and tostring(#r) or tostring(why))
+-- 同一个（上文, 输入）在换词典之前生成过：结果必须按新词典重算，不能把缓存里旧词典的分数套到新词上
+do
+  local ws = {}
+  for i, x in ipairs(r or {}) do ws[i] = x.w end
+  local sr = m.score(CTX, ws, true)
+  local ss = m.get_scores()
+  local fresh = sr ~= nil and ss ~= nil
+  for i, x in ipairs(r or {}) do
+    if not ss or math.abs((ss[x.w] or -1e9) - x.s) > 1e-3 or sr[i] ~= x.w then fresh = false end
+  end
+  check("换词典目录后生成的分数与逐个打分一致（没有沿用旧词典的缓存）", fresh)
+end
 check("换词典目录没有重载模型", tonumber(m.status():match('"loads":(%d+)')) == loads_before)
 check("换词典后 word_freq 跟着换", m.word_freq("教练") == nil and m.word_freq("经理") == 100)
 m.lexicon_dir = tmp .. "/cn_dicts"

@@ -141,6 +141,7 @@ private:
 
     std::shared_ptr<const Vocab> vocab_;   // 调用方用它分词；模型就绪时发布，卸载时撤回
     std::shared_ptr<const Lexicon> lexicon_;   // 候选生成的词典索引；与模型一同加载与卸载
+    uint64_t lexicon_gen_ = 0;             // 每发布一份新的词典索引加一；生成结果的缓存键带上它，换词典后旧结果不会被取到
     std::unique_ptr<SuzuModel> model_;     // 只在工作线程上访问
 
     std::deque<std::shared_ptr<ScoreJob>> score_queue_;
