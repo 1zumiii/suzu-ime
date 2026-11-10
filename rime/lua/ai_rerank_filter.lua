@@ -3,8 +3,10 @@
 --       两阶段（四字 = 两个两字词）与全拼适配取自其 Windows 侧修改版。
 -- 在 engine/filters 增加 - lua_filter@*ai_rerank_filter（放在最后，uniquifier 之后）
 -- 开关：方案开关 ai_rerank。关闭时直接透传，不取尽候选、不加载模型。
--- 上文：本会话内上屏的词（由 ai_rerank_processor 维护），不读取任何应用里的文字。
--- 隐私：不写任何含输入内容的文件。debug_latency: true 时只写 输入长度|毫秒|推理次数。
+-- 上文：经 _G.ai_rerank_context_get 取得。默认是本会话内上屏的词（由 ai_rerank_processor 维护）；挂载了
+--       ai_rerank_app_ctx 时优先用应用里光标前的文字（密码框、无痕模式不读），读不到再退回上屏的词。上文只在内存里。
+-- 隐私：本文件默认不写含输入内容的文件。debug_latency: true 时只写 输入长度|毫秒|推理次数。
+--       选词统计、训练语料与回放数据默认关闭，由用户在本机手动开启后才由 ai_rerank_processor 写入用户目录，见该文件的说明。
 -- 配置（方案里的 llm_rerank 节点）：
 --   code_pattern            触发的编码正则（全串匹配），默认 [a-z]{2,}（2 个字母起，两字母简拼如 zm 也重排；单个字母不重排，避开置顶词）
 --   max_candidates          参与重排的候选数，默认 10（单字等同音词多的输入，正确的字常在词库第 6 到 8 位：5 个时约 77% 进得来，8 个约 95%）
@@ -610,25 +612,28 @@ local function inner(translation, env)
     local extra_first = nil   -- 两阶段拼接候选，置于首位
     local extra_second = nil  -- 统一排序：两阶段拼接没有胜过 Rime 整句时，放在第二位
     local function finish()
-        -- 把 out（重排后的这一组）按原位次填回，其余候选原样保留
+        -- 把 out（重排后的这一组）按原位次填回，其余候选（英文、emoji、只覆盖前几个音节的词）留在原位。
+        -- out 与组的个数可以不等：候选生成补进了新词时更多，组内有重复文字时更少。多出来的接在最后，
+        -- 少了就空出组尾的位置；两种情况下组外候选都不挪到整组之后。
         local res = {}
         if rp then
-            rp.cat = (#out ~= #full_pos) and 1 or 0   -- 1：组内有重复文字，重排结果整体排在最前（回放时按此处理）
+            -- 0：个数相等；2：个数不等，仍按原位次填回。旧记录里的 1 表示当时把重排结果整体排在最前（回放按旧规则处理）
+            rp.cat = (#out ~= #full_pos) and 2 or 0
             local x = extra_first or extra_second
             rp.s2 = x and x.text or nil
         end
-        if #out ~= #full_pos then
-            for _, c in ipairs(out) do res[#res + 1] = c end
-            local isfull = {}
-            for _, p in ipairs(full_pos) do isfull[p] = true end
-            for i, c in ipairs(orig) do
-                if not isfull[i] then res[#res + 1] = c end
+        local isfull = {}
+        for _, p in ipairs(full_pos) do isfull[p] = true end
+        local k = 0
+        for i, c in ipairs(orig) do
+            if isfull[i] then
+                k = k + 1
+                if out[k] then res[#res + 1] = out[k] end
+            else
+                res[#res + 1] = c
             end
-        else
-            local slot = {}
-            for k, p in ipairs(full_pos) do slot[p] = out[k] end
-            for i, c in ipairs(orig) do res[#res + 1] = slot[i] or c end
         end
+        for j = k + 1, #out do res[#res + 1] = out[j] end
         if extra_first then
             Y(extra_first)
             for _, c in ipairs(res) do
