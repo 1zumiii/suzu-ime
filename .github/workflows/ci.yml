@@ -1,0 +1,67 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  core:
+    name: 构建 core 并跑不需要模型的测试（Linux）
+    runs-on: ubuntu-24.04
+    timeout-minutes: 30
+    env:
+      IME_DEPS: ${{ github.workspace }}/ime-deps
+    steps:
+      - uses: actions/checkout@v4
+        # Android 的子模块与 CI 无关，不取
+
+      - name: 安装构建工具
+        run: sudo apt-get update && sudo apt-get install -y --no-install-recommends ninja-build
+
+      # 第三方源码的版本与 core/README.md 一致：llama.cpp 固定在 b11632，Lua 5.4.6 核对 sha256
+      - name: 取 llama.cpp 与 Lua 源码
+        run: |
+          mkdir -p "$IME_DEPS/deps"
+          git clone --depth 1 --branch b11632 https://github.com/ggml-org/llama.cpp.git "$IME_DEPS/llama.cpp"
+          curl -fsSL --retry 3 -o lua-5.4.6.tar.gz https://www.lua.org/ftp/lua-5.4.6.tar.gz
+          echo "7d5ea1b9cb6aa0b59ca3dde1c6adcb57ef83a1ba8e5432c0ecd06bf439b3ad88  lua-5.4.6.tar.gz" | sha256sum -c -
+          tar xf lua-5.4.6.tar.gz -C "$IME_DEPS/deps"
+
+      - name: 配置
+        run: cmake -G Ninja -S core -B core/build -DSUZU_BUILD_TOOLS=ON
+
+      # 客户端库 librime_llm.so 要 Android 的头文件，由 APK 构建覆盖，这里不编
+      - name: 构建 rime_llm、rimellmd 与测试用的 Lua 解释器
+        run: cmake --build core/build --target rime_llm rimellmd lua54 suzu_bench
+
+      - name: 不需要模型的测试
+        working-directory: tests
+        run: |
+          B="$GITHUB_WORKSPACE/core/build"; LUA="$B/lua54"; T="$RUNNER_TEMP/suzu"; fails=0
+          run() {
+            local name="$1"; shift
+            local out rc=0
+            out="$("$@" 2>&1)" || rc=$?
+            if [ "$rc" -eq 0 ] && ! grep -q "^FAIL" <<<"$out"; then echo "ok    $name"
+            else echo "FAIL  $name (exit $rc)"; echo "$out" | tail -40; fails=$((fails + 1)); fi
+          }
+          run smoke_test         "$LUA" smoke_test.lua "$B" "$T/smoke"
+          run pairs_test         "$LUA" pairs_test.lua "$GITHUB_WORKSPACE" "$T/pairs"
+          run select_stats_test  "$LUA" select_stats_test.lua "$GITHUB_WORKSPACE" "$T/select"
+          run input_log_test     "$LUA" input_log_test.lua "$GITHUB_WORKSPACE" "$T/ilog"
+          run unified_order_test "$LUA" unified_order_test.lua "$GITHUB_WORKSPACE" "$T/uorder"
+          run session_test       "$LUA" session_test.lua "$GITHUB_WORKSPACE" "$T/session"
+          [ "$fails" -eq 0 ]
+
+      - name: 守护进程能启动并打印用法
+        run: |
+          rc=0; core/build/rimellmd >/dev/null 2>&1 || rc=$?
+          test "$rc" -eq 64
