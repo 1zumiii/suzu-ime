@@ -234,6 +234,35 @@ try:
                 break
             time.sleep(0.1)
         check("lexicon: original dictionary back", r[0] == "R" and "经理" in r[1::3], str(r))
+        # 目录名不变再发 X：文件没动就不重读；旁边的 suzu_addons/ 多了或少了附加词库就重读，不用重启服务
+        def lex_loads():
+            with open(os.path.join(env.dir, "rime_llm_log.txt"), encoding="utf-8") as f:
+                return sum("lexicon ready" in ln for ln in f)
+        def gen_words(want, absent=False):
+            r = None
+            for _ in range(100):
+                r = rpc(s, ["W", "500", "8", "他在公司当", "jl"])
+                if r[0] == "R" and ((want in r[1::3]) != absent):
+                    break
+                time.sleep(0.1)
+            return r
+        n0 = lex_loads()
+        check("lexicon: same dir, files unchanged -> accepted", rpc(s, ["X", "cn_dicts"]) == ["OK"])
+        time.sleep(0.5)
+        check("lexicon: same dir, files unchanged -> not reread", lex_loads() == n0, f"{n0} -> {lex_loads()}")
+        addons = os.path.join(env.rime, "suzu_addons")
+        os.makedirs(addons)
+        with open(os.path.join(addons, "moegirl.dict.yaml"), "w", encoding="utf-8") as f:
+            f.write("---\nname: moegirl\n...\n简历\tjian li\t10\n")
+        r = rpc(s, ["W", "500", "8", "他在公司当", "jl"])
+        check("lexicon: addon not visible before X", r[0] == "R" and "简历" not in r[1::3], str(r))
+        check("lexicon: same dir after enabling an addon -> accepted", rpc(s, ["X", "cn_dicts"]) == ["OK"])
+        r = gen_words("简历")
+        check("lexicon: addon words generated without a restart", r[0] == "R" and "简历" in r[1::3] and "经理" in r[1::3], str(r))
+        os.remove(os.path.join(addons, "moegirl.dict.yaml"))
+        rpc(s, ["X", "cn_dicts"])
+        r = gen_words("简历", absent=True)
+        check("lexicon: addon words gone after disabling it", r[0] == "R" and "简历" not in r[1::3] and "经理" in r[1::3], str(r))
     else:
         check("generate: answered (R or N)", r[0] in ("R", "N"), str(r))
     cands = ["经理", "经历", "精力", "敬礼", "警力"]

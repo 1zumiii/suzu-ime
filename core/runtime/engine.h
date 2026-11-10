@@ -85,7 +85,9 @@ public:
     EngineConfig config() const;
     void set_config(const EngineConfig & cfg);
     void set_enabled(bool on);         // 关 = 立即卸载并拒绝推理
-    void set_lexicon_dir(const std::string & dir);   // 只换候选生成的词典，不重载模型；换的期间生成不可用（no_lexicon）
+    // 只换候选生成的词典，不重载模型；换的期间生成不可用（no_lexicon）。
+    // 目录没变时比较词典文件的清单、大小与修改时间：变了（例如启用或关闭了附加词库）就重读，旧索引用到新索引读完为止；没变什么都不做
+    void set_lexicon_dir(const std::string & dir);
     bool enabled() const;
 
     // ---- 请求
@@ -141,6 +143,7 @@ private:
 
     std::shared_ptr<const Vocab> vocab_;   // 调用方用它分词；模型就绪时发布，卸载时撤回
     std::shared_ptr<const Lexicon> lexicon_;   // 候选生成的词典索引；与模型一同加载与卸载
+    std::string lexicon_sig_;              // 最近一次开始读词典时各文件的清单、大小与修改时间（见 set_lexicon_dir）
     uint64_t lexicon_gen_ = 0;             // 每发布一份新的词典索引加一；生成结果的缓存键带上它，换词典后旧结果不会被取到
     std::unique_ptr<SuzuModel> model_;     // 只在工作线程上访问
 
