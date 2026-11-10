@@ -1,8 +1,10 @@
 -- ai_rerank_processor.lua — AI 重排的按键处理器（rime-llm-rerank 的 macOS 移植）
 -- 原项目：zhanghaozhecn/rime-llm-rerank（署名许可，作者 zhanghaozhecn）；逻辑取自其 Windows 侧修改版。
 -- 作用：加载 rime_llm.so；维护"上文"（本会话内上屏的词）；每次按键后异步预解码；编辑键后重置上文。
--- 开关：方案开关 ai_rerank。关闭时本处理器直接放行，不加载、不记录。
--- 隐私：不写任何文件。上文只存在内存里，来自 Rime 自己的 commit_history，不读取任何应用里的文字。
+-- 开关：方案开关 ai_rerank。关闭时不加载模型、不预解码；纠错记忆等个人习惯的记录与此开关无关。
+-- 隐私：本文件维护的上文只存在内存里，来自 Rime 自己的 commit_history；应用里光标前的文字由 ai_rerank_app_ctx 另行接入。
+--       默认写入用户目录的只有纠错记忆（recent_choices.tsv，见 personal_pairs.lua）和不含输入内容的诊断信息；
+--       选词统计、训练语料与回放数据默认关闭，须在本机手动开启，说明见下文“选词统计与训练语料”。全部只留本机。
 -- 配置（llm_rerank 节点）：idle_unload_minutes 空闲多少分钟后卸载模型，默认 20，0 = 不卸载。
 -- 在 engine/processors 增加 - lua_processor@*ai_rerank_processor（放在最前面）
 
@@ -654,7 +656,7 @@ local function processor(key, env)
         commit_base = #ch:to_table()   -- 旧词永久忽略
         _G.llm_filter_cache = nil      -- 编辑后重打相同词必须重新推理
         trigger_prepare()              -- 上文已空 → 预解码空上文
-        return 0                       -- 放行按键，由后续处理器正常处理
+        return 0                       -- kRejected：本键不再交给后面的处理器，直接还给应用（此时没有未上屏编码，Rime 没有可处理的）
     end
 
     -- 同步 commit_history
