@@ -19,13 +19,23 @@ local function mk(text, s, e, ctype, comment)
 end
 function Candidate(ctype, s, e, text, comment) return mk(text, s, e, ctype, comment) end
 function ShadowCandidate(c, ctype, text, comment) return mk(text, c._start, c._end, ctype, comment) end
-local function mk_env(input)
+local function mk_env(input, stage2)
   return { engine = {
     schema = { config = {
       get_string = function() return nil end, get_int = function() return nil end,
       get_double = function() return nil end, get_bool = function() return nil end } },
-    context = { input = input, get_option = function(_, name) return name == "ai_rerank" end } } }
+    context = { input = input, composition = { back = function() return {} end },
+                get_option = function(_, name) return name == "ai_rerank" or (stage2 and name == "ai_stage2") end } } }
 end
+
+-- 第二阶段查剩余拼音用的翻译器：按剩余拼音返回测试指定的候选
+local tail_cands = {}
+Component = { Translator = function()
+  return { query = function(_, rest)
+    local l, i = tail_cands[rest] or {}, 0
+    return { iter = function() return function() i = i + 1; return l[i] end end }
+  end }
+end }
 
 -- ---------- 桩核心：模型分按候选的原顺序递减，生成结果由测试指定 ----------
 local gen_list, last = {}, {}
@@ -37,10 +47,10 @@ _G.ai_rerank_llm = {
 _G.ai_rerank_context_get = function() return "今天天气很好我们一起" end
 local filter = require("ai_rerank_filter")
 
-local function run(input, cands)
+local function run(input, cands, stage2)
   yielded = {}
   local idx = 0
-  filter({ iter = function() return function() idx = idx + 1; return cands[idx] end end }, mk_env(input))
+  filter({ iter = function() return function() idx = idx + 1; return cands[idx] end end }, mk_env(input, stage2))
   local texts, pos = {}, {}
   for i, c in ipairs(yielded) do texts[i] = c.text; pos[c.text] = pos[c.text] or i end
   return texts, pos
@@ -87,6 +97,33 @@ do
   table.insert(l, 6, mk("哦可", 0, 2))
   local texts, pos = run("ok", l)
   check("组内有重复文字：英文留在原位", pos["OK"] == 2, tostring(pos["OK"]))
+end
+
+do
+  -- 输入本身是英文词（google）：第二阶段不能把剩余拼音硬拼成四字词（狗讴歌了）放到英文词前面
+  gen_list = {}
+  _G.ai_rerank_llm.match_code = function() return true end   -- 真核心按正则判断；Lua 模式不认 {2,}
+  tail_cands["ogle"] = { mk("歌了", 0, 4), mk("冠了", 0, 4) }
+  local function han() return { mk("狗讴", 0, 2), mk("功欧", 0, 2), mk("狗", 0, 1), mk("功", 0, 1) } end
+  local function first_s2(texts) return texts[1] == "狗讴歌了" or texts[1] == "功欧歌了" or texts[1] == "狗讴冠了" end
+
+  _G.llm_filter_cache, _G.ai_rerank_state = nil, nil
+  local texts = run("google", han(), true)
+  check("对照：没有英文词时第二阶段照常拼接", first_s2(texts), table.concat(texts, " ", 1, 4))
+
+  _G.llm_filter_cache, _G.ai_rerank_state = nil, nil
+  local l = han()
+  table.insert(l, 1, mk("google", 0, 6)); table.insert(l, 2, mk("Google", 0, 6))
+  texts = run("google", l, true)
+  check("Rime 原首位是英文词：不拼四字词，英文词仍在首位", texts[1] == "google" and not first_s2(texts), table.concat(texts, " ", 1, 4))
+
+  _G.llm_filter_cache, _G.ai_rerank_state = nil, nil
+  l = han()
+  table.insert(l, 3, mk("Google", 0, 6))
+  texts = run("google", l, true)
+  local hit = false
+  for _, t in ipairs(texts) do if t:find("歌了", 1, true) or t:find("冠了", 1, true) then hit = true end end
+  check("英文词不在首位但与输入相同：同样不拼四字词", not hit, table.concat(texts, " ", 1, 5))
 end
 
 print(fails == 0 and "ALL OK" or (fails .. " FAILED"))

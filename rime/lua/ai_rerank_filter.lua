@@ -115,6 +115,23 @@ local function is_emoji_cand(c)   -- 沿用旧名：现在表示“不含汉字�
     return not has_han(c.text)
 end
 
+-- 输入本身是一个英文词：Rime 原首位是覆盖整串的非汉字候选，或前 10 个候选里有与输入相同的英文词
+-- （忽略大小写和空格，如 google → Google）。这时不跑第二阶段：剩余拼音拼出的四字词（google → 狗讴歌了）
+-- 必然是硬凑的，而且会顶掉英文词；标为怪词也没用，模型换个第二段又拼出一个新的。
+local function english_input(orig, input)
+    local key = input:gsub("[' ]", "")
+    for i, c in ipairs(orig) do
+        if i > 10 then break end
+        if not has_han(c.text) then
+            local oke, e = pcall(function() return c._end end)
+            local full = oke and e == #input
+            if full and i == 1 then return true end
+            if (full or not oke) and type(c.text) == "string" and c.text:gsub(" ", ""):lower() == key then return true end
+        end
+    end
+    return false
+end
+
 -- 怪词：用户在手机上长按候选选择“标记为怪词”后，词写入用户目录的 weird_words.tsv（每行一个词，后面可带制表符和时间戳）。
 -- 重排时怪词的融合分记为最低，排到同一组候选的最后，不会被 AI 推到前面；取消标记即恢复。文件很小，每 3 秒最多重读一次。
 local weird = { set = {}, ts = 0 }
@@ -740,7 +757,7 @@ local function inner(translation, env)
         local oke, oe = pcall(function() return o1._end end)
         local o1_full = oke and oe == #input and not is_emoji_cand(o1) and not is_weird(o1.text)
         if has_model and lam > 0 and best_e and best_e < #input and context ~= "" and not (o1_full and o1.type ~= "sentence")
-           and cfg.stage2 and env.engine.context:get_option("ai_stage2") and not shrinking and (#input - best_e) >= cfg.stage2_min_rest then
+           and not english_input(orig, input) and cfg.stage2 and env.engine.context:get_option("ai_stage2") and not shrinking and (#input - best_e) >= cfg.stage2_min_rest then
             local w1 = sorted[1].t
             local rest = input:sub(best_e + 1)
             local fc = _G.llm_filter_cache
@@ -917,6 +934,7 @@ local function inner(translation, env)
             local oke, oe = pcall(function() return o1._end end)
             native_full_word = oke and oe == #input and o1.type ~= "sentence" and not is_emoji_cand(o1) and not is_weird(o1.text)
         end
+        if english_input(orig, input) then native_full_word = true end
         flags.nfw = native_full_word and "1" or "0"
         if best_e and best_e < #input and ordered[1] and context ~= "" and not native_full_word
            and cfg.stage2 and env.engine.context:get_option("ai_stage2") and not shrinking and (#input - best_e) >= cfg.stage2_min_rest then
