@@ -3,6 +3,7 @@
 #include <rime_api.h>
 #include <utf8.h>
 
+#include <cstdint>
 #include <cstring>
 #include <optional>
 #include <string>
@@ -69,8 +70,16 @@ class MenuProto {
   std::vector<std::string> selectLabels;
 };
 
+// Rime 给的是 UTF-8 字节偏移，Kotlin 字符串按 UTF-16 单元索引。
+// BMP 以外的码点（如 emoji 🤣）在 Java 里占两个单元（代理对），
+// 只数码点会让高亮与光标落在代理对中间，preedit 显示成乱码。
 static inline int distance(const char* start, const char* end) {
-  return static_cast<int>(utf8::unchecked::distance(start, end));
+  int units = 0;
+  while (start < end) {
+    const uint32_t cp = utf8::unchecked::next(start);
+    units += cp > 0xFFFF ? 2 : 1;
+  }
+  return units;
 }
 
 class ContextProto {
