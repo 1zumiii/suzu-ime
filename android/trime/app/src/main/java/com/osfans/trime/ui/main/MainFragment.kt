@@ -61,6 +61,11 @@ class MainFragment : PaddingPreferenceFragment() {
                 NavigationRoute.UserDict,
             )
             addDestinationPreference(
+                R.string.emoji_custom,
+                R.drawable.ic_baseline_emoji_emotions_24,
+                NavigationRoute.EmojiCustom,
+            )
+            addDestinationPreference(
                 R.string.profile,
                 R.drawable.ic_baseline_snippet_folder_24,
                 NavigationRoute.Profile,

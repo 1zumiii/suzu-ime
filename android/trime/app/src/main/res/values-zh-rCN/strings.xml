@@ -247,6 +247,7 @@
     <string name="star_success">收藏成功</string>
     <string name="ignore_system_gesture_insets">忽略系统手势边衬区</string>
     <string name="dict_packs">词库</string>
+    <string name="emoji_custom">自定义表情</string>
     <string name="color_mode">键盘配色</string>
     <string name="color_mode_follow_system">跟随系统</string>
     <string name="color_mode_light">浅色</string>

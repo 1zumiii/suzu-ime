@@ -16,6 +16,7 @@ import com.osfans.trime.ui.main.settings.GeneralSettingsFragment
 import com.osfans.trime.ui.main.settings.KeyboardSettingsFragment
 import com.osfans.trime.ui.main.settings.ProfileSettingsFragment
 import com.osfans.trime.suzu.DictPackFragment
+import com.osfans.trime.suzu.EmojiCustomFragment
 import com.osfans.trime.suzu.ModelFragment
 import com.osfans.trime.ui.main.settings.userdict.UserDictionaryFragment
 import kotlinx.parcelize.Parcelize
@@ -35,6 +36,9 @@ sealed class NavigationRoute : Parcelable {
 
     @Serializable
     data object UserDict : NavigationRoute()
+
+    @Serializable
+    data object EmojiCustom : NavigationRoute()
 
     @Serializable
     data object Profile : NavigationRoute()
@@ -76,6 +80,9 @@ sealed class NavigationRoute : Parcelable {
             }
             fragment<UserDictionaryFragment, UserDict> {
                 label = ctx.getString(R.string.user_dictionary)
+            }
+            fragment<EmojiCustomFragment, EmojiCustom> {
+                label = ctx.getString(R.string.emoji_custom)
             }
             fragment<ProfileSettingsFragment, Profile> {
                 label = ctx.getString(R.string.profile)
