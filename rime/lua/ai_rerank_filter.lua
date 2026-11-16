@@ -996,11 +996,12 @@ return function(translation0, env)
     if okgg then pcall(gg.refresh) end
     local translation = translation0
     if okgg and gg.count() > 0 then
+        -- librime-lua 的 iter() 返回 next 函数和 translation 本身，next 必须带 translation 调用（for-in 会自动带上）
         translation = { iter = function()
-            local it = translation0:iter()
+            local f, s = translation0:iter()
             return function()
                 while true do
-                    local c = it()
+                    local c = f(s)
                     if c == nil or drawable(c.text) then return c end
                 end
             end

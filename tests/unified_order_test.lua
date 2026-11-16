@@ -50,7 +50,15 @@ local filter = require("ai_rerank_filter")
 local function run(input, cands, stage2)
   yielded = {}
   local idx = 0
-  filter({ iter = function() return function() idx = idx + 1; return cands[idx] end end }, mk_env(input, stage2))
+  -- 与 librime-lua 一致：iter() 返回 next 与 translation 本身，next 不带 translation 调用会报错
+  local tr = {}
+  tr.iter = function(self)
+    return function(t)
+      assert(t == self, "translation 的 next 必须带 translation 调用")
+      idx = idx + 1; return cands[idx]
+    end, self
+  end
+  filter(tr, mk_env(input, stage2))
   local texts, pos = {}, {}
   for i, c in ipairs(yielded) do texts[i] = c.text; pos[c.text] = pos[c.text] or i end
   return texts, pos
