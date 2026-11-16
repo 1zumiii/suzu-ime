@@ -153,6 +153,11 @@ local function weird_load()
     weird.set = set
 end
 local function is_weird(text) return weird.set[text] == true end
+
+-- 本机字体画不出的字（见 glyph_guard.lua）：含这种字的候选不显示，AI 也不会造出这种候选。
+-- 本过滤器在过滤链最后，读入候选时和输出前各查一次。模块不可用或没有清单时什么都不拦。
+local okgg, gg = pcall(require, "glyph_guard")
+local function drawable(text) return not okgg or not gg.bad(text) end
 _G.ai_rerank_weird_reload = function() weird.ts = 0; weird_load() end   -- 供测试脚本调用
 
 
@@ -401,7 +406,7 @@ local function second_stage(env, llm, context, w1, rest)
             local e = cand._end
             if type(e) == "number" and e >= #rest then
                 local txt = cand.text
-                if txt and txt ~= "" and not seen[txt] and not is_weird(txt) then
+                if txt and txt ~= "" and not seen[txt] and not is_weird(txt) and drawable(txt) then
                     seen[txt] = true
                     cands2[#cands2 + 1] = txt
                     if #cands2 >= cfg.max_candidates then break end
@@ -504,7 +509,7 @@ local function add_generated(feats, cand_of, all, n, has_model, best_e, input, c
         local f = have[g.w]
         if f then
             f.gen, f.gr = 1, g.r
-        elseif not is_weird(g.w) then
+        elseif not is_weird(g.w) and drawable(g.w) then
             local i = pos[g.w]
             local cand
             if i then
@@ -985,8 +990,22 @@ end
 -- 开关打开：只取前 scan_limit 个候选做重排（雾凇词库大，输入单个字母时候选数以万计，
 -- 取尽会卡），其余候选保持惰性透传；先收集、再 yield（Rime 只拉取窗口所需数量，之后会丢弃协程）；
 -- inner 出错时退回原生顺序，不让候选窗变空。
-return function(translation, env)
+return function(translation0, env)
     use_config(env)
+    -- 读入候选时先跳过画不出的：不占重排名额，选词统计里的位次也与实际显示一致
+    if okgg then pcall(gg.refresh) end
+    local translation = translation0
+    if okgg and gg.count() > 0 then
+        translation = { iter = function()
+            local it = translation0:iter()
+            return function()
+                while true do
+                    local c = it()
+                    if c == nil or drawable(c.text) then return c end
+                end
+            end
+        end }
+    end
     -- 关 AI：旧模式原样透传；统一排序照常排序，只是不用模型（λ = 0）
     if not env.engine.context:get_option("ai_rerank") and cfg.ranker ~= "unified" then
         dbg("filter called: switch OFF in this session")
@@ -1027,6 +1046,11 @@ return function(translation, env)
         append_line("llm_errors.txt", os.date("%H:%M:%S") .. " " .. tostring(err))
     end
     if not ok or #cap == 0 then cap = native end
+    if okgg and gg.count() > 0 then   -- AI 造出来的候选（两阶段拼接、候选生成）没经过读入时的检查，输出前再查一次
+        local kept = {}
+        for _, c in ipairs(cap) do if drawable(c.text) then kept[#kept + 1] = c end end
+        cap = kept
+    end
 
     -- 选词信息：每个候选在原始顺序和最终顺序里的位次，供选词统计、语料、纠错记忆与事件流使用（只在内存里）。
     -- 整段上屏时选词通知里取不到候选，要靠它补全（select_info.lua），所以统计关闭时也保留

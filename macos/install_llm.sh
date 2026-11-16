@@ -38,4 +38,6 @@ for pair in "$MODEL:suzu.gguf" "$VOCAB:suzu.vocab.txt"; do
   if [[ -f "$dst" ]] && cmp -s "$src" "$dst"; then echo "已是最新：$dst"; continue; fi
   rm -f "$dst"; cp "$src" "$dst"; echo "已复制 $dst"
 done
+# 本机字体画不出的字：含这些字的候选不显示（见 rime/lua/glyph_guard.lua）。升级 macOS 后可单独重跑这一步
+swift "$REPO/macos/glyph_scan.swift" "$DEST/glyph_missing.txt" 2>/dev/null || echo "警告：字形扫描失败（需要 Xcode 命令行工具），候选里可能出现方框"
 echo "完成。重启输入法后生效；AI 重排默认开启，Control+Shift+5 可在当前输入框临时开关。"

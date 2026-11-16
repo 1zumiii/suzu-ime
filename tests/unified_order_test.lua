@@ -126,5 +126,50 @@ do
   check("英文词不在首位但与输入相同：同样不拼四字词", not hit, table.concat(texts, " ", 1, 5))
 end
 
+do
+  -- 本机字体画不出的字（glyph_missing.txt，见 glyph_guard.lua）：含这种字的候选不显示，AI 也不拿它拼接
+  local gg = require("glyph_guard")
+  local X = utf8.char(0x2A6E0)   -- 测试用码位，清单里标为画不出
+  local function texts_of(input, l, stage2)
+    local t = run(input, l, stage2)
+    return t, table.concat(t, " ")
+  end
+  local function has(t, s) for _, x in ipairs(t) do if x:find(s, 1, true) then return true end end return false end
+
+  gen_list = {}
+  _G.llm_filter_cache, _G.ai_rerank_state = nil, nil
+  os.remove(tmp .. "/glyph_missing.txt"); gg.refresh(true)
+  local t = texts_of("ok", { mk("哦" .. X, 0, 2), mk("哦可", 0, 2), mk("OK", 0, 2), mk("欧克", 0, 2) })
+  check("没有清单：什么都不拦", has(t, X), table.concat(t, " "))
+
+  local f = io.open(tmp .. "/glyph_missing.txt", "w")
+  f:write("# 测试\n2A6E0-2A6FF\n30000\n"); f:close(); gg.refresh(true)
+  _G.llm_filter_cache, _G.ai_rerank_state = nil, nil
+  local s
+  t, s = texts_of("ok", { mk("哦" .. X, 0, 2), mk("哦可", 0, 2), mk("OK", 0, 2), mk("欧克", 0, 2) })
+  check("画不出的候选被拿掉（原本在首位）", not has(t, X) and #t == 3, s)
+  check("其余候选都在，顺序不变", s == "哦可 OK 欧克", s)
+
+  -- 关 AI（旧排序时透传路径；统一排序关 AI 也走同一出口）
+  local saved = mk_env
+  mk_env = function(input, stage2)
+    local e = saved(input, stage2)
+    e.engine.context.get_option = function(_, name) return stage2 and name == "ai_stage2" end
+    return e
+  end
+  _G.llm_filter_cache, _G.ai_rerank_state = nil, nil
+  t, s = texts_of("ok", { mk("哦" .. X, 0, 2), mk("哦可", 0, 2), mk("欧克", 0, 2) })
+  check("关 AI 时同样拿掉", not has(t, X) and #t == 2, s)
+  mk_env = saved
+
+  -- 第二阶段：剩余拼音的首选含画不出的字时，改用下一个能画的词拼接
+  tail_cands["ogle"] = { mk("歌" .. X, 0, 4), mk("歌了", 0, 4) }
+  _G.llm_filter_cache, _G.ai_rerank_state = nil, nil
+  t, s = texts_of("google", { mk("狗讴", 0, 2), mk("功欧", 0, 2), mk("狗", 0, 1), mk("功", 0, 1) }, true)
+  check("第二阶段不拿画不出的词拼接", not has(t, X) and (t[1] == "狗讴歌了" or t[1] == "功欧歌了"), s)
+
+  os.remove(tmp .. "/glyph_missing.txt"); gg.refresh(true)
+end
+
 print(fails == 0 and "ALL OK" or (fails .. " FAILED"))
 os.exit(fails == 0 and 0 or 1)

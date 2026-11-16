@@ -203,6 +203,8 @@ open class TrimeInputMethodService : LifecycleInputMethodService() {
             }
         }
         InputFeedbackManager.init(this)
+        // 本机字体画不出的字：只在 App 版本或系统指纹变了时重扫（后台线程），供 Lua 隐藏会显示成方框的候选
+        lifecycleScope.launch { com.osfans.trime.suzu.GlyphScan.ensure() }
         registerReceiver()
         super.onCreate()
         Timber.d("onCreate")
