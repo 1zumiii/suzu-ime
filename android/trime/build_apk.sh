@@ -28,7 +28,8 @@ printf 'sdk.dir=%s\ncmake.dir=%s\n' "$HOME/Library/Android/sdk" "$CMAKE_DIR" > "
 # 版本名：应用版本 + 本仓库提交，工作区有未提交改动时加 -dirty
 REV="$(git -C "$REPO" rev-parse --short HEAD)"
 git -C "$REPO" diff --quiet HEAD -- android core 2>/dev/null || { REV="$REV-dirty"; echo "警告：android/ 或 core/ 有未提交的改动，版本名带 -dirty"; }
-export BUILD_VERSION_NAME="v0.1.0-$REV"
+APP_VERSION="$(sed -n 's/^ *versionName = "\(.*\)"/\1/p' "$SRC/app/build.gradle.kts")"   # 应用版本只在 app/build.gradle.kts 里改
+export BUILD_VERSION_NAME="v$APP_VERSION-$REV"
 
 # 方案与默认词库包：rime-suzu 的固定提交（rime-suzu.ref）导出后生成 assets；
 # RIME_SUZU_REF=worktree 时直接用 rime-suzu 工作区（开发用，有未提交改动会警告）
