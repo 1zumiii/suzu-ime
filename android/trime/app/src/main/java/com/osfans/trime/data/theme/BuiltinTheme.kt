@@ -201,9 +201,10 @@ object BuiltinTheme {
     /**
      * 表情页用：默认按文字样式显示的表情（☹ ☝ ✌ ❤ 等，Unicode 属性 Emoji_Presentation = No）后面补 U+FE0F，
      * 面板里和上屏后都显示成彩色表情，不再夹着黑白线条的符号。属性查询要 API 28；更老的系统保持原样。
+     * 重复的表情只保留第一个。
      */
     private fun emojiChars(vararg parts: String) =
-        parts.joinToString("").splitWithSurrogates().map { s ->
+        parts.joinToString("").splitWithSurrogates().distinct().map { s ->
             val cp = s.codePointAt(0)
             val textDefault =
                 Build.VERSION.SDK_INT >= Build.VERSION_CODES.P &&
@@ -219,7 +220,7 @@ object BuiltinTheme {
             keyHeight = 36,
             marginX = 2.0f,
             keyboards = listOf(
-                LiquidKeyboard.Keyboard("emoji", DataType.SINGLE, "emoji", emojiChars("🙂😂🤣😆🙃😅🥺😎👀🙈🙉🙊☹😑😄🤐😨😱🌚🌝🤔❤💔🌹💣👌👍😣😥😮🙄😏😕😯😪😫😴😌🤑😉😋😎😍😘😚😛😜😝😒😓😔😲😷🤒😇🤓🤗🤕🙁😖😞😟😤😢😭😦😧😨😩😬😰😳😵😡😠☝✌🖕👎🙏🤘👏💪💋☘🍀🌸☕🍵🍺🍻🍦🍬🍚🍜🍲🍖🎂💤")),
+                LiquidKeyboard.Keyboard("emoji", DataType.SINGLE, "emoji", emojiChars("🙂😂🤣😆🙃😅🥺😎👀🙈🙉🙊☹😑😄🤐😨😱🌚🌝🤔❤💔🌹💣👌👍😣😥😮🙄😏😕😯😪😫😴😌🤑😉😋😍😘😚😛😜😝😒😓😔😲😷🤒😇🤓🤗🤕🙁😖😞😟😤😢😭😦😧😩😬😰😳😵😡😠☝✌🖕👎🙏🤘👏💪💋☘🍀🌸☕🍵🍺🍻🍦🍬🍚🍜🍲🍖🎂💤")),
                 LiquidKeyboard.Keyboard("math", DataType.SINGLE, "数学", chars("≈＝≠≌<>≤≥≡()[]{}-+±×*/÷&∥%‰‱°′″∫∮∯∬∭∰∞∑∧∏∈∵∴⊥∝∨∪•√〒∝∽∈∩∧⊙⌒∥∟∣∂∆∞≌∉∪∨⊕⊿⊥∠∫∬∭")),
                 LiquidKeyboard.Keyboard("ascii", DataType.SINGLE, "英文", chars(",.?!:;/\\|*-+=^\$`'\"^~@#%&()[]{}_")),
                 LiquidKeyboard.Keyboard("cn", DataType.SINGLE, "中文", listOf(
