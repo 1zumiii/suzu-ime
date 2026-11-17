@@ -20,10 +20,14 @@ param(
   [string]$BackupDir = "",
   [ValidateSet("legacy", "unified")][string]$Ranker = "legacy",
   [string]$LuaSrc = "",                       # suzu-ime rime\lua (shared files); default: ..\rime\lua next to this script
-  [string]$WeaselDir = "D:\Applications\Rime\weasel-0.17.4",
-  [string]$UserDir = "D:\AppData\Rime"
+  [string]$WeaselDir = "",
+  [string]$UserDir = ""
 )
 $ErrorActionPreference = "Stop"
+. (Join-Path $PSScriptRoot "weasel_paths.ps1")
+$paths = Resolve-WeaselPaths $WeaselDir $UserDir
+$WeaselDir = $paths.WeaselDir
+$UserDir = $paths.UserDir
 if (-not $LuaSrc) { $LuaSrc = Join-Path (Split-Path $PSScriptRoot -Parent) "rime\lua" }
 $server = Join-Path $WeaselDir "WeaselServer.exe"
 $deployer = Join-Path $WeaselDir "WeaselDeployer.exe"
