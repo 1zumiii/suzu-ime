@@ -2,7 +2,7 @@
 
 基于 Rime 的本地 AI 拼音输入法：包含 Android App（改版同文输入法）和 macOS、Windows 共用的推理核心，按上文重排候选、补全简拼。
 
-Android 版可从[发布页](https://github.com/1zumiii/suzu-ime/releases/tag/android-v0.1.0)下载。其他平台的配置和安装包见 [rime-suzu](https://github.com/1zumiii/rime-suzu)。
+Android 版可从[发布页](https://github.com/1zumiii/suzu-ime/releases/tag/android-v0.2.0)下载。其他平台的配置和安装包见 [rime-suzu](https://github.com/1zumiii/rime-suzu)。
 
 简拼输入时，Rime 只按词库权重排列候选，目标词常常不在第一页。本项目使用 4000 万参数的字符级模型 [Suzu](https://github.com/1zumiii/Suzu)，根据光标前的文字为同音候选打分，并补充简拼中 Rime 未给出的词。模型文件 44 MB，三端均在本机运行，输入内容不出设备。
 
@@ -17,9 +17,9 @@ Android 版可从[发布页](https://github.com/1zumiii/suzu-ime/releases/tag/an
 | 混合输入（如 `yangs`），首选 | 33.0% | 68.7% | **72.5%** |
 | 全拼，首选 | 63.4% | **91.7%** | 90.7% |
 
-全拼在 16000 题的维基评测上两个版本没有差别（+0.0，±0.3），表中全拼的 1 个点差别在 216 题的抽样误差内。留出集的答案偏冷门，真实输入多打常用词，实际收益以使用数据为准。
+结果来自留出集测试，不代表日常输入的准确率。测试方法、样本量与版本对比见 [Suzu 的模型说明](https://github.com/1zumiii/Suzu)。
 
-速度与内存：打分 p99 指 99% 的打分在此时间内完成；常驻内存指加载模型并稳态打分后的进程驻留集，含被映射的模型文件页（约 44 MB）。
+速度与内存：打分 p99 指 99% 的打分在此时间内完成。常驻内存指加载模型并稳态打分后的进程驻留集，含被映射的模型文件页（约 44 MB）。
 
 默认配置下（统一排序加候选生成）的按键仿真，100 个词，Suzu-2.1 与 Suzu-2.4 的延迟没有可见差别：
 
@@ -54,7 +54,7 @@ Android 版可从[发布页](https://github.com/1zumiii/suzu-ime/releases/tag/an
 
 ## 快速开始
 
-Android 使用改版 Trime，方案、Lua 和默认词库随 APK 提供，APK 可从[发布页](https://github.com/1zumiii/suzu-ime/releases/tag/android-v0.1.0)下载。安装后可在引导页下载模型，并通过 Shizuku 启动 AI 服务；词库和模型可在“设置 → 词库”中管理，见 [android/README.md](android/README.md)。
+Android 使用改版 Trime，方案、Lua 和默认词库随 APK 提供，APK 可从[发布页](https://github.com/1zumiii/suzu-ime/releases/tag/android-v0.2.0)下载。安装后可在引导页下载模型，并通过 Shizuku 启动 AI 服务。词库和模型可在“设置 → 词库”中管理，见 [android/README.md](android/README.md)。
 
 macOS 与 Windows 的安装步骤如下：
 
@@ -74,7 +74,7 @@ patch:
   __include: suzu_ime:/patch
 ```
 
-重新部署后，方案即接入处理器、过滤器、AI 开关和快捷键（Control+Shift+5）。引用须放在 `patch` 下，并使用 `__include`。若使用 `__patch`，会替换方案原有的整个处理器与过滤器列表；若写在文件顶层，则不生效。
+重新部署后，方案即接入处理器、过滤器、AI 开关和快捷键（Control+Shift+5）。引用须放在 `patch` 下，并使用 `__include`。若使用 `__patch`，会替换方案原有的整个处理器与过滤器列表。若写在文件顶层，则不生效。
 
 Lua 默认值已采用调优后的参数：2 个字母起重排、参与重排的候选 10 个、统一排序的名次先验系数 0.05、首位门控 2.5，无需复制 rime-suzu 的配置。需要调整时，在同一个 `patch` 下用 `llm_rerank/...` 覆盖。可用配置键见 `rime/lua/ai_rerank_filter.lua` 与 `rank_unified.lua` 开头的说明。
 
