@@ -100,7 +100,15 @@ struct Engine::ScoreJob {
     int beam = 0, k = 0;
     std::shared_ptr<const Vocab> vocab;   // 生成：把词条编号还原成词
     std::shared_ptr<ScoreJob> partner;    // 打分任务捎带的生成任务：两者共用一次解码，一起完成
+    int miss_kind = -1;        // 工作线程开始处理时判定的归因（上文真没命中时才计数）
 };
+
+namespace {
+constexpr size_t kPrepTrack = 8;          // 记最近几段上文的准备状态
+constexpr double kOtherCtxWindowMs = 3000; // 这段时间内有过别的预解码请求：算 other_ctx
+constexpr double kLateWindowMs = 2000;     // 任务之后这段时间内才到的同一段上文的预解码：算 late
+constexpr double kMissLogIntervalMs = 600000;   // 归因计数写进日志的最短间隔
+}  // namespace
 
 Engine::Engine() {
     cfg_.repack = SUZU_REPACK_DEFAULT != 0;
@@ -130,6 +138,7 @@ void Engine::set_config(const EngineConfig & cfg) {
         if (state_ != EngineState::Disabled) state_ = EngineState::Idle;
         if (worker_running_) unload_requested_ = true;
         last_prepared_.clear();
+        clear_prep_track_locked();
     }
     cv_.notify_all();   // 空闲时限可能变了：让工作线程重算
 }
@@ -196,6 +205,7 @@ void Engine::set_enabled(bool on) {
         vocab_.reset();
         cache_.clear();
         last_prepared_.clear();
+        clear_prep_track_locked();
         state_ = EngineState::Disabled;
         if (worker_running_) unload_requested_ = true;
         log_event("disabled");
@@ -291,11 +301,55 @@ bool Engine::prepare(const std::string & context) {
     std::lock_guard<std::mutex> lk(mu_);
     if (state_ != EngineState::Ready) return false;
     stats_.prepares++;
-    if (ctx == last_prepared_ || (prepare_pending_ && ctx == prepare_ctx_)) return true;
+    const double t = now_ms();
+    for (auto it = miss_recent_.begin(); it != miss_recent_.end(); ++it) {
+        if (it->second == ctx && t - it->first <= kLateWindowMs) {
+            stats_.ctx_miss_late++;
+            miss_recent_.erase(it);
+            break;
+        }
+    }
+    if (ctx == last_prepared_) { track_prep_locked(ctx, kPrepDone, t); return true; }
+    if (prepare_pending_ && ctx == prepare_ctx_) { track_prep_locked(ctx, kPrepPending, t); return true; }
+    if (prepare_pending_) track_prep_locked(prepare_ctx_, kPrepReplaced, t);   // 还没轮到就被新的上文顶掉
+    track_prep_locked(ctx, kPrepPending, t);
     prepare_ctx_ = std::move(ctx);
     prepare_pending_ = true;
     cv_.notify_all();
     return true;
+}
+
+void Engine::track_prep_locked(const TokenSeq & ctx, PrepState state, double t_ms, bool by_job) {
+    for (auto it = prep_recent_.begin(); it != prep_recent_.end(); ++it) {
+        if (it->ctx == ctx) {
+            // 已有记录：预解码请求的记录不因任务算过同一段上文而改成 by_job
+            PrepRec r{ctx, t_ms, state, by_job && it->by_job};
+            prep_recent_.erase(it);
+            prep_recent_.push_back(std::move(r));
+            return;
+        }
+    }
+    prep_recent_.push_back(PrepRec{ctx, t_ms, state, by_job});
+    while (prep_recent_.size() > kPrepTrack) prep_recent_.pop_front();
+}
+
+int Engine::classify_miss_locked(const TokenSeq & ctx, double t_ms) const {
+    for (auto it = prep_recent_.rbegin(); it != prep_recent_.rend(); ++it) {
+        if (it->ctx != ctx) continue;
+        switch (it->state) {
+            case kPrepPending: return EngineStats::kMissQueued;     // 同一段上文的预解码还在排队，被任务抢先
+            case kPrepReplaced: return EngineStats::kMissReplaced;  // 没轮到执行就被更新的请求顶掉
+            default: return EngineStats::kMissEvicted;              // 准备好（或算过）了，槽位后来又被改写
+        }
+    }
+    for (const auto & r : prep_recent_)
+        if (!r.by_job && t_ms - r.t_ms <= kOtherCtxWindowMs) return EngineStats::kMissOtherCtx;   // 准备的是另一段上文
+    return EngineStats::kMissNoPrepare;
+}
+
+void Engine::clear_prep_track_locked() {
+    prep_recent_.clear();
+    miss_recent_.clear();
 }
 
 // ---- 打分与生成都分两段：begin_* 在调用方线程上分词、查缓存、入队，不等待；finish_* 等到截止时刻并填写结果。
@@ -580,6 +634,7 @@ void Engine::shutdown() {
     lexicon_.reset();
     cache_.clear();
     last_prepared_.clear();
+    clear_prep_track_locked();
     if (state_ != EngineState::Disabled) state_ = EngineState::Idle;
 }
 
@@ -626,6 +681,7 @@ void Engine::worker_main() {
                 continue;
             }
             stats_.queue_ms.add(ms_between(job->submitted, Clock::now()));
+            job->miss_kind = classify_miss_locked(job->ctx, now_ms());   // 按开始这一刻的准备状态归因
             lk.unlock();
             run_score(job);
             lk.lock();
@@ -758,6 +814,7 @@ void Engine::do_unload(const char * why) {
     lexicon_.reset();
     cache_.clear();
     last_prepared_.clear();
+    clear_prep_track_locked();
     for (auto & job : score_queue_) { job->done = true; job->ok = false; job->done_cv.notify_all(); }
     score_queue_.clear();
     prepare_pending_ = false;
@@ -797,9 +854,33 @@ void Engine::run_score(const std::shared_ptr<ScoreJob> & job) {
     else if (st.ctx_partial) stats_.ctx_partial++;
     else stats_.ctx_full++;
     if (!st.ctx_hit && !st.ctx_partial && st.ctx_tokens >= 20) stats_.ctx_full_long++;
+    if (!st.ctx_hit && st.ctx_tokens > 0 && job->miss_kind >= 0) {
+        auto & m = stats_.ctx_miss[job->miss_kind];
+        m.n++;
+        if (st.ctx_tokens >= 20) m.long_n++;
+        m.ms += st.ctx_ms;
+        if (job->miss_kind == EngineStats::kMissNoPrepare || job->miss_kind == EngineStats::kMissOtherCtx) {
+            miss_recent_.emplace_back(now_ms(), job->ctx);
+            while (miss_recent_.size() > kPrepTrack) miss_recent_.pop_front();
+        }
+        // 每 10 分钟至多记一行累计值（进程内模块没有状态文件，桌面端靠日志看）。格式：次数/其中长上文
+        const double t = now_ms();
+        if (t - miss_logged_ms_ >= kMissLogIntervalMs) {
+            miss_logged_ms_ = t;
+            const auto * c = stats_.ctx_miss;
+            log_event("ctx_miss no_prepare=%llu/%llu other_ctx=%llu/%llu queued=%llu/%llu replaced=%llu/%llu "
+                      "evicted=%llu/%llu late=%llu hit=%llu",
+                      (unsigned long long)c[0].n, (unsigned long long)c[0].long_n, (unsigned long long)c[1].n,
+                      (unsigned long long)c[1].long_n, (unsigned long long)c[2].n, (unsigned long long)c[2].long_n,
+                      (unsigned long long)c[3].n, (unsigned long long)c[3].long_n, (unsigned long long)c[4].n,
+                      (unsigned long long)c[4].long_n, (unsigned long long)stats_.ctx_miss_late,
+                      (unsigned long long)stats_.ctx_hit);
+        }
+    }
     if (ok) {
         cache_.put(job->key, scores);
         last_prepared_ = job->ctx;          // 打分时上文已在缓存里
+        track_prep_locked(job->ctx, kPrepDone, now_ms(), true);
     } else if (model_) {
         stats_.decode_failures++;
         log_event("WARN: decode failed ctx_tok=%zu cands=%zu", job->ctx.size(), job->cands.size());
@@ -827,6 +908,7 @@ void Engine::run_prepare(const TokenSeq & ctx) {
     else if (st.ctx_partial) stats_.prep_partial++;
     else if (ok) stats_.prep_full++;
     if (ok) last_prepared_ = ctx;
+    track_prep_locked(ctx, ok ? kPrepDone : kPrepFailed, now_ms());
 }
 
 Engine & shared_engine() {

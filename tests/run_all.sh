@@ -66,6 +66,7 @@ lua_tests() {
   else echo "skip  score_gen_test（构建目录里没有 suzu_sg_test：用 -DSUZU_BUILD_TOOLS=ON 构建）"; fi
   run "student_test"          "$LUA" student_test.lua "$B" "$MODEL" "$VOCAB" "$(d student)" 2
   run "gen_test"              "$LUA" gen_test.lua "$B" "$MODEL" "$VOCAB" "$(d gen)"
+  run "ctx_miss_test"         "$LUA" ctx_miss_test.lua "$B" "$MODEL" "$VOCAB" "$(d ctxmiss)"
   run "pairs_test"            "$LUA" pairs_test.lua "$REPO" "$(d pairs)"
   run "select_stats_test"     "$LUA" select_stats_test.lua "$REPO" "$(d select)"
   run "input_log_test"        "$LUA" input_log_test.lua "$REPO" "$(d ilog)"

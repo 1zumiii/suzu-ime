@@ -52,6 +52,12 @@ struct EngineStats {
     // full_long：full 里解码不少于 20 个字的次数（窗口满后滑动等，手机上每次约 50 ms）
     uint64_t ctx_hit = 0, ctx_partial = 0, ctx_full = 0, ctx_full_long = 0;
     uint64_t prep_hit = 0, prep_partial = 0, prep_full = 0;   // 预解码自身的同口径计数
+    // 打分与生成任务没有完全命中上文时的归因（任务开始时判定，见 Engine::classify_miss_locked）。
+    // n：次数。long_n：其中解码不少于 20 个字的次数。ms：这些任务的上文解码耗时之和
+    struct MissCause { uint64_t n = 0, long_n = 0; double ms = 0; };
+    enum MissKind { kMissNoPrepare, kMissOtherCtx, kMissQueued, kMissReplaced, kMissEvicted, kMissKinds };
+    MissCause ctx_miss[kMissKinds];
+    uint64_t ctx_miss_late = 0;   // no_prepare 或 other_ctx 之后 2 秒内，同一段上文的预解码才到达
     LatencyStats wait_ms;         // 调用方（输入法线程）等待的墙钟时间：score 调用从进入到返回
     LatencyStats queue_ms;        // 任务排队：提交到工作线程开始处理
     LatencyStats compute_ms;      // 工作线程处理一个打分任务的时间

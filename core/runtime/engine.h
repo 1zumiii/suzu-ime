@@ -151,6 +151,18 @@ private:
     static void mark_oov(const ScoreJob & job, std::vector<double> * sc);
     static void fill_generated(const ScoreJob & job, const std::vector<double> & flat, GenResult * res);
     void run_prepare(const TokenSeq & ctx);
+    // 上文未命中的归因（只记计数，不留文字）。prep_recent_ 记最近几段上文各自的准备状态，
+    // 打分或生成任务开始时据此判定：真算到上文时属于哪一类（见 EngineStats::MissKind）
+    enum PrepState { kPrepPending, kPrepReplaced, kPrepDone, kPrepFailed };
+    struct PrepRec {
+        TokenSeq ctx;
+        double t_ms = 0;       // 最近一次请求（或完成）的时刻
+        PrepState state = kPrepPending;
+        bool by_job = false;   // 由打分或生成任务算出，不是预解码请求
+    };
+    void track_prep_locked(const TokenSeq & ctx, PrepState state, double t_ms, bool by_job = false);
+    int classify_miss_locked(const TokenSeq & ctx, double t_ms) const;
+    void clear_prep_track_locked();
 
     mutable std::mutex mu_;
     std::condition_variable cv_;       // 唤醒工作线程
@@ -180,6 +192,9 @@ private:
     bool prepare_pending_ = false;
     TokenSeq prepare_ctx_;
     TokenSeq last_prepared_;
+    std::deque<PrepRec> prep_recent_;                      // 最多 kPrepTrack 条，最新的在后
+    std::deque<std::pair<double, TokenSeq>> miss_recent_;  // 判为 no_prepare / other_ctx 的上文，用来数“预解码来晚了”
+    double miss_logged_ms_ = 0;                            // 上次把归因计数写进日志的时刻
 
     ResultCache cache_;
     EngineStats stats_;

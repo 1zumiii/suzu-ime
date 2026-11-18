@@ -54,7 +54,16 @@ std::string EngineStats::json() const {
              (unsigned long long)gen_requests, (unsigned long long)gen_ok, (unsigned long long)gen_timeout,
              (unsigned long long)sg_requests, (unsigned long long)shared_jobs, (unsigned long long)cand_tokens,
              (unsigned long long)decode_calls);
-    return std::string(b) + g + "\"wait_ms\":" + wait_ms.json() + ",\"queue_ms\":" + queue_ms.json() +
+    static const char * const kMissNames[kMissKinds] = {"no_prepare", "other_ctx", "queued", "replaced", "evicted"};
+    std::string m = "\"ctx_miss\":{";
+    for (int i = 0; i < kMissKinds; i++) {
+        char e[160];
+        snprintf(e, sizeof e, "\"%s\":{\"n\":%llu,\"long\":%llu,\"ms\":%.0f},", kMissNames[i],
+                 (unsigned long long)ctx_miss[i].n, (unsigned long long)ctx_miss[i].long_n, ctx_miss[i].ms);
+        m += e;
+    }
+    m += "\"late\":" + std::to_string(ctx_miss_late) + "},";
+    return std::string(b) + g + m + "\"wait_ms\":" + wait_ms.json() + ",\"queue_ms\":" + queue_ms.json() +
            ",\"compute_ms\":" + compute_ms.json() + ",\"prepare_ms\":" + prepare_ms.json();
 }
 
