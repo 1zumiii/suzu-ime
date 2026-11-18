@@ -20,6 +20,7 @@ tests/run_all.sh <core 的构建目录> <suzu.gguf> <suzu.vocab.txt> [--quick]
 | 文件 | 内容 | 需要模型 |
 |---|---|---|
 | `smoke_test.lua` | 接口存在、缺模型时优雅降级 | 否 |
+| `core/tools/ctx_slots_test.cpp`（`suzu_ctx_test`） | 上文缓存的两个槽：两段上文交替、逐次上屏、第一与第二阶段交替、退格、窗口滑动时实际解码的上文字数，以及分数与从头计算一致。需 `-DSUZU_BUILD_TOOLS=ON` | 是 |
 | `student_test.lua`、`model_test.lua` | 加载、几组同音词的排序、粗略耗时 | 是 |
 | `gen_test.lua` | 候选生成：适用范围（全拼不生成）、简拼、混合输入、隔音符、三字词、词频名次、词表外字；束宽足够大时与逐个打分一致 | 是 |
 | `filter_test.lua` | 模拟 Rime 环境中的处理器与过滤器端到端测试 | 是 |

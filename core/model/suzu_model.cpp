@@ -185,33 +185,39 @@ int SuzuModel::ensure_context(const TokenSeq & ctx, DecodeStats * st) {
             return (int)i;
         }
     }
-    // 2. 选槽位：共享前缀最长的那条；都不共享就用最久没用的。
-    //    绝对位置编码：只有从位置 0 起相同的前缀才能复用（上文超过 30 字后窗口滑动，前缀从第 1 个字起就变了）。
-    int best = -1;
-    size_t best_keep = 0;
+    // 2. 来源与目标分开选。
+    //    来源：与新上文共享前缀最长的有效槽。绝对位置编码：只有从位置 0 起相同的前缀才能复用
+    //    （上文超过 30 字后窗口滑动，前缀从第 1 个字起就变了，通常只剩句首符可复用）。
+    //    目标：最久没用的槽（空槽优先），所以最近使用的那段上文不会被覆盖。旧做法直接改写来源槽，
+    //    两段只共享句首符的上文（例如第一阶段与第二阶段的上文）交替出现时，每次都要整段重算。
+    //    目标就是来源时原地增量。不是同一个槽时，先清空目标，再把公共前缀的 KV 复制过去（共享存储下只是打标记，不搬数据）。
+    int src = -1;
+    size_t src_keep = 0;
     if (opt_.incremental) {
         for (size_t i = 0; i < slots_.size(); i++) {
             if (!slots_[i].valid) continue;
             const TokenSeq & t = slots_[i].tokens;
             size_t k = 0;
             while (k < t.size() && k < ctx.size() && t[k] == ctx[k]) k++;
-            if (k > best_keep) { best_keep = k; best = (int)i; }
+            if (k > src_keep) { src_keep = k; src = (int)i; }
         }
     }
-    if (best < 0) {
-        best = 0;
-        for (size_t i = 1; i < slots_.size(); i++) {
-            const auto & a = slots_[i], & b = slots_[best];
-            if (!a.valid && b.valid) best = (int)i;
-            else if (a.valid == b.valid && a.last_use < b.last_use) best = (int)i;
-        }
-        best_keep = 0;
+    int best = 0;
+    for (size_t i = 1; i < slots_.size(); i++) {
+        const auto & a = slots_[i], & b = slots_[best];
+        if (!a.valid && b.valid) best = (int)i;
+        else if (a.valid == b.valid && a.last_use < b.last_use) best = (int)i;
     }
     // 末位要重新解码才拿得到它的 logits（新上文是旧上文的前缀时，例如退格）
-    size_t keep = std::min(best_keep, ctx.size() - 1);
+    size_t keep = src < 0 ? 0 : std::min(src_keep, ctx.size() - 1);
     ContextSlot & slot = slots_[best];
     auto * mem = llama_get_memory(ctx_);
-    llama_memory_seq_rm(mem, slot.seq, (llama_pos)keep, -1);
+    if (src == best) {
+        llama_memory_seq_rm(mem, slot.seq, (llama_pos)keep, -1);
+    } else {
+        llama_memory_seq_rm(mem, slot.seq, -1, -1);
+        if (keep > 0) llama_memory_seq_cp(mem, slots_[src].seq, slot.seq, 0, (llama_pos)keep);
+    }
     slot.valid = false;
 
     auto t0 = std::chrono::steady_clock::now();
@@ -222,7 +228,7 @@ int SuzuModel::ensure_context(const TokenSeq & ctx, DecodeStats * st) {
         st->ctx_ms += ms_since(t0);
         st->ctx_tokens += (int)(ctx.size() - keep);
         st->decode_calls++;
-        st->ctx_partial = keep > 0;
+        st->ctx_partial = keep > 1;   // 只复用句首符的算整段解码
     }
     float * lg = rc == 0 ? llama_get_logits_ith(ctx_, batch.b.n_tokens - 1) : nullptr;
     if (!lg) {

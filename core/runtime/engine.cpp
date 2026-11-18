@@ -670,6 +670,7 @@ void Engine::run_score(const std::shared_ptr<ScoreJob> & job) {
     if (st.ctx_hit) stats_.ctx_hit++;
     else if (st.ctx_partial) stats_.ctx_partial++;
     else stats_.ctx_full++;
+    if (!st.ctx_hit && !st.ctx_partial && st.ctx_tokens >= 20) stats_.ctx_full_long++;
     if (ok) {
         cache_.put(job->key, scores);
         last_prepared_ = job->ctx;          // 打分时上文已在缓存里
@@ -696,6 +697,9 @@ void Engine::run_prepare(const TokenSeq & ctx) {
     std::lock_guard<std::mutex> lk(mu_);
     stats_.prepare_done++;
     stats_.prepare_ms.add(ms);
+    if (st.ctx_hit) stats_.prep_hit++;
+    else if (st.ctx_partial) stats_.prep_partial++;
+    else if (ok) stats_.prep_full++;
     if (ok) last_prepared_ = ctx;
 }
 

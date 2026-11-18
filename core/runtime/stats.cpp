@@ -32,20 +32,22 @@ std::string LatencyStats::json() const {
 }
 
 std::string EngineStats::json() const {
-    char b[1024];
+    char b[1280];
     snprintf(b, sizeof b,
              "\"requests\":%llu,\"ok\":%llu,\"cache_hits\":%llu,\"skipped\":%llu,"
              "\"skip\":{\"timeout\":%llu,\"loading\":%llu,\"no_model\":%llu,\"off\":%llu,\"error\":%llu},"
              "\"no_context\":%llu,\"few_candidates\":%llu,"
              "\"prepares\":%llu,\"jobs_dropped\":%llu,\"loads\":%llu,\"load_failures\":%llu,\"unloads\":%llu,"
-             "\"decode_failures\":%llu,\"ctx\":{\"hit\":%llu,\"partial\":%llu,\"full\":%llu},\"last_load_ms\":%.0f,",
+             "\"decode_failures\":%llu,\"ctx\":{\"hit\":%llu,\"partial\":%llu,\"full\":%llu,\"full_long\":%llu},"
+             "\"prep_ctx\":{\"hit\":%llu,\"partial\":%llu,\"full\":%llu},\"last_load_ms\":%.0f,",
              (unsigned long long)requests, (unsigned long long)ok, (unsigned long long)cache_hits,
              (unsigned long long)skipped(), (unsigned long long)skip_timeout, (unsigned long long)skip_loading,
              (unsigned long long)skip_no_model, (unsigned long long)skip_off, (unsigned long long)skip_error,
              (unsigned long long)no_context, (unsigned long long)few_candidates, (unsigned long long)prepares,
              (unsigned long long)jobs_dropped, (unsigned long long)loads, (unsigned long long)load_failures,
              (unsigned long long)unloads, (unsigned long long)decode_failures, (unsigned long long)ctx_hit,
-             (unsigned long long)ctx_partial, (unsigned long long)ctx_full, last_load_ms);
+             (unsigned long long)ctx_partial, (unsigned long long)ctx_full, (unsigned long long)ctx_full_long,
+             (unsigned long long)prep_hit, (unsigned long long)prep_partial, (unsigned long long)prep_full, last_load_ms);
     char g[128];
     snprintf(g, sizeof g, "\"gen\":{\"requests\":%llu,\"ok\":%llu,\"timeout\":%llu},",
              (unsigned long long)gen_requests, (unsigned long long)gen_ok, (unsigned long long)gen_timeout);

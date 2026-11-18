@@ -60,6 +60,8 @@ lua_tests() {
   local UD="$T/ud"; mkdir -p "$UD/lua"; cp "$B/rime_llm.so" "$UD/lua/"; cp "$MODEL" "$UD/suzu.gguf"; cp "$VOCAB" "$UD/suzu.vocab.txt"
   export SUZU_VOCAB="$VOCAB"
   run "smoke_test"            "$LUA" smoke_test.lua "$B" "$(d smoke)"
+  if [[ -x "$B/suzu_ctx_test" ]]; then run "ctx_slots_test" "$B/suzu_ctx_test" "$MODEL" "$VOCAB"
+  else echo "skip  ctx_slots_test（构建目录里没有 suzu_ctx_test：用 -DSUZU_BUILD_TOOLS=ON 构建）"; fi
   run "student_test"          "$LUA" student_test.lua "$B" "$MODEL" "$VOCAB" "$(d student)" 2
   run "gen_test"              "$LUA" gen_test.lua "$B" "$MODEL" "$VOCAB" "$(d gen)"
   run "pairs_test"            "$LUA" pairs_test.lua "$REPO" "$(d pairs)"
