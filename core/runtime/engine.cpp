@@ -42,6 +42,7 @@ std::vector<double> top_k_flat(const std::vector<double> & sc, int k) {
 bool load_affecting_changed(const EngineConfig & a, const EngineConfig & b) {
     return a.model_path != b.model_path || a.vocab_path != b.vocab_path || a.n_threads != b.n_threads ||
            a.context_chars != b.context_chars || a.max_candidates != b.max_candidates || a.repack != b.repack ||
+           a.poll != b.poll ||
            a.lexicon_dir.empty() != b.lexicon_dir.empty() || a.gen_beam != b.gen_beam;   // 词典目录换成另一个不在此列：只重读词典
 }
 
@@ -261,12 +262,12 @@ EngineStats Engine::stats() const {
 
 std::string Engine::status_fields() const {
     std::lock_guard<std::mutex> lk(mu_);
-    char b[256];
+    char b[320];
     snprintf(b, sizeof b,
              "\"loaded\":%s,\"student\":true,\"state\":\"%s\",\"enabled\":%s,\"threads\":%d,\"max_candidates\":%d,"
-             "\"idle_unload_sec\":%d,",
+             "\"idle_unload_sec\":%d,\"repack\":%s,\"poll\":%d,",
              state_ == EngineState::Ready ? "true" : "false", state_name(state_), enabled_ ? "true" : "false",
-             cfg_.n_threads, cfg_.max_candidates, cfg_.idle_unload_sec);
+             cfg_.n_threads, cfg_.max_candidates, cfg_.idle_unload_sec, cfg_.repack ? "true" : "false", cfg_.poll);
     return std::string(b) + stats_.json();
 }
 
@@ -571,6 +572,7 @@ void Engine::do_load(const EngineConfig & cfg) {
     mo.context_slots = kContextSlots;
     mo.candidate_max_chars = kCandidateMaxChars;
     mo.repack = cfg.repack;
+    mo.poll = cfg.poll;
     std::string err;
     std::unique_ptr<SuzuModel> m = SuzuModel::load(mo, &err);
     if (m) {

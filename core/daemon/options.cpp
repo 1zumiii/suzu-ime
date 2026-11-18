@@ -9,7 +9,7 @@ void print_usage() {
     fprintf(stderr,
             "usage: rimellmd [--supervise] --model PATH [--student-vocab PATH] [--rime-dir DIR] [--port N]\n"
             "                [--log-dir DIR] [--threads N] [--n-seq-max N] [--gen-beam N] [--idle-sec N] [--screen-off-sec N]\n"
-            "                [--orphan-sec N] [--budget-ms N] [--sync-budget-ms N] [--repack]\n"
+            "                [--orphan-sec N] [--budget-ms N] [--sync-budget-ms N] [--repack] [--poll N]\n"
             "                [--heartbeat-ms N] [--max-backoff-s N]   (supervisor timing, for tests)\n");
 }
 
@@ -45,6 +45,7 @@ bool parse_options(int argc, char ** argv, Options * o, int * exit_code) {
         else if (a == "--orphan-sec") o->orphan_sec = atoi(v);
         else if (a == "--budget-ms") o->budget_ms = atoi(v);
         else if (a == "--sync-budget-ms") o->sync_budget_ms = atoi(v);
+        else if (a == "--poll") o->poll = atoi(v);
         else if (a == "--heartbeat-ms") o->heartbeat_ms = atoi(v);
         else if (a == "--max-backoff-s") o->max_backoff_s = atoi(v);
         else if (a == "--max-ctx" || a == "--n-ctx") continue;   // 旧启动脚本可能还带着：接受并忽略，不传给子进程
@@ -59,6 +60,8 @@ bool parse_options(int argc, char ** argv, Options * o, int * exit_code) {
     }
     if (o->model.empty()) { print_usage(); *exit_code = 64; return false; }
     if (o->threads < 1) o->threads = 1;
+    if (o->poll < 0) o->poll = 0;
+    if (o->poll > 100) o->poll = 100;
     if (o->heartbeat_ms < 100) o->heartbeat_ms = 100;
     if (o->max_backoff_s < 1) o->max_backoff_s = 1;
     return true;

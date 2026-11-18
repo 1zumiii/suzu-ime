@@ -266,6 +266,7 @@ int run_worker(const Options & opt) {
     c.n_threads = opt.threads;
     c.max_candidates = opt.n_seq_max > 2 ? opt.n_seq_max - 1 : 11;
     c.repack = opt.repack;
+    c.poll = opt.poll;
     c.idle_unload_sec = opt.idle_sec;
     if (!opt.rime_dir.empty() && opt.gen_beam > 0) {   // 候选生成：词典就是随方案部署的雾凇词典
         c.lexicon_dir = opt.rime_dir + "/cn_dicts";

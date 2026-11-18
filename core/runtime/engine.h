@@ -66,6 +66,7 @@ struct EngineConfig {
     int context_chars = 30;
     int max_candidates = 11;
     bool repack = false;
+    int poll = 0;                      // 常驻线程池做完一批后自旋等待的程度（0~100）
     int idle_unload_sec = 0;           // 0 = 不自动卸载
     std::string lexicon_dir;           // 候选生成的词典目录（雾凇的 cn_dicts）；空 = 不生成
     int gen_beam = 0;                  // 候选生成每层最多展开的节点数；0 = 不生成

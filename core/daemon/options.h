@@ -18,6 +18,7 @@ struct Options {
     int gen_beam = 0;                 // 候选生成每层最多展开的节点数；0 = 不生成、不加载词典（词典取 rime_dir/cn_dicts）
     int n_seq_max = 0;                // 旧口径：候选上限 = n_seq_max - 1；0 = 默认（11 个候选）
     bool repack = false;
+    int poll = 0;                     // 常驻线程池的自旋程度 0~100；0 = 做完立即睡眠
     int idle_sec = 0;                 // 屏幕亮着时的空闲卸载时限；0 = 不自动卸载
     int screen_off_sec = 0;           // 熄屏后的空闲卸载时限；0 = 沿用亮屏时限
     int orphan_sec = 600;             // 状态目录消失超过这么久就退出；0 = 不检查

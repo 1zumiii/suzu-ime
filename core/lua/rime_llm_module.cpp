@@ -122,6 +122,7 @@ int l_index(lua_State * L) {
     else if (!strcmp(k, "n_seq_max")) lua_pushinteger(L, c.max_candidates + 1);
     else if (!strcmp(k, "idle_unload_sec")) lua_pushinteger(L, c.idle_unload_sec);
     else if (!strcmp(k, "use_repack")) lua_pushboolean(L, c.repack ? 1 : 0);
+    else if (!strcmp(k, "poll")) lua_pushinteger(L, c.poll);
     else if (!strcmp(k, "lexicon_dir")) lua_pushstring(L, c.lexicon_dir.c_str());
     else if (!strcmp(k, "gen_beam")) lua_pushinteger(L, c.gen_beam);
     else if (!strcmp(k, "log_dir")) lua_pushstring(L, suzu::log_dir().c_str());
@@ -150,6 +151,7 @@ void apply_property(const char * k, const PropValue & v) {
     else if (!strcmp(k, "n_seq_max")) c.max_candidates = v.i > 2 ? (int)v.i - 1 : 2;   // 旧口径：候选数上限 = n_seq_max - 1
     else if (!strcmp(k, "idle_unload_sec")) c.idle_unload_sec = v.i > 0 ? (int)v.i : 0;
     else if (!strcmp(k, "use_repack")) c.repack = v.b;
+    else if (!strcmp(k, "poll")) c.poll = v.i < 0 ? 0 : v.i > 100 ? 100 : (int)v.i;
     else if (!strcmp(k, "gen_beam")) c.gen_beam = v.i > 0 ? (int)v.i : 0;
     else return;   // 其余属性（旧脚本会设置 max_ctx、min_tokens、n_ctx）：接受并忽略
     engine().set_config(c);
