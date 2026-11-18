@@ -7,7 +7,8 @@
 --   2) 点击鼠标、切换前台应用时，用 ai_rerank_processor 现成的运行时选项 ai_ctx_reset 清空它的上屏历史；
 --      退格、方向键等编辑键、点击之后让快照失效并延迟重读；上屏后立刻重读（kick）。
 --      Android 的光标移动由 Trime 自己置 ai_ctx_reset，快照在每次上屏、编辑后由 Trime 刷新；
---   3) 每次按键按“filter 实际会用的上文”补一次预解码（processor 自己只会按上屏历史预解码）。
+--   3) 预解码：上屏通知里按“光标前文 + 刚上屏的字”提前预解码下一段上文；每次按键再按“filter 实际会用的上文”补一次
+--      （ai_rerank_processor 也经 _G.ai_rerank_context_get 取同一段上文，两边请求相同，核心会去重）。
 -- 位置：engine/processors 里放在 ai_rerank_processor 之后（预解码要以本文件的为准）。
 -- 配置：llm_rerank/context_source: auto（默认）| history（只用上屏历史，排查用）。
 -- 隐私：不写任何文件；读到的文字只在内存里，不记录。
@@ -78,18 +79,28 @@ local history_mode = false      -- llm_rerank/context_source = history
 local base_get = nil            -- 共用 processor 原来的上文函数
 local wrapped = nil             -- 本文件换上去的版本
 local last_prep = nil
-local kick_hooked = false
 
-local function ctx_text()
+-- extra：还没进快照与上屏历史的文字（上屏通知里刚上屏的字）。上屏后下一次按键时，
+-- 快照与历史都已追加了这段文字，用同样的规则取出的上文与这里一致，预解码就能命中
+local function ctx_text(extra)
+    extra = extra or ""
     local llm = _G.ai_rerank_llm
     if not history_mode and llm and llm.llm_context then
         local ok, t = pcall(llm.llm_context)
-        if ok and type(t) == "string" and #t > 0 then
-            local c = clean_ctx((t:gsub("%s+", "")))
+        if ok and type(t) == "string" and #t + #extra > 0 then
+            local c = clean_ctx(((t .. extra):gsub("%s+", "")))
             if han_count(c) >= 2 then return c end
         end
     end
-    return clean_ctx(base_get and base_get() or "")
+    return clean_ctx((base_get and base_get() or "") .. extra)
+end
+
+local function prepare_text(c)
+    local llm = _G.ai_rerank_llm
+    c = (c or ""):gsub("%s+", "")      -- 与 filter 一致（它对取到的上文去空白）
+    if llm and llm.prepare and c ~= last_prep then
+        if llm.prepare(c) then last_prep = c end
+    end
 end
 
 -- 共用 processor 在第一次加载时才定义 _G.ai_rerank_context_get；每次按键检查一下，还没换就换上
@@ -102,18 +113,27 @@ local function ensure_wrapped()
     end
 end
 
+-- 上屏通知（每个会话在 init 里挂、fini 里断开；以前用全局标志只挂一次，挂在第一个会话上，之后新建的会话都收不到）
+local function on_commit(c)
+    local llm = _G.ai_rerank_llm
+    if not llm or not c:get_option("ai_rerank") then return end
+    ensure_wrapped()
+    -- 上屏这一刻就预解码下一段上文（光标前文 + 刚上屏的字），多出一整个键间间隔来算。
+    -- 要在 kick 之前取快照：kick 之后快照可能已含上屏文字，再追加一次就重复了
+    if llm.prepare and wrapped and not c:get_option("ascii_mode") then
+        local okt, txt = pcall(function() return c:get_commit_text() end)
+        if okt and type(txt) == "string" and txt ~= "" then pcall(prepare_text, ctx_text(txt)) end
+    end
+    -- 上屏后立刻刷新光标前文快照（读链在后台线程，下一键即有新鲜上文）
+    if llm.kick_context then pcall(llm.kick_context) end
+end
+
 local function processor(key, env)
     if key:release() then return 2 end
     local ctx = env.engine.context
     ensure_wrapped()
     local llm = _G.ai_rerank_llm
     if not llm or not wrapped or not ctx:get_option("ai_rerank") then return 2 end
-
-    if not kick_hooked and llm.kick_context then
-        kick_hooked = true
-        -- 上屏后立刻刷新光标前文快照（读链在后台线程，下一键即有新鲜上文）
-        ctx.commit_notifier:connect(function() pcall(llm.kick_context) end)
-    end
 
     -- 点击：光标可能移动，上屏历史不再代表光标前的内容；快照同样是旧时刻的，失效后重读
     if llm.click_happened and llm.click_happened() then
@@ -143,10 +163,7 @@ local function processor(key, env)
 
     -- 预解码以 filter 实际会用的上文为准
     if llm.prepare then
-        local c = ctx_text()
-        if c ~= last_prep then
-            if llm.prepare(c) then last_prep = c end
-        end
+        prepare_text(ctx_text())
         if llm.is_ready and not llm.is_ready() then last_prep = nil end
     end
     return 2
@@ -156,6 +173,11 @@ return setmetatable({
     init = function(env)
         local ok, src = pcall(function() return env.engine.schema.config:get_string("llm_rerank/context_source") end)
         history_mode = ok and src == "history"
+        env.app_ctx_conn = env.engine.context.commit_notifier:connect(on_commit)
+    end,
+    fini = function(env)
+        if env.app_ctx_conn then pcall(function() env.app_ctx_conn:disconnect() end) end
+        env.app_ctx_conn = nil
     end,
     func = processor,
 }, { __call = function(_, key, env) return processor(key, env) end })

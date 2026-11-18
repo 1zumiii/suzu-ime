@@ -82,9 +82,14 @@ local function get_context()
 end
 _G.ai_rerank_context_get = get_context
 
--- 异步预解码：上文变化时提前解码，按键时直接打分
-local function trigger_prepare()
-    local cur_ctx = get_context():gsub('%s+', '')
+-- 异步预解码：上文变化时提前解码，按键时直接打分。
+-- 取上文与 filter 用同一个函数（_G.ai_rerank_context_get）：挂了 ai_rerank_app_ctx 时它是应用里光标前的文字，
+-- 以前这里固定用上屏历史，每次上屏后工作线程先白算一遍历史上文（手机上 46～60 ms），真正要用的那段排在它后面。
+-- 英文模式不预解码：没有中文要打，而取应用文字可能触发补读。
+local function trigger_prepare(ctx)
+    if ctx and ctx:get_option("ascii_mode") then return end
+    local getter = _G.ai_rerank_context_get or get_context
+    local cur_ctx = (getter() or ""):gsub('%s+', '')
     if llm_prep and llm_prep.prepare and cur_ctx ~= last_prep_ctx then
         -- prepare 返回 true 才表示预解码真的排上了。模型还没加载好（刚启动、或被空闲卸载后）时它只会触发加载并返回 false，
         -- 这种情况不能记成"已预解码"，否则模型加载完成后上文没变，就再也不会补预解码。
@@ -686,7 +691,7 @@ local function processor(key, env)
     if llm_prep and llm_prep.is_ready and not llm_prep.is_ready() then last_prep_ctx = "" end
 
     -- 上文变化 → 立即异步预解码
-    trigger_prepare()
+    trigger_prepare(ctx)
 
     local ch = ctx.commit_history
     if not ch then return 2 end
@@ -696,7 +701,7 @@ local function processor(key, env)
         reset_history()
         commit_base = #ch:to_table()   -- 旧词永久忽略
         _G.llm_filter_cache = nil      -- 编辑后重打相同词必须重新推理
-        trigger_prepare()              -- 上文已空 → 预解码空上文
+        trigger_prepare(ctx)              -- 上文已空 → 预解码空上文
         return 0                       -- kRejected：本键不再交给后面的处理器，直接还给应用（此时没有未上屏编码，Rime 没有可处理的）
     end
 
@@ -726,7 +731,7 @@ local function processor(key, env)
         for _, v in ipairs(history) do table.insert(prev_hist, v) end
         -- 上文刚更新：立刻异步预解码，让它在两次按键之间的空档里完成。
         -- （按键开头的那次预解码用的还是旧上文——新上文要到这里才同步进来。）
-        trigger_prepare()
+        trigger_prepare(ctx)
     end
 
     return 2
