@@ -22,7 +22,7 @@ tests/run_all.sh <core 的构建目录> <suzu.gguf> <suzu.vocab.txt> [--quick]
 | `smoke_test.lua` | 接口存在、缺模型时优雅降级 | 否 |
 | `core/tools/ctx_slots_test.cpp`（`suzu_ctx_test`） | 上文缓存的两个槽：两段上文交替、逐次上屏、第一与第二阶段交替、退格、窗口滑动时实际解码的上文字数，以及分数与从头计算一致。需 `-DSUZU_BUILD_TOOLS=ON` | 是 |
 | `student_test.lua`、`model_test.lua` | 加载、几组同音词的排序、粗略耗时 | 是 |
-| `gen_test.lua` | 候选生成：适用范围（全拼不生成）、简拼、混合输入、隔音符、三字词、词频名次、词表外字；束宽足够大时与逐个打分一致 | 是 |
+| `gen_test.lua` | 候选生成：适用范围（全拼不生成）、简拼、混合输入、隔音符、三字词、词频名次、词表外字。束宽足够大时与逐个打分一致。`score_gen` 与分别调用 `score`、`generate` 的结果一致，两种模式的跳过规则，超时后打分结果照样进缓存 | 是 |
 | `filter_test.lua` | 模拟 Rime 环境中的处理器与过滤器端到端测试 | 是 |
 | `unified_order_test.lua` | 统一排序加候选生成时的输出顺序：生成出新词或组内有重复文字时，英文与 emoji 候选留在原位（桩核心） | 否 |
 | `session_test.lua` | 同一个 Lua 状态里的多个会话与中途换方案：第二个会话也接上熄屏与 AI 开关的通知，换方案后词典目录与过滤器配置跟着换，组件销毁时断开通知（桩核心） | 否 |
@@ -33,7 +33,7 @@ tests/run_all.sh <core 的构建目录> <suzu.gguf> <suzu.vocab.txt> [--quick]
 | `replay_test.lua` | 回放数据的记录内容；`tools/replay.py` 用记录里的参数逐条复现最终首位；`tools/corpus_report.py` 可运行且不输出文字 | 是 |
 | `parity/run_cases.lua`、`parity/compare.py`、`parity/data/` | 1293 题留出集逐题打分，与 Suzu-2.4 的基准对照 | 是 |
 | `keysim.lua` | 按键仿真：跳过率、等待时间分布；`chaos=` 可做故障注入（配合 `chaos_daemon.sh`） | 是 |
-| `test_daemon.py` | 守护进程：协议、认证、非法输入、时限、并发、换词典与附加词库变化后重读；`--chaos` 做 kill -9、SIGSTOP、删除模型的恢复测试。`--host` 在本机运行，不加则经 adb 测手机上的守护进程 | 是 |
+| `test_daemon.py` | 守护进程：协议、认证、非法输入、时限、并发、换词典与附加词库变化后重读，合并请求 `U` 与分别请求 `Q`、`W` 的应答逐字相同。`--chaos` 做 kill -9、SIGSTOP、删除模型的恢复测试。`--host` 在本机运行，不加则经 adb 测手机上的守护进程 | 是 |
 | `test_student.py` | 在手机上另起一个守护进程核对排序与延迟（经 adb） | 是 |
 
 ## 与旧核心相比改写的检查

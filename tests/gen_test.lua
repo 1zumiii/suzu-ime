@@ -138,6 +138,57 @@ t0 = os.time()
 repeat m.sleep_ms(50); r = m.generate(CTX, "jl", 10, true) until (r and #r == 6) or os.time() - t0 > 60
 check("换回原目录后恢复 6 个词", r and #r == 6)
 
+-- 6) score_gen：第一阶段的打分与生成合成一次请求，结果与分别调用相同
+m.budget_ms = 2000
+local C2 = {"经理", "经历", "精力", "家里"}
+local function same_list(a, b)
+  if not a or not b or #a ~= #b then return false end
+  for i = 1, #a do if a[i] ~= b[i] then return false end end
+  return true
+end
+local sr = m.score(CTX, C2, false)
+local s_sep = m.get_scores()
+local gr, gn = m.generate(CTX, "jl", 10, false)
+local q = m.score_gen(CTX, C2, "jl", 10)
+local g_same = q.gen_ok and gr ~= nil and #q.gen == #gr and q.gen_n == gn
+if g_same then
+  for i, x in ipairs(gr) do
+    local y = q.gen[i]
+    if y.w ~= x.w or y.r ~= x.r or math.abs(y.s - x.s) > 1e-9 then g_same = false end
+  end
+end
+check("score_gen both：排序与 score 相同", q.ok and same_list(q.rank, sr))
+check("score_gen both：生成结果与 generate 相同（词、分数、名次、匹配数）", g_same)
+local s_sg = m.get_scores()
+local sc_same = s_sg ~= nil and s_sep ~= nil
+for _, w in ipairs(C2) do if not sc_same or s_sg[w] ~= s_sep[w] then sc_same = false end end
+check("score_gen 之后 get_scores 返回本次打分", sc_same)
+q = m.score_gen(CTX, C2, "jingli", 10)
+check("score_gen both，全拼：打分照常，生成 not_applicable", q.ok and not q.gen_ok and q.gen_why == "not_applicable",
+  tostring(q.gen_why))
+q = m.score_gen(CTX, C2, "jingli", 10, "gen_first")
+check("score_gen gen_first，生成不适用：不打分", not q.ok and q.why == "not_tried" and q.gen_why == "not_applicable",
+  tostring(q.why) .. " " .. tostring(q.gen_why))
+q = m.score_gen(CTX, C2, "jl", 10, "gen_first")
+check("score_gen gen_first，能生成：打分与生成都有", q.ok and q.gen_ok and same_list(q.rank, sr))
+q = m.score_gen(CTX, {"经理"}, "jl", 10)
+check("score_gen both，候选不足：不生成", not q.ok and q.why == "few_candidates" and q.gen_why == "not_tried",
+  tostring(q.why) .. " " .. tostring(q.gen_why))
+q = m.score_gen("短", C2, "jl", 10)
+check("score_gen both，上文不足：no_context，不生成", not q.ok and q.why == "no_context" and q.gen_why == "not_tried",
+  tostring(q.why))
+-- 超时：打分任务照样算完进缓存（排在它后面的生成任务被撤掉，工作线程不会因此丢掉打分任务）
+local CTX3 = "昨天下午我们在会议室里讨论了很久，最后决定由他来当"
+local hits0 = tonumber(m.status():match('"cache_hits":(%d+)'))
+m.budget_ms = 0.01
+q = m.score_gen(CTX3, C2, "jl", 10)
+m.budget_ms = 2000
+check("score_gen 超时：打分返回 timeout", not q.ok and q.why == "timeout", tostring(q.why))
+m.sleep_ms(500)
+local r3 = m.score(CTX3, C2, false)
+check("score_gen 超时后，同样的打分直接命中缓存", r3 ~= nil and tonumber(m.status():match('"cache_hits":(%d+)')) == hits0 + 1)
+check("状态里记录 score_gen 次数", tonumber(m.status():match('"score_gen":(%d+)')) == 7)
+
 if fails > 0 then print(fails .. " FAILED"); os.exit(1) end
 print("ALL PASS")
 os.exit(0)

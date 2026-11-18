@@ -27,6 +27,24 @@ int push_skip(lua_State * L, const char * reason);
 int push_generated(lua_State * L, const std::vector<std::string> & words, const std::vector<double> & scores,
                    const std::vector<int> & ranks, int matched);
 
+// score_gen 的结果（两种后端共用的中间形式）
+struct ScoreGenOut {
+    bool score_tried = false, score_ok = false;
+    std::string why;                   // 打分没成功的原因
+    std::vector<std::string> cands;    // 打分成功时：参与打分的候选与分数
+    std::vector<double> scores;
+    bool gen_tried = false, gen_ok = false;
+    std::string gen_why;
+    std::vector<std::string> words;    // 生成成功时：按模型分降序
+    std::vector<double> gen_scores;
+    std::vector<int> ranks;
+    int matched = 0;
+};
+
+// 压入一张表：ok、rank（同 score 的返回值）、why；gen_ok、gen（同 generate 的第一个返回值）、gen_n、gen_why。
+// 没有尝试的一项，原因为 not_tried。打分成功时同时更新 get_scores() 的结果。返回压栈个数（1）
+int push_score_gen(lua_State * L, const ScoreGenOut & r);
+
 // 最近一次打分的结果，供 get_scores() 使用（进程级，带锁）
 void remember_scores(const std::vector<std::string> & cands, const std::vector<double> & scores);
 void push_last_scores(lua_State * L);

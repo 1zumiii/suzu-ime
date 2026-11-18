@@ -62,6 +62,31 @@ int push_generated(lua_State * L, const std::vector<std::string> & words, const 
     return 2;
 }
 
+int push_score_gen(lua_State * L, const ScoreGenOut & r) {
+    if (r.score_ok) remember_scores(r.cands, r.scores);
+    lua_createtable(L, 0, 8);
+    lua_pushboolean(L, r.score_ok ? 1 : 0);
+    lua_setfield(L, -2, "ok");
+    if (r.score_ok) {
+        push_ranking(L, r.cands, r.scores);
+        lua_setfield(L, -2, "rank");
+    } else {
+        lua_pushstring(L, r.score_tried ? r.why.c_str() : "not_tried");
+        lua_setfield(L, -2, "why");
+    }
+    lua_pushboolean(L, r.gen_ok ? 1 : 0);
+    lua_setfield(L, -2, "gen_ok");
+    if (r.gen_ok) {
+        push_generated(L, r.words, r.gen_scores, r.ranks, r.matched);   // 压入 生成表, 匹配数
+        lua_setfield(L, -3, "gen_n");
+        lua_setfield(L, -2, "gen");
+    } else {
+        lua_pushstring(L, r.gen_tried ? r.gen_why.c_str() : "not_tried");
+        lua_setfield(L, -2, "gen_why");
+    }
+    return 1;
+}
+
 namespace {
 std::mutex g_scores_mu;
 std::vector<std::string> g_last_cands;

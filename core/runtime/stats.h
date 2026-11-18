@@ -41,6 +41,7 @@ struct EngineStats {
     uint64_t gen_requests = 0;    // 候选生成的调用（不计入上面的 requests）
     uint64_t gen_ok = 0;
     uint64_t gen_timeout = 0;
+    uint64_t sg_requests = 0;     // 第一阶段合并请求（score_gen）的调用；其中的打分与生成照常计入上面两类
     // 工作线程
     uint64_t prepares = 0, prepare_done = 0;
     uint64_t jobs_done = 0, jobs_dropped = 0;   // 被放弃（等待方已超时且有更新的请求）的任务

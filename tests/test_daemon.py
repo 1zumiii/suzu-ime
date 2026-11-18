@@ -271,6 +271,24 @@ try:
     check("ranking is sensible (经理 first)", r[0] == "R" and r[1] == "经理", " > ".join(r[1::2]))
     r = rpc(s, ["Q", "500", "我最近没有太多"] + cands)
     check("version-2 request Q works", r[0] == "R" and len(r) == 1 + 2 * len(cands) and set(r[1::2]) == set(cands), " > ".join(r[1::2]))   # 名次随权重而变，只查应答的形状
+    # ---- 第一阶段合并请求（U，版本 4）：打分与生成一次提交，结果与分别请求 Q、W 逐字相同
+    check("daemon reports protocol version 4", status().get("version") == "4", str(status().get("version")))
+    q = rpc(s, ["Q", "500", "他在公司当"] + cands)
+    w = rpc(s, ["W", "500", "3", "他在公司当", "jl"])
+    u = rpc(s, ["U", "500", "b", "3", "他在公司当", "jl"] + cands)
+    check("U: reply shape", u[0] == "U" and len(u) >= 5, str(u[:6]))
+    if u[0] == "U" and len(u) >= 5:
+        n = int(u[4])
+        sp, gp = u[5:5 + 2 * n], u[5 + 2 * n:]
+        check("U both: scores identical to Q", u[1] == "ok" and ["R"] + sp == q, f"{u[1]} {len(sp)} vs {len(q) - 1}")
+        exp = "ok" if w[0] == "R" else (w[1] if len(w) > 1 else "")
+        check("U both: generation identical to W", u[2] == exp and (w[0] != "R" or ["R"] + gp == w), f"{u[2]} vs {w[:2]}")
+    u = rpc(s, ["U", "500", "g", "3", "他在公司当", "jingli"] + cands)
+    check("U gen_first, full pinyin: generation fails, scoring not tried",
+          u[:2] == ["U", "not_tried"] and u[2] in ("not_applicable", "no_lexicon") and u[4] == "0", str(u[:5]))
+    u = rpc(s, ["U", "500", "b", "3", "短", "jl"] + cands)
+    check("U both, short context: no_context, generation not tried", u[:3] == ["U", "no_context", "not_tried"], str(u[:5]))
+    check("U: too few fields -> ERR op", rpc(s, ["U", "500", "b"])[0] == "ERR")
     lat = []
     for i in range(30):
         r, dt = timed_rpc(s, ["S", "0", "他在公司当"] + cands[i % 3:] + cands[:i % 3])
@@ -305,6 +323,7 @@ try:
     s.close()
 
     # ---- 并发：多个连接同时打分
+    base_clients = status()["clients"]   # 测手机时，改版 Trime 自己可能也连着
     res = []
     def worker(k):
         c = connect(); ok = 0
@@ -316,7 +335,7 @@ try:
     [t.start() for t in th]; [t.join() for t in th]
     check("4 concurrent clients x 20 requests all answered", res == [20] * 4, str(res))
     time.sleep(0.3)
-    check("no connection leak", status()["clients"] <= 1)
+    check("no connection leak", status()["clients"] <= base_clients, f"{base_clients} -> {status()['clients']}")
 
     if "--chaos" in sys.argv:
         print("--- chaos")

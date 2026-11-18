@@ -79,6 +79,45 @@ struct Worker {
         return out;
     }
 
+    std::vector<std::string> score_gen(const std::string & ctx, const std::string & input, int k, bool gen_first,
+                                       std::vector<std::string> cands, int budget) {
+        long long t0 = ipc::mono_ms();
+        ScoreGenResult r = engine.score_gen(ctx, cands, input, k, gen_first ? ScoreGenMode::GenFirst : ScoreGenMode::Both,
+                                            budget);
+        st.last_score_ms.store((int)(ipc::mono_ms() - t0));
+        auto status = [](bool tried, ScoreStatus s) -> std::string {
+            if (!tried) return "not_tried";
+            return s == ScoreStatus::Ok ? "ok" : score_reason(s);
+        };
+        bool sok = r.score_tried && r.score.status == ScoreStatus::Ok;
+        bool gok = r.gen_tried && r.gen.status == ScoreStatus::Ok;
+        std::vector<std::string> out = {"U", status(r.score_tried, r.score.status), status(r.gen_tried, r.gen.status),
+                                        std::to_string(gok ? r.gen.matched : 0)};
+        char buf[40];
+        if (sok) {
+            std::vector<int> order(r.score.cands.size());
+            for (size_t i = 0; i < order.size(); i++) order[i] = (int)i;
+            std::stable_sort(order.begin(), order.end(), [&](int a, int b) { return r.score.scores[a] > r.score.scores[b]; });
+            out.push_back(std::to_string(order.size()));
+            for (int i : order) {
+                snprintf(buf, sizeof buf, "%.9g", r.score.scores[i]);
+                out.push_back(r.score.cands[i]);
+                out.push_back(buf);
+            }
+        } else {
+            out.push_back("0");
+        }
+        if (gok) {
+            for (size_t i = 0; i < r.gen.words.size(); i++) {
+                snprintf(buf, sizeof buf, "%.9g", r.gen.scores[i]);
+                out.push_back(r.gen.words[i]);
+                out.push_back(buf);
+                out.push_back(std::to_string(r.gen.ranks[i]));
+            }
+        }
+        return out;
+    }
+
     std::vector<std::string> generate(const std::string & ctx, const std::string & input, int k, int budget) {
         GenResult r = engine.generate(ctx, input, k, budget);
         if (r.status != ScoreStatus::Ok) return {"N", score_reason(r.status)};
@@ -157,6 +196,11 @@ struct Worker {
                 int budget = atoi(f[1].c_str());
                 if (budget <= 0 || budget > kMaxBudgetMs) budget = opt.budget_ms;
                 reply = generate(f[3], f[4], atoi(f[2].c_str()), budget);
+            } else if (op == 'U' && f.size() >= 6) {
+                int budget = atoi(f[1].c_str());
+                if (budget <= 0 || budget > kMaxBudgetMs) budget = opt.budget_ms;
+                std::vector<std::string> cands(f.begin() + 6, f.end());
+                reply = score_gen(f[4], f[5], atoi(f[3].c_str()), f[2] == "g", cands, budget);
             } else if (op == 'I') {
                 reply = {engine.is_ready() ? "1" : "0"};
             } else if (op == 'T') {

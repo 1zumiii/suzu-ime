@@ -489,12 +489,14 @@ end
 --   Rime 给出了但在打分范围之外的：提上来参与排序，名次取它在打分组里的位次，不重复显示；
 --   Rime 没给的：新建候选，先验名次取 max(词频名次, 打分组大小 + 1)，不会靠先验排到 Rime 的候选前面。
 -- 怪词不生成。只在打分组覆盖整个输入时进行（第二阶段只在打分组覆盖前半段时进行，两者不会同时发生）。
+-- pre：合并请求已经拿到的生成结果；false 表示试过但没生成出来，nil 表示还没试。
 -- 返回不必再按原位输出的组内下标（已被提上来的）。
 local function add_generated(feats, cand_of, all, n, has_model, best_e, input, context, llm, rp, pre)
     local skip_tail = {}
     if not (cfg.generate and has_model and best_e == #input and llm.generate) then return skip_tail end
     local okg, gl = true, pre
-    if not gl then okg, gl = pcall(llm.generate, context, input, cfg.gen_k, false) end
+    if pre == false then gl = nil   -- 合并请求里已经试过，没生成出来：不再请求
+    elseif not gl then okg, gl = pcall(llm.generate, context, input, cfg.gen_k, false) end
     if rp then rp.gen = (okg and type(gl) == "table") and #gl or -1 end
     if not okg or type(gl) ~= "table" then return skip_tail end
     local have, pos = {}, {}
@@ -529,6 +531,17 @@ local function add_generated(feats, cand_of, all, n, has_model, best_e, input, c
         end
     end
     return skip_tail
+end
+
+-- 第一阶段合并请求（核心提供 score_gen 时）：打分与生成一次提交，共用第一阶段时限。
+-- 返回 ok, result, why（与 pcall(llm.score) 相同）和生成结果（表；false = 试过但没生成出来；nil = 没试）
+local function score_gen(llm, context, cands, input, mode)
+    local okc, r = pcall(llm.score_gen, context, cands, input, cfg.gen_k, mode)
+    if not okc or type(r) ~= "table" then return false, nil, "error", nil end
+    local gen = nil
+    if r.gen_ok then gen = r.gen elseif r.gen_why ~= "not_tried" then gen = false end
+    if r.ok then return true, r.rank, nil, gen end
+    return true, nil, r.why, gen
 end
 
 local function inner(translation, env)
@@ -699,10 +712,6 @@ local function inner(translation, env)
     if _G.ai_rerank_context_get then ctx_text = _G.ai_rerank_context_get() end
     local context = (ctx_text or ""):gsub('%s+', '')
     if rp then rp.c = tail_chars(context, 30) end   -- 模型实际看到的上文（核心只取最后 30 个字）
-    if gen_probe and best_e == #input then
-        local okg, gl = pcall(llm.generate, context, input, cfg.gen_k, false)
-        if okg and type(gl) == "table" then gen_pre, use_model = gl, true end
-    end
     local kmax = cfg.max_candidates
     local cands = {}
     for i, c in ipairs(all) do
@@ -714,10 +723,25 @@ local function inner(translation, env)
     -- 第一阶段的候选其实没变，不需要重新推理。
     local key1 = context .. "\1" .. table.concat(cands, "\2")
     local cache = _G.llm_filter_cache
+    local s1_hit = cache and cache.key == key1 and cache.result
+    -- 合并请求：缓存没命中、且这次按键要生成时，打分与生成一次提交（Android 上少一次进程间往返）
+    local merged = llm ~= nil and llm.score_gen ~= nil and not s1_hit
+    local wants_gen = unified and cfg.generate and best_e == #input and llm ~= nil and llm.generate ~= nil
+    local sg_ok, sg_result, sg_why
+    if gen_probe and best_e == #input then
+        if merged then
+            local gl
+            sg_ok, sg_result, sg_why, gl = score_gen(llm, context, cands, input, "gen_first")
+            if gl then gen_pre, use_model = gl, true else sg_ok = nil end   -- 没生成出来：照旧不用模型
+        else
+            local okg, gl = pcall(llm.generate, context, input, cfg.gen_k, false)
+            if okg and type(gl) == "table" then gen_pre, use_model = gl, true end
+        end
+    end
     local ok, result, scores
     if not use_model then
         flags.s1 = "off"
-    elseif cache and cache.key == key1 and cache.result then
+    elseif s1_hit then
         ok, result, scores = true, cache.result, cache.scores
         flags.s1 = "hit"
     else
@@ -725,7 +749,13 @@ local function inner(translation, env)
         local why
         -- allow_sync = false：上文没预解码好、或后台预解码占着锁时，不在主线程上等待或现场解码，
         -- 这次按键保持原顺序，下一次按键再重排（避免输入卡顿）
-        ok, result, why = pcall(function() return llm.score(context, cands, false) end)
+        if sg_ok ~= nil then
+            ok, result, why = sg_ok, sg_result, sg_why
+        elseif merged and wants_gen then
+            ok, result, why, gen_pre = score_gen(llm, context, cands, input, "both")
+        else
+            ok, result, why = pcall(function() return llm.score(context, cands, false) end)
+        end
         if ok and type(result) == "table" then
             scores = get_scores(llm, cands)
             _G.llm_filter_cache = { key = key1, result = result, scores = scores }

@@ -8,6 +8,7 @@
 //   连不上       立即返回（指数退避 0.5 s → 10 s 后才再试），候选保持原顺序。
 #include <jni.h>
 
+#include <algorithm>
 #include <chrono>
 #include <condition_variable>
 #include <cstring>
@@ -63,17 +64,12 @@ void report_counters() {
     conn().rpc(req, 40, &rep);
 }
 
-int l_score(lua_State * L) {
-    size_t cl = 0;
-    const char * ctx = luaL_checklstring(L, 1, &cl);
-    luaL_checktype(L, 2, LUA_TTABLE);
-    bool allow_sync = sl::read_allow_sync(L, 3);
-    std::vector<std::string> cands = sl::read_candidates(L, 2, kMaxCandidates);
+// 打分请求（Q），含客户端计数。失败时 why 为原因（空串表示守护进程没给原因）
+bool do_score(const std::string & ctx, const std::vector<std::string> & cands, int budget, std::string * why,
+              std::vector<std::string> * ranked, std::vector<double> * scores) {
     g_cnt.score_calls++;
-    if (cands.size() < 2) return sl::push_skip(L, "few_candidates");
-
-    int budget = allow_sync ? g_sync_budget_ms : g_budget_ms;
-    std::vector<std::string> req = {"Q", std::to_string(budget), std::string(ctx, cl)};
+    if (cands.size() < 2) { *why = "few_candidates"; return false; }
+    std::vector<std::string> req = {"Q", std::to_string(budget), ctx};
     req.insert(req.end(), cands.begin(), cands.end());
     std::vector<std::string> rep;
     long long t0 = suzu::ipc::mono_ms();
@@ -83,23 +79,52 @@ int l_score(lua_State * L) {
     if (!ok) {
         bool timed_out = waited >= budget;
         if (timed_out) g_cnt.timeouts++; else g_cnt.down++;
-        return sl::push_skip(L, timed_out ? "timeout" : "down");
+        *why = timed_out ? "timeout" : "down";
+        return false;
     }
     if (rep.empty() || rep[0] != "R") {
-        const std::string why = rep.size() >= 2 ? rep[1] : "";
-        if (why != "no_context" && why != "few_candidates") g_cnt.skipped++;
-        lua_pushnil(L);
-        if (why.empty()) return 1;
-        lua_pushlstring(L, why.data(), why.size());
-        return 2;
+        *why = rep.size() >= 2 ? rep[1] : "";
+        if (*why != "no_context" && *why != "few_candidates") g_cnt.skipped++;
+        return false;
     }
     g_cnt.score_ok++;
+    for (size_t i = 1; i + 1 < rep.size(); i += 2) {
+        ranked->push_back(rep[i]);
+        scores->push_back(atof(rep[i + 1].c_str()));
+    }
+    return true;
+}
+
+// 生成请求（W，守护进程版本 3 起）
+bool do_generate(const std::string & ctx, const std::string & input, long long k, int budget, std::string * why,
+                 std::vector<std::string> * words, std::vector<double> * scores, std::vector<int> * ranks) {
+    std::vector<std::string> rep;
+    bool ok = conn().rpc({"W", std::to_string(budget), std::to_string(k), ctx, input}, budget + kMarginMs, &rep);
+    if (!ok) { *why = "down"; return false; }
+    if (rep.empty() || rep[0] != "R") {
+        // 旧版守护进程不认识 W：应答 ERR op
+        *why = (!rep.empty() && rep[0] == "ERR") ? "unsupported" : (rep.size() >= 2 ? rep[1] : "");
+        return false;
+    }
+    for (size_t i = 1; i + 2 < rep.size(); i += 3) {
+        words->push_back(rep[i]);
+        scores->push_back(atof(rep[i + 1].c_str()));
+        ranks->push_back(atoi(rep[i + 2].c_str()));
+    }
+    return true;
+}
+
+int l_score(lua_State * L) {
+    size_t cl = 0;
+    const char * ctx = luaL_checklstring(L, 1, &cl);
+    luaL_checktype(L, 2, LUA_TTABLE);
+    bool allow_sync = sl::read_allow_sync(L, 3);
+    std::vector<std::string> cands = sl::read_candidates(L, 2, kMaxCandidates);
+    std::string why;
     std::vector<std::string> ranked;
     std::vector<double> scores;
-    for (size_t i = 1; i + 1 < rep.size(); i += 2) {
-        ranked.push_back(rep[i]);
-        scores.push_back(atof(rep[i + 1].c_str()));
-    }
+    if (!do_score(std::string(ctx, cl), cands, allow_sync ? g_sync_budget_ms : g_budget_ms, &why, &ranked, &scores))
+        return sl::push_skip(L, why.c_str());
     sl::remember_scores(ranked, scores);
     sl::push_ranking(L, ranked, scores);   // 应答已按分数降序，这里稳定排序不改变顺序
     return 1;
@@ -112,25 +137,97 @@ int l_generate(lua_State * L) {
     const char * in = luaL_checklstring(L, 2, &il);
     lua_Integer k = luaL_optinteger(L, 3, 10);
     bool allow_sync = sl::read_allow_sync(L, 4);
-    int budget = allow_sync ? g_sync_budget_ms : g_budget_ms;
-    std::vector<std::string> rep;
-    bool ok = conn().rpc({"W", std::to_string(budget), std::to_string(k), std::string(ctx, cl), std::string(in, il)},
-                         budget + kMarginMs, &rep);
-    if (!ok) return sl::push_skip(L, "down");
-    if (rep.empty() || rep[0] != "R") {
-        // 旧版守护进程不认识 W：应答 ERR op
-        const std::string why = (!rep.empty() && rep[0] == "ERR") ? "unsupported" : (rep.size() >= 2 ? rep[1] : "");
-        return sl::push_skip(L, why.c_str());
-    }
+    std::string why;
     std::vector<std::string> words;
     std::vector<double> scores;
     std::vector<int> ranks;
-    for (size_t i = 1; i + 2 < rep.size(); i += 3) {
-        words.push_back(rep[i]);
-        scores.push_back(atof(rep[i + 1].c_str()));
-        ranks.push_back(atoi(rep[i + 2].c_str()));
-    }
+    if (!do_generate(std::string(ctx, cl), std::string(in, il), k, allow_sync ? g_sync_budget_ms : g_budget_ms, &why,
+                     &words, &scores, &ranks))
+        return sl::push_skip(L, why.c_str());
     return sl::push_generated(L, words, scores, ranks, (int)words.size());
+}
+
+// 合并请求（U，守护进程版本 4 起）。返回 false 表示守护进程不认识 U（应答 ERR op），由调用方改走 Q 与 W
+bool score_gen_u(const std::string & ctx, const std::vector<std::string> & cands, const std::string & input, long long k,
+                 bool gen_first, int budget, sl::ScoreGenOut * o) {
+    std::vector<std::string> req = {"U", std::to_string(budget), gen_first ? "g" : "b", std::to_string(k), ctx, input};
+    req.insert(req.end(), cands.begin(), cands.end());
+    std::vector<std::string> rep;
+    long long t0 = suzu::ipc::mono_ms();
+    bool ok = conn().rpc(req, budget + kMarginMs, &rep);
+    long long waited = suzu::ipc::mono_ms() - t0;
+    if (ok && !rep.empty() && rep[0] == "ERR") return false;
+    record_wait(waited);
+    o->score_tried = o->gen_tried = true;
+    if (!ok || rep.size() < 5 || rep[0] != "U") {
+        bool timed_out = !ok && waited >= budget;
+        g_cnt.score_calls++;
+        if (timed_out) g_cnt.timeouts++; else g_cnt.down++;
+        o->why = o->gen_why = timed_out ? "timeout" : "down";
+        return true;
+    }
+    const std::string & ss = rep[1];
+    const std::string & gs = rep[2];
+    o->score_tried = ss != "not_tried";
+    o->gen_tried = gs != "not_tried";
+    if (o->score_tried) {
+        g_cnt.score_calls++;
+        if (ss == "ok") g_cnt.score_ok++;
+        else if (ss != "no_context" && ss != "few_candidates") g_cnt.skipped++;
+    }
+    o->score_ok = ss == "ok";
+    o->why = ss;
+    o->gen_ok = gs == "ok";
+    o->gen_why = gs;
+    o->matched = atoi(rep[3].c_str());
+    size_t n = (size_t)std::max(0, atoi(rep[4].c_str()));
+    size_t i = 5;
+    for (size_t j = 0; j < n && i + 1 < rep.size(); j++, i += 2) {
+        o->cands.push_back(rep[i]);
+        o->scores.push_back(atof(rep[i + 1].c_str()));
+    }
+    if (o->gen_ok)
+        for (; i + 2 < rep.size(); i += 3) {
+            o->words.push_back(rep[i]);
+            o->gen_scores.push_back(atof(rep[i + 1].c_str()));
+            o->ranks.push_back(atoi(rep[i + 2].c_str()));
+        }
+    if (o->score_ok && o->cands.empty()) { o->score_ok = false; o->why = "error"; }
+    return true;
+}
+
+// score_gen(上文, 候选表, 输入串, k = 10, 模式 = "both" | "gen_first")：与进程内模块同一接口，共用第一阶段时限。
+// 守护进程版本 4 起发一个 U 请求；旧守护进程改发 Q 与 W（行为与分别调用 score、generate 相同）
+int l_score_gen(lua_State * L) {
+    size_t cl = 0, il = 0;
+    const char * cp = luaL_checklstring(L, 1, &cl);
+    luaL_checktype(L, 2, LUA_TTABLE);
+    const char * ip = luaL_checklstring(L, 3, &il);
+    lua_Integer k = luaL_optinteger(L, 4, 10);
+    bool gen_first = strcmp(luaL_optstring(L, 5, "both"), "gen_first") == 0;
+    std::vector<std::string> cands = sl::read_candidates(L, 2, kMaxCandidates);
+    std::string ctx(cp, cl), input(ip, il);
+    sl::ScoreGenOut o;
+    int v = conn().peer_version();
+    if ((v == 0 || v >= 4) && score_gen_u(ctx, cands, input, k, gen_first, g_budget_ms, &o)) return sl::push_score_gen(L, o);
+    o = sl::ScoreGenOut();
+    auto run_score = [&] {
+        o.score_tried = true;
+        o.score_ok = do_score(ctx, cands, g_budget_ms, &o.why, &o.cands, &o.scores);
+    };
+    auto run_gen = [&] {
+        o.gen_tried = true;
+        o.gen_ok = do_generate(ctx, input, k, g_budget_ms, &o.gen_why, &o.words, &o.gen_scores, &o.ranks);
+        o.matched = (int)o.words.size();
+    };
+    if (gen_first) {
+        run_gen();
+        if (o.gen_ok) run_score();
+    } else {
+        run_score();
+        if (o.score_ok) run_gen();
+    }
+    return sl::push_score_gen(L, o);
 }
 
 int l_get_scores(lua_State * L) { sl::push_last_scores(L); return 1; }
@@ -332,7 +429,7 @@ int l_gc(lua_State *) { conn().close(); return 0; }
 extern "C" __attribute__((visibility("default"))) int luaopen_rime_llm(lua_State * L) {
     lua_newtable(L);
     static const sl::Fn fns[] = {
-        {"score", l_score}, {"generate", l_generate}, {"get_scores", l_get_scores}, {"prepare", l_prepare}, {"is_ready", l_is_ready},
+        {"score", l_score}, {"generate", l_generate}, {"score_gen", l_score_gen}, {"get_scores", l_get_scores}, {"prepare", l_prepare}, {"is_ready", l_is_ready},
         {"touch", l_touch}, {"screen_off", l_screen_off}, {"set_enabled", l_set_enabled}, {"set_lexicon", l_set_lexicon}, {"status", l_status},
         {"connected", l_connected}, {"llm_context", l_llm_context}, {"kick_context", l_noop}, {"edit_reset_context", l_noop}, {"invalidate_context", l_noop},
         {"fg_changed", l_false}, {"click_happened", l_false}, {"match_code", sl::l_match_code},

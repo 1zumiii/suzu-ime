@@ -67,6 +67,38 @@ int l_generate(lua_State * L) {
     return sl::push_generated(L, r.words, r.scores, r.ranks, r.matched);
 }
 
+// score_gen(上文, 候选表, 输入串, k = 10, 模式 = "both" | "gen_first")：第一阶段的打分与生成合成一次请求，
+// 共用第一阶段时限 budget_ms。返回一张表，字段见 lua_common.h 的 push_score_gen
+int l_score_gen(lua_State * L) {
+    size_t cl = 0, il = 0;
+    const char * ctx = luaL_checklstring(L, 1, &cl);
+    luaL_checktype(L, 2, LUA_TTABLE);
+    const char * in = luaL_checklstring(L, 3, &il);
+    lua_Integer k = luaL_optinteger(L, 4, 10);
+    const char * mode = luaL_optstring(L, 5, "both");
+    auto cands = sl::read_candidates(L, 2, 64);
+    // 以下不再调用任何可能 longjmp 的 Lua 函数，直到压栈结果
+    suzu::ScoreGenResult r = engine().score_gen(std::string(ctx, cl), cands, std::string(in, il), (int)k,
+                                                strcmp(mode, "gen_first") == 0 ? suzu::ScoreGenMode::GenFirst
+                                                                              : suzu::ScoreGenMode::Both,
+                                                g_budget_ms);
+    sl::ScoreGenOut o;
+    o.score_tried = r.score_tried;
+    o.score_ok = r.score_tried && r.score.status == ScoreStatus::Ok;
+    o.why = suzu::score_reason(r.score.status);
+    if (o.score_ok) { o.cands = std::move(r.score.cands); o.scores = std::move(r.score.scores); }
+    o.gen_tried = r.gen_tried;
+    o.gen_ok = r.gen_tried && r.gen.status == ScoreStatus::Ok;
+    o.gen_why = suzu::score_reason(r.gen.status);
+    if (o.gen_ok) {
+        o.words = std::move(r.gen.words);
+        o.gen_scores = std::move(r.gen.scores);
+        o.ranks = std::move(r.gen.ranks);
+        o.matched = r.gen.matched;
+    }
+    return sl::push_score_gen(L, o);
+}
+
 // word_freq(词)：词典权重（词频先验），不在索引里或词典未就绪时返回 nil
 int l_word_freq(lua_State * L) {
     size_t n = 0;
@@ -186,7 +218,7 @@ SUZU_EXPORT int luaopen_rime_llm(lua_State * L) {
     g_open_count++;
     lua_newtable(L);
     static const sl::Fn fns[] = {
-        {"score", l_score}, {"generate", l_generate}, {"get_scores", l_get_scores}, {"word_freq", l_word_freq}, {"prepare", l_prepare}, {"is_ready", l_is_ready},
+        {"score", l_score}, {"generate", l_generate}, {"score_gen", l_score_gen}, {"get_scores", l_get_scores}, {"word_freq", l_word_freq}, {"prepare", l_prepare}, {"is_ready", l_is_ready},
         {"status", l_status}, {"touch", l_touch}, {"now_ms", sl::l_now_ms}, {"sleep_ms", sl::l_sleep_ms},
         {"match_code", sl::l_match_code}, {"llm_context", l_llm_context}, {"kick_context", l_kick_context},
         {"edit_reset_context", l_edit_reset_context}, {"invalidate_context", l_invalidate_context}, {"fg_changed", l_fg_changed},

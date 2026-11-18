@@ -21,6 +21,7 @@
 
 #include "lexicon/lexicon.h"
 #include "model/suzu_model.h"
+#include "runtime/clock.h"
 #include "runtime/result_cache.h"
 #include "runtime/stats.h"
 
@@ -57,6 +58,19 @@ struct GenResult {
     std::vector<int> ranks;            // 词频名次（在这次输入匹配到的全部词里，从 1 起）
     int matched = 0;                   // 匹配到的词数
     bool cache_hit = false;
+};
+
+// 第一阶段合并请求：打分与生成一次提交，共用一个时限
+enum class ScoreGenMode {
+    Both,       // 打分与生成一起排队（打分在前）；打分当场失败时不生成
+    GenFirst,   // 先生成，生成成功才打分（编码不合打分规则时的试探）
+};
+
+struct ScoreGenResult {
+    ScoreResult score;
+    GenResult gen;
+    bool score_tried = false;          // false：没有打分（GenFirst 且生成没成功）
+    bool gen_tried = false;            // false：没有生成（Both 且打分当场失败）
 };
 
 struct EngineConfig {
@@ -99,6 +113,9 @@ public:
     // 候选生成：按输入串（拼音、简拼或两者混合）在词典里匹配，由模型按上文挑出前 k 个。时限与缓存同 score。
     // 全拼输入（能完整切成纯音节）不生成，返回 NotApplicable。
     GenResult generate(const std::string & context, const std::string & input, int k, double budget_ms);
+    // 打分加生成：一次提交，总共最多等 budget_ms。结果与分别调用 score、generate 相同（缓存也共用）
+    ScoreGenResult score_gen(const std::string & context, const std::vector<std::string> & cands, const std::string & input,
+                             int k, ScoreGenMode mode, double budget_ms);
     // 词的词典权重（词频先验）；词典未就绪或词不在索引里返回 -1。
     int word_weight(const std::string & word) const;
     void touch();                      // 刷新“最近使用”时间（空闲卸载用）
@@ -122,6 +139,16 @@ private:
     void do_unload(const char * why);
     void start_lexicon_load_locked(const EngineConfig & cfg, uint64_t gen);
     void run_score(const std::shared_ptr<ScoreJob> & job);
+    std::shared_ptr<ScoreJob> begin_score(const std::string & context, const std::vector<std::string> & cands,
+                                          Clock::time_point t0, ScoreResult * res);
+    void finish_score(const std::shared_ptr<ScoreJob> & job, Clock::time_point deadline, double budget_ms, ScoreResult * res);
+    std::shared_ptr<ScoreJob> begin_generate(const std::string & context, const std::string & input, int k,
+                                             Clock::time_point t0, GenResult * res);
+    void finish_generate(const std::shared_ptr<ScoreJob> & job, Clock::time_point deadline, double budget_ms, GenResult * res);
+    void wait_job(std::unique_lock<std::mutex> & lk, const std::shared_ptr<ScoreJob> & job, Clock::time_point deadline,
+                  double budget_ms);
+    static void mark_oov(const ScoreJob & job, std::vector<double> * sc);
+    static void fill_generated(const ScoreJob & job, const std::vector<double> & flat, GenResult * res);
     void run_prepare(const TokenSeq & ctx);
 
     mutable std::mutex mu_;

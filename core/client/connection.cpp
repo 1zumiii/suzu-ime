@@ -56,6 +56,12 @@ void Connection::close() {
 
 void Connection::close_locked() {
     if (fd_ >= 0) { ::close(fd_); fd_ = -1; }
+    peer_version_ = 0;
+}
+
+int Connection::peer_version() const {
+    std::lock_guard<std::mutex> lk(mu_);
+    return fd_ >= 0 ? peer_version_ : 0;
 }
 
 void Connection::fail_locked() {
@@ -111,12 +117,14 @@ bool Connection::connect_locked(long long deadline) {
         fail_locked();
         return false;
     }
+    int version = rep.size() >= 3 ? atoi(rep[2].c_str()) : 0;
     for (auto & kv : config_)
         if (!ipc::send_frame(fd, {"C", kv.first, std::to_string(kv.second)}, left())) { ::close(fd); fail_locked(); return false; }
     if (!lexicon_.empty() && !ipc::send_frame(fd, {"X", lexicon_}, left())) { ::close(fd); fail_locked(); return false; }
     for (size_t i = 0; i < config_.size() + (lexicon_.empty() ? 0 : 1); i++)
         if (!ipc::recv_frame(fd, rep, left(), left())) { ::close(fd); fail_locked(); return false; }
     fd_ = fd;
+    peer_version_ = version;
     fail_streak_ = 0;
     return true;
 }

@@ -25,6 +25,8 @@ public:
     bool rpc(const std::vector<std::string> & req, int timeout_ms, std::vector<std::string> * rep);
 
     bool connected() const;
+    // 当前连接上守护进程的协议版本（握手应答里的版本号）；没有连接时为 0
+    int peer_version() const;
     void close();
 
 private:
@@ -37,6 +39,7 @@ private:
     int fd_ = -1;
     long long retry_at_ = 0;
     int fail_streak_ = 0;
+    int peer_version_ = 0;
     std::string dir_;
     int port_ = 17920;
     std::map<std::string, long long> config_;

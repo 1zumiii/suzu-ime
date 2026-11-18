@@ -93,9 +93,12 @@ struct Engine::ScoreJob {
     bool abandoned = false;    // 等待方已超时返回
     bool ok = false;
     std::vector<double> scores;
+    Clock::time_point t0;      // 调用方开始等待的时刻
+    std::vector<char> oov;     // 打分：含词表外字的候选
     // 生成任务
     bool gen = false;
     int beam = 0, k = 0;
+    std::shared_ptr<const Vocab> vocab;   // 生成：把词条编号还原成词
 };
 
 Engine::Engine() {
@@ -294,22 +297,31 @@ bool Engine::prepare(const std::string & context) {
     return true;
 }
 
-ScoreResult Engine::score(const std::string & context, const std::vector<std::string> & cands, double budget_ms) {
-    const Clock::time_point t0 = Clock::now();
-    ScoreResult res;
+// ---- 打分与生成都分两段：begin_* 在调用方线程上分词、查缓存、入队，不等待；finish_* 等到截止时刻并填写结果。
+// begin_* 返回 nullptr 表示结果已经确定（失败或缓存命中），不必等待。score、generate、score_gen 共用这两段。
+
+void Engine::wait_job(std::unique_lock<std::mutex> & lk, const std::shared_ptr<ScoreJob> & job, Clock::time_point deadline,
+                      double budget_ms) {
+    auto pred = [&] { return job->done; };
+    if (budget_ms > 0) job->done_cv.wait_until(lk, deadline, pred);
+    else job->done_cv.wait(lk, pred);
+}
+
+std::shared_ptr<Engine::ScoreJob> Engine::begin_score(const std::string & context, const std::vector<std::string> & cands,
+                                                      Clock::time_point t0, ScoreResult * res) {
     std::shared_ptr<const Vocab> vocab;
     int chars, max_cands;
     {
         std::lock_guard<std::mutex> lk(mu_);
         stats_.requests++;
         last_use_ms_ = now_ms();
-        if (!enabled_) { stats_.skip_off++; res.status = ScoreStatus::Disabled; return res; }
-        if (cands.size() < 2) { stats_.few_candidates++; res.status = ScoreStatus::FewCandidates; return res; }
+        if (!enabled_) { stats_.skip_off++; res->status = ScoreStatus::Disabled; return nullptr; }
+        if (cands.size() < 2) { stats_.few_candidates++; res->status = ScoreStatus::FewCandidates; return nullptr; }
         if (state_ != EngineState::Ready) {
             request_load_locked();
-            if (state_ == EngineState::Loading) { stats_.skip_loading++; res.status = ScoreStatus::Loading; }
-            else { stats_.skip_no_model++; res.status = ScoreStatus::NoModel; }
-            return res;
+            if (state_ == EngineState::Loading) { stats_.skip_loading++; res->status = ScoreStatus::Loading; }
+            else { stats_.skip_no_model++; res->status = ScoreStatus::NoModel; }
+            return nullptr;
         }
         vocab = vocab_;
         chars = cfg_.context_chars;
@@ -318,58 +330,74 @@ ScoreResult Engine::score(const std::string & context, const std::vector<std::st
 
     // 分词在锁外做（词表是只读的共享对象）
     auto job = std::make_shared<ScoreJob>();
+    job->t0 = t0;
     job->ctx = vocab->encode_context(context, chars);
     job->cands.assign(cands.begin(), cands.begin() + (long)std::min(cands.size(), (size_t)max_cands));
     for (auto & c : job->cands) job->cand_tokens.push_back(vocab->encode_candidate(c));
-    res.cands = job->cands;
+    res->cands = job->cands;
     // 含词表外字（编成 <unk>）的候选：模型分不可信。<unk> 在训练语料里很常见，单个 <unk> 的对数概率远高于
     // 任何真实的词，生僻字候选会因此排到首位。这类候选记为无效分，由 Lua 排到同组末尾。
-    std::vector<char> oov(job->cand_tokens.size(), 0);
-    for (size_t i = 0; i < oov.size(); i++)
-        for (Token t : job->cand_tokens[i]) if (t == kUnkToken) { oov[i] = 1; break; }
-    auto mark_oov = [&oov](std::vector<double> & sc) {
-        for (size_t i = 0; i < sc.size() && i < oov.size(); i++) if (oov[i]) sc[i] = kOovScore;
-    };
+    job->oov.assign(job->cand_tokens.size(), 0);
+    for (size_t i = 0; i < job->oov.size(); i++)
+        for (Token t : job->cand_tokens[i]) if (t == kUnkToken) { job->oov[i] = 1; break; }
 
-    std::unique_lock<std::mutex> lk(mu_);
-    if (job->ctx.empty()) { stats_.no_context++; res.status = ScoreStatus::NoContext; return res; }
+    std::lock_guard<std::mutex> lk(mu_);
+    if (job->ctx.empty()) { stats_.no_context++; res->status = ScoreStatus::NoContext; return nullptr; }
     job->key = ResultCache::make_key(job->ctx, job->cands);
-    if (cache_.get(job->key, &res.scores)) {
+    if (cache_.get(job->key, &res->scores)) {
         stats_.ok++;
         stats_.cache_hits++;
         stats_.wait_ms.add(ms_between(t0, Clock::now()));
-        mark_oov(res.scores);
-        res.status = ScoreStatus::Ok;
-        res.cache_hit = true;
-        return res;
+        mark_oov(*job, &res->scores);
+        res->status = ScoreStatus::Ok;
+        res->cache_hit = true;
+        return nullptr;
     }
-    if (state_ != EngineState::Ready) { stats_.skip_loading++; res.status = ScoreStatus::Loading; return res; }
+    if (state_ != EngineState::Ready) { stats_.skip_loading++; res->status = ScoreStatus::Loading; return nullptr; }
     job->submitted = Clock::now();
     score_queue_.push_back(job);
     cv_.notify_all();
-    auto pred = [&] { return job->done; };
-    if (budget_ms > 0) job->done_cv.wait_until(lk, t0 + std::chrono::duration<double, std::milli>(budget_ms), pred);
-    else job->done_cv.wait(lk, pred);
-    double waited = ms_between(t0, Clock::now());
+    return job;
+}
+
+void Engine::finish_score(const std::shared_ptr<ScoreJob> & job, Clock::time_point deadline, double budget_ms,
+                          ScoreResult * res) {
+    std::unique_lock<std::mutex> lk(mu_);
+    wait_job(lk, job, deadline, budget_ms);
+    double waited = ms_between(job->t0, Clock::now());
     stats_.wait_ms.add(waited);
     if (!job->done) {
         job->abandoned = true;
         stats_.skip_timeout++;
-        res.status = ScoreStatus::Timeout;
+        res->status = ScoreStatus::Timeout;
         log_event("score timeout wait=%.1f budget=%.0f queue=%zu", waited, budget_ms, score_queue_.size());
-        return res;
+        return;
     }
-    if (!job->ok) { stats_.skip_error++; res.status = ScoreStatus::Error; return res; }
+    if (!job->ok) { stats_.skip_error++; res->status = ScoreStatus::Error; return; }
     stats_.ok++;
-    res.scores = job->scores;
-    mark_oov(res.scores);
-    res.status = ScoreStatus::Ok;
-    return res;
+    res->scores = job->scores;
+    mark_oov(*job, &res->scores);
+    res->status = ScoreStatus::Ok;
 }
 
-GenResult Engine::generate(const std::string & context, const std::string & input, int k, double budget_ms) {
-    const Clock::time_point t0 = Clock::now();
-    GenResult res;
+void Engine::mark_oov(const ScoreJob & job, std::vector<double> * sc) {
+    for (size_t i = 0; i < sc->size() && i < job.oov.size(); i++) if (job.oov[i]) (*sc)[i] = kOovScore;
+}
+
+void Engine::fill_generated(const ScoreJob & job, const std::vector<double> & flat, GenResult * res) {
+    for (size_t j = 0; j + 1 < flat.size(); j += 2) {
+        size_t i = (size_t)flat[j];
+        if (i >= job.cand_tokens.size()) continue;
+        std::string w;
+        for (Token t : job.cand_tokens[i]) w += job.vocab->piece(t);
+        res->words.push_back(std::move(w));
+        res->scores.push_back(flat[j + 1]);
+        res->ranks.push_back((int)i + 1);
+    }
+}
+
+std::shared_ptr<Engine::ScoreJob> Engine::begin_generate(const std::string & context, const std::string & input, int k,
+                                                         Clock::time_point t0, GenResult * res) {
     std::shared_ptr<const Vocab> vocab;
     std::shared_ptr<const Lexicon> lex;
     int chars, beam;
@@ -378,11 +406,11 @@ GenResult Engine::generate(const std::string & context, const std::string & inpu
         std::lock_guard<std::mutex> lk(mu_);
         stats_.gen_requests++;
         last_use_ms_ = now_ms();
-        if (!enabled_) { res.status = ScoreStatus::Disabled; return res; }
+        if (!enabled_) { res->status = ScoreStatus::Disabled; return nullptr; }
         if (state_ != EngineState::Ready) {
             request_load_locked();
-            res.status = state_ == EngineState::Loading ? ScoreStatus::Loading : ScoreStatus::NoModel;
-            return res;
+            res->status = state_ == EngineState::Loading ? ScoreStatus::Loading : ScoreStatus::NoModel;
+            return nullptr;
         }
         vocab = vocab_;
         lex = lexicon_;
@@ -390,65 +418,125 @@ GenResult Engine::generate(const std::string & context, const std::string & inpu
         chars = cfg_.context_chars;
         beam = cfg_.gen_beam;
     }
-    if (!lex || beam <= 0) { res.status = ScoreStatus::NoLexicon; return res; }
+    if (!lex || beam <= 0) { res->status = ScoreStatus::NoLexicon; return nullptr; }
 
     // 切分与匹配在锁外做（词典索引加载后只读）
     bool full = false;
     auto segs = lex->segment(input, &full);
-    if (full || segs.empty()) { res.status = ScoreStatus::NotApplicable; return res; }
+    if (full || segs.empty()) { res->status = ScoreStatus::NotApplicable; return nullptr; }
     std::vector<uint32_t> entries = lex->match(segs);
-    res.matched = (int)entries.size();
-    if (entries.empty()) { res.status = ScoreStatus::FewCandidates; return res; }   // 只匹配到一个词也生成：它可能正是 Rime 没给的那个
+    res->matched = (int)entries.size();
+    if (entries.empty()) { res->status = ScoreStatus::FewCandidates; return nullptr; }   // 只匹配到一个词也生成：它可能正是 Rime 没给的那个
     if (entries.size() > kGenMaxWords) entries.resize(kGenMaxWords);
     auto job = std::make_shared<ScoreJob>();
+    job->t0 = t0;
     job->gen = true;
     job->beam = beam;
     job->k = std::max(1, k);
+    job->vocab = vocab;
     job->ctx = vocab->encode_context(context, chars);
     for (uint32_t e : entries) job->cand_tokens.push_back(lex->tokens(e));
-    auto fill = [&](const std::vector<double> & flat) {
-        for (size_t j = 0; j + 1 < flat.size(); j += 2) {
-            size_t i = (size_t)flat[j];
-            if (i >= entries.size()) continue;
-            std::string w;
-            for (Token t : job->cand_tokens[i]) w += vocab->piece(t);
-            res.words.push_back(std::move(w));
-            res.scores.push_back(flat[j + 1]);
-            res.ranks.push_back((int)i + 1);
-        }
-    };
 
-    std::unique_lock<std::mutex> lk(mu_);
-    if (job->ctx.empty()) { res.status = ScoreStatus::NoContext; return res; }
+    std::lock_guard<std::mutex> lk(mu_);
+    if (job->ctx.empty()) { res->status = ScoreStatus::NoContext; return nullptr; }
     // 缓存的值是词条在这份词典匹配结果里的下标：键里必须带词典的代次，否则换词典后会把旧分数套到新词上
     job->key = ResultCache::make_key(job->ctx, {"\x01gen", input, std::to_string(beam), std::to_string(job->k),
                                                 std::to_string(lex_gen)});
     std::vector<double> flat;
     if (cache_.get(job->key, &flat)) {
         stats_.gen_ok++;
-        fill(flat);
-        res.status = ScoreStatus::Ok;
-        res.cache_hit = true;
-        return res;
+        fill_generated(*job, flat, res);
+        res->status = ScoreStatus::Ok;
+        res->cache_hit = true;
+        return nullptr;
     }
-    if (state_ != EngineState::Ready) { res.status = ScoreStatus::Loading; return res; }
+    if (state_ != EngineState::Ready) { res->status = ScoreStatus::Loading; return nullptr; }
     job->submitted = Clock::now();
     score_queue_.push_back(job);
     cv_.notify_all();
-    auto pred = [&] { return job->done; };
-    if (budget_ms > 0) job->done_cv.wait_until(lk, t0 + std::chrono::duration<double, std::milli>(budget_ms), pred);
-    else job->done_cv.wait(lk, pred);
+    return job;
+}
+
+void Engine::finish_generate(const std::shared_ptr<ScoreJob> & job, Clock::time_point deadline, double budget_ms,
+                             GenResult * res) {
+    std::unique_lock<std::mutex> lk(mu_);
+    wait_job(lk, job, deadline, budget_ms);
     if (!job->done) {
         job->abandoned = true;
         stats_.gen_timeout++;
-        res.status = ScoreStatus::Timeout;
-        return res;
+        res->status = ScoreStatus::Timeout;
+        return;
     }
-    if (!job->ok) { res.status = ScoreStatus::Error; return res; }
+    if (!job->ok) { res->status = ScoreStatus::Error; return; }
     stats_.gen_ok++;
-    fill(job->scores);
-    res.status = ScoreStatus::Ok;
+    fill_generated(*job, job->scores, res);
+    res->status = ScoreStatus::Ok;
+}
+
+ScoreResult Engine::score(const std::string & context, const std::vector<std::string> & cands, double budget_ms) {
+    const Clock::time_point t0 = Clock::now();
+    ScoreResult res;
+    auto job = begin_score(context, cands, t0, &res);
+    if (job) finish_score(job, t0 + std::chrono::duration_cast<Clock::duration>(std::chrono::duration<double, std::milli>(budget_ms)),
+                          budget_ms, &res);
     return res;
+}
+
+GenResult Engine::generate(const std::string & context, const std::string & input, int k, double budget_ms) {
+    const Clock::time_point t0 = Clock::now();
+    GenResult res;
+    auto job = begin_generate(context, input, k, t0, &res);
+    if (job) finish_generate(job, t0 + std::chrono::duration_cast<Clock::duration>(std::chrono::duration<double, std::milli>(budget_ms)),
+                             budget_ms, &res);
+    return res;
+}
+
+ScoreGenResult Engine::score_gen(const std::string & context, const std::vector<std::string> & cands,
+                                 const std::string & input, int k, ScoreGenMode mode, double budget_ms) {
+    const Clock::time_point t0 = Clock::now();
+    const Clock::time_point deadline =
+        t0 + std::chrono::duration_cast<Clock::duration>(std::chrono::duration<double, std::milli>(budget_ms));
+    ScoreGenResult out;
+    {
+        std::lock_guard<std::mutex> lk(mu_);
+        stats_.sg_requests++;
+    }
+    if (mode == ScoreGenMode::GenFirst) {
+        // 编码不合打分规则（如两个字母的简拼）：先生成，能生成才打分
+        out.gen_tried = true;
+        auto gj = begin_generate(context, input, k, t0, &out.gen);
+        if (gj) finish_generate(gj, deadline, budget_ms, &out.gen);
+        if (out.gen.status != ScoreStatus::Ok) return out;
+        out.score_tried = true;
+        auto sj = begin_score(context, cands, t0, &out.score);
+        if (sj) finish_score(sj, deadline, budget_ms, &out.score);
+        return out;
+    }
+    // 打分与生成一起入队（打分在前），共用一个截止时刻。打分当场失败时不生成：Lua 只在有模型分时使用生成结果
+    out.score_tried = true;
+    auto sj = begin_score(context, cands, t0, &out.score);
+    std::shared_ptr<ScoreJob> gj;
+    if (sj || out.score.status == ScoreStatus::Ok) {
+        out.gen_tried = true;
+        gj = begin_generate(context, input, k, t0, &out.gen);
+    }
+    if (sj) finish_score(sj, deadline, budget_ms, &out.score);
+    if (!gj) return out;
+    if (out.score.status == ScoreStatus::Timeout) {
+        // 打分超时：还在排队的生成任务撤掉。否则工作线程会因为“后面还有任务”丢弃已被放弃的打分任务，
+        // 下一次按键就拿不到这次打分的缓存（单独调用 score 时，超时的任务会算完进缓存）
+        std::lock_guard<std::mutex> lk(mu_);
+        auto it = std::find(score_queue_.begin(), score_queue_.end(), gj);
+        if (it != score_queue_.end()) {
+            score_queue_.erase(it);
+            gj->done = true;
+            stats_.gen_timeout++;
+            out.gen.status = ScoreStatus::Timeout;
+            return out;
+        }
+    }
+    finish_generate(gj, deadline, budget_ms, &out.gen);
+    return out;
 }
 
 void Engine::shutdown() {
