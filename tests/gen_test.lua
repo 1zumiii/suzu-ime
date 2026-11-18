@@ -188,6 +188,17 @@ m.sleep_ms(500)
 local r3 = m.score(CTX3, C2, false)
 check("score_gen 超时后，同样的打分直接命中缓存", r3 ~= nil and tonumber(m.status():match('"cache_hits":(%d+)')) == hits0 + 1)
 check("状态里记录 score_gen 次数", tonumber(m.status():match('"score_gen":(%d+)')) == 7)
+-- 共用一次解码：打分与生成都没命中缓存时合成一个任务（状态里的 shared 加一）；关掉 share_decode 后各排一个
+local function shared() return tonumber(m.status():match('"shared":(%d+)')) end
+local sh0 = shared()
+q = m.score_gen("上个月我们部门新来了一位", C2, "jl", 10)
+check("score_gen 两边都要算：合成一个任务", q.ok and q.gen_ok and #q.gen > 0 and shared() == sh0 + 1, tostring(shared() - sh0))
+local same_set = q.ok and #q.rank == #C2
+check("合成任务的打分覆盖全部候选", same_set)
+m.share_decode = false
+q = m.score_gen("上个月我们部门新来了两位", C2, "jl", 10)
+m.share_decode = true
+check("share_decode 关闭：不合成任务，结果照常", q.ok and q.gen_ok and shared() == sh0 + 1)
 
 if fails > 0 then print(fails .. " FAILED"); os.exit(1) end
 print("ALL PASS")

@@ -417,4 +417,139 @@ bool SuzuModel::generate(const TokenSeq & ctx, const std::vector<TokenSeq> & wor
     return true;
 }
 
+bool SuzuModel::score_generate(const TokenSeq & ctx, const std::vector<TokenSeq> & cands, const std::vector<TokenSeq> & words,
+                               int beam, std::vector<double> * score_out, std::vector<double> * gen_out, DecodeStats * st) {
+    beam = std::min(beam, opt_.gen_beam);
+    // 共享解码依赖前缀合并；对照测量（share_prefix = false）或缺一方时，分开计算
+    auto separate = [&] {
+        return score(ctx, cands, score_out, st) && generate(ctx, words, beam, gen_out, st);
+    };
+    if (cands.empty() || words.empty() || beam < 1 || !opt_.share_prefix) return separate();
+    score_out->assign(cands.size(), -1e10);
+    gen_out->assign(words.size(), kNotReached);
+    if ((int)cands.size() > opt_.max_candidates) return false;
+    int si = ensure_context(ctx, st);
+    if (si < 0) return false;
+    const ContextSlot & slot = slots_[si];
+    const int ctx_len = (int)ctx.size();
+    const int max_chars = std::min(opt_.candidate_max_chars, n_ctx_train_ - ctx_len);
+    if (max_chars < 1) return false;
+
+    // 原生候选在前、生成词在后，建一棵树。nat：在某个原生候选的路径上；wrd：在某个生成词的路径上
+    const int nc = (int)cands.size();
+    std::vector<TokenSeq> all(cands);
+    all.insert(all.end(), words.begin(), words.end());
+    PrefixTree tree(all, max_chars, true);
+    const auto & nodes = tree.nodes();
+    const size_t N = nodes.size();
+    std::vector<char> nat(N, 0), wrd(N, 0), nch(N, 0), wch(N, 0);
+    for (size_t i = 1; i < N; i++)
+        for (int ci : nodes[i].ends_here)
+            for (int n = (int)i; n > 0 && !(ci < nc ? nat[n] : wrd[n]); n = nodes[n].parent) (ci < nc ? nat[n] : wrd[n]) = 1;
+    for (size_t i = 1; i < N; i++) {
+        int p = nodes[i].parent;
+        if (nat[i]) nch[p] = 1;   // 原生打分要解码 p（单独 score 时 p 在原生树里有子节点）
+        if (wrd[i]) wch[p] = 1;   // 生成可以展开 p（单独 generate 时 p 在生成树里有子节点）
+    }
+    std::vector<double> lp(N, kNotReached);
+    std::vector<char> greach(N, 0);   // 生成可达：根的子节点，或被生成展开过的节点的子节点
+    lp[0] = 0;
+    {
+        float m; double lse;
+        log_normalizer(slot.logits.data(), n_vocab_, &m, &lse);
+        for (int ch : nodes[0].children) { lp[ch] = log_prob(slot.logits.data(), nodes[ch].token, m, lse); greach[ch] = 1; }
+    }
+    auto pick = [&](std::vector<int> cand) {   // 与 generate 相同：取对数概率最高的 beam 个
+        size_t k = std::min(cand.size(), (size_t)beam);
+        std::partial_sort(cand.begin(), cand.begin() + (long)k, cand.end(), [&](int a, int b) { return lp[a] > lp[b]; });
+        cand.resize(k);
+        return cand;
+    };
+
+    // 每层待解码 = 原生需要的节点 ∪ 生成选中的节点；同一个节点只解码一次，输出供两路取下一字的分布
+    struct Pending { int node; int seq; bool gen; };
+    std::vector<Pending> frontier;
+    auto * mem = llama_get_memory(ctx_);
+    bool ok = true, short_of_seqs = false;
+    // 按父节点分配序列：第一个子节点沿用父节点的序列，其余从父节点复制（在追加子节点之前复制）
+    auto build_next = [&](const std::vector<int> & want, const std::vector<char> & is_gen, const std::vector<int> & parent_seq,
+                          std::vector<Pending> * next) {
+        std::vector<char> taken(N, 0);   // 按父节点下标：父序列是否已被某个子节点沿用
+        for (int n : want) {
+            int p = nodes[n].parent;
+            int ps = parent_seq[p];
+            if (!taken[p] && p != 0) { taken[p] = 1; next->push_back({n, ps, is_gen[n] != 0}); continue; }
+            int s = acquire_seq();
+            if (s < 0) { short_of_seqs = true; return false; }
+            llama_memory_seq_cp(mem, ps, s, -1, -1);
+            next->push_back({n, s, is_gen[n] != 0});
+        }
+        return true;
+    };
+    std::vector<int> parent_seq(N, -1);
+    parent_seq[0] = slot.seq;
+    {
+        std::vector<int> gc;
+        for (int ch : nodes[0].children) if (wrd[ch] && wch[ch]) gc.push_back(ch);
+        std::vector<char> is_gen(N, 0);
+        for (int n : pick(gc)) is_gen[n] = 1;
+        std::vector<int> want;
+        for (int ch : nodes[0].children) if ((nat[ch] && nch[ch]) || is_gen[ch]) want.push_back(ch);
+        ok = build_next(want, is_gen, parent_seq, &frontier);
+    }
+
+    auto t0 = std::chrono::steady_clock::now();
+    while (ok && !frontier.empty()) {
+        Batch batch((int)frontier.size());
+        for (auto & p : frontier) batch.add(nodes[p.node].token, ctx_len + nodes[p.node].depth - 1, p.seq, true);
+        int rc = decode(ctx_, batch.b);
+        if (st) { st->decode_calls++; st->cand_tokens += (int)frontier.size(); }
+        if (rc != 0) { ok = false; break; }
+
+        std::vector<int> gc, want;
+        for (size_t k = 0; k < frontier.size(); k++) {
+            const Pending & p = frontier[k];
+            const float * lg = llama_get_logits_ith(ctx_, (int)k);
+            if (!lg) { ok = false; break; }
+            float m; double lse;
+            log_normalizer(lg, n_vocab_, &m, &lse);
+            parent_seq[p.node] = p.seq;
+            for (int ch : nodes[p.node].children) {
+                lp[ch] = lp[p.node] + log_prob(lg, nodes[ch].token, m, lse);
+                if (p.gen) {
+                    greach[ch] = 1;
+                    if (wrd[ch] && wch[ch]) gc.push_back(ch);
+                }
+            }
+        }
+        if (!ok) break;
+        std::vector<char> is_gen(N, 0);
+        for (int n : pick(gc)) is_gen[n] = 1;
+        for (auto & p : frontier)
+            for (int ch : nodes[p.node].children)
+                if ((nat[ch] && nch[ch]) || is_gen[ch]) want.push_back(ch);
+        std::vector<Pending> next;
+        ok = build_next(want, is_gen, parent_seq, &next);
+        if (!ok) break;
+        // 没有子节点沿用的父序列：归还
+        std::vector<char> kept(N, 0);
+        for (int n : want) kept[nodes[n].parent] = 1;
+        for (auto & p : frontier) if (!kept[p.node]) release_seq(p.seq);
+        frontier.swap(next);
+    }
+    if (st) st->cand_ms += ms_since(t0);
+
+    if (!ok) {
+        reset();   // 用到的序列与 KV 一并清掉
+        // 序列池不够（不该发生：池按“候选上限 + 2 × 束宽”分配）：退回分开计算
+        return short_of_seqs ? separate() : false;
+    }
+    for (size_t i = 1; i < N; i++)
+        for (int ci : nodes[i].ends_here) {
+            if (ci < nc) (*score_out)[ci] = lp[i];
+            else if (greach[i] && lp[i] > kNotReached) (*gen_out)[ci - nc] = lp[i];
+        }
+    return true;
+}
+
 }  // namespace suzu

@@ -82,6 +82,11 @@ public:
     bool generate(const TokenSeq & ctx, const std::vector<TokenSeq> & words, int beam, std::vector<double> * out,
                   DecodeStats * st);
 
+    // 打分与生成共用一次解码（同一键的第一阶段）：两者的前缀合成一棵树，同一个前缀只解码一次。
+    // 结果与分别调用 score、generate 相同：生成仍按束宽逐层只展开最好的节点，只因原生打分而解码到的词不算生成结果。
+    bool score_generate(const TokenSeq & ctx, const std::vector<TokenSeq> & cands, const std::vector<TokenSeq> & words,
+                        int beam, std::vector<double> * score_out, std::vector<double> * gen_out, DecodeStats * st);
+
     // 丢弃全部缓存的上文
     void reset();
 
@@ -97,7 +102,8 @@ private:
     };
 
     int ensure_context(const TokenSeq & ctx, DecodeStats * st);   // 返回槽位下标，失败 -1
-    int seq_pool() const { return std::max(std::max(2, opt_.max_candidates), 2 * opt_.gen_beam); }   // 候选用的序列数
+    // 候选用的序列数：打分至多 max_candidates 条同时存活，生成换层时父子两层至多 2 × 束宽条；共用一次解码时两者相加
+    int seq_pool() const { return std::max(2, opt_.max_candidates) + 2 * opt_.gen_beam; }
     int acquire_seq();
     void release_seq(int seq);
 

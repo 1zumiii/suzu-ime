@@ -84,6 +84,7 @@ struct EngineConfig {
     int idle_unload_sec = 0;           // 0 = 不自动卸载
     std::string lexicon_dir;           // 候选生成的词典目录（雾凇的 cn_dicts）；空 = 不生成
     int gen_beam = 0;                  // 候选生成每层最多展开的节点数；0 = 不生成
+    bool share_decode = true;          // score_gen 的打分与生成共用一次解码（false 用于对照测量；不影响加载）
 };
 
 enum class EngineState { Idle, Loading, Ready, Failed, Disabled };
@@ -140,10 +141,10 @@ private:
     void start_lexicon_load_locked(const EngineConfig & cfg, uint64_t gen);
     void run_score(const std::shared_ptr<ScoreJob> & job);
     std::shared_ptr<ScoreJob> begin_score(const std::string & context, const std::vector<std::string> & cands,
-                                          Clock::time_point t0, ScoreResult * res);
+                                          Clock::time_point t0, ScoreResult * res, bool enqueue = true);
     void finish_score(const std::shared_ptr<ScoreJob> & job, Clock::time_point deadline, double budget_ms, ScoreResult * res);
     std::shared_ptr<ScoreJob> begin_generate(const std::string & context, const std::string & input, int k,
-                                             Clock::time_point t0, GenResult * res);
+                                             Clock::time_point t0, GenResult * res, bool enqueue = true);
     void finish_generate(const std::shared_ptr<ScoreJob> & job, Clock::time_point deadline, double budget_ms, GenResult * res);
     void wait_job(std::unique_lock<std::mutex> & lk, const std::shared_ptr<ScoreJob> & job, Clock::time_point deadline,
                   double budget_ms);

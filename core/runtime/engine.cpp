@@ -99,6 +99,7 @@ struct Engine::ScoreJob {
     bool gen = false;
     int beam = 0, k = 0;
     std::shared_ptr<const Vocab> vocab;   // 生成：把词条编号还原成词
+    std::shared_ptr<ScoreJob> partner;    // 打分任务捎带的生成任务：两者共用一次解码，一起完成
 };
 
 Engine::Engine() {
@@ -308,7 +309,7 @@ void Engine::wait_job(std::unique_lock<std::mutex> & lk, const std::shared_ptr<S
 }
 
 std::shared_ptr<Engine::ScoreJob> Engine::begin_score(const std::string & context, const std::vector<std::string> & cands,
-                                                      Clock::time_point t0, ScoreResult * res) {
+                                                      Clock::time_point t0, ScoreResult * res, bool enqueue) {
     std::shared_ptr<const Vocab> vocab;
     int chars, max_cands;
     {
@@ -355,8 +356,10 @@ std::shared_ptr<Engine::ScoreJob> Engine::begin_score(const std::string & contex
     }
     if (state_ != EngineState::Ready) { stats_.skip_loading++; res->status = ScoreStatus::Loading; return nullptr; }
     job->submitted = Clock::now();
-    score_queue_.push_back(job);
-    cv_.notify_all();
+    if (enqueue) {
+        score_queue_.push_back(job);
+        cv_.notify_all();
+    }
     return job;
 }
 
@@ -397,7 +400,7 @@ void Engine::fill_generated(const ScoreJob & job, const std::vector<double> & fl
 }
 
 std::shared_ptr<Engine::ScoreJob> Engine::begin_generate(const std::string & context, const std::string & input, int k,
-                                                         Clock::time_point t0, GenResult * res) {
+                                                         Clock::time_point t0, GenResult * res, bool enqueue) {
     std::shared_ptr<const Vocab> vocab;
     std::shared_ptr<const Lexicon> lex;
     int chars, beam;
@@ -452,8 +455,10 @@ std::shared_ptr<Engine::ScoreJob> Engine::begin_generate(const std::string & con
     }
     if (state_ != EngineState::Ready) { res->status = ScoreStatus::Loading; return nullptr; }
     job->submitted = Clock::now();
-    score_queue_.push_back(job);
-    cv_.notify_all();
+    if (enqueue) {
+        score_queue_.push_back(job);
+        cv_.notify_all();
+    }
     return job;
 }
 
@@ -514,11 +519,28 @@ ScoreGenResult Engine::score_gen(const std::string & context, const std::vector<
     }
     // 打分与生成一起入队（打分在前），共用一个截止时刻。打分当场失败时不生成：Lua 只在有模型分时使用生成结果
     out.score_tried = true;
-    auto sj = begin_score(context, cands, t0, &out.score);
+    auto sj = begin_score(context, cands, t0, &out.score, false);
     std::shared_ptr<ScoreJob> gj;
     if (sj || out.score.status == ScoreStatus::Ok) {
         out.gen_tried = true;
-        gj = begin_generate(context, input, k, t0, &out.gen);
+        gj = begin_generate(context, input, k, t0, &out.gen, false);
+    }
+    {
+        // 两边都要算：合成一个任务，工作线程共用一次解码（share_decode 关闭时照旧各排一个）
+        std::lock_guard<std::mutex> lk(mu_);
+        if ((sj || gj) && state_ != EngineState::Ready) {
+            if (sj) { stats_.skip_loading++; out.score.status = ScoreStatus::Loading; sj.reset(); }
+            if (gj) { out.gen.status = ScoreStatus::Loading; gj.reset(); }
+        }
+        if (sj && gj && cfg_.share_decode && sj->ctx == gj->ctx) {
+            sj->partner = gj;
+            stats_.shared_jobs++;
+            score_queue_.push_back(sj);
+        } else {
+            if (sj) score_queue_.push_back(sj);
+            if (gj) score_queue_.push_back(gj);
+        }
+        if (sj || gj) cv_.notify_all();
     }
     if (sj) finish_score(sj, deadline, budget_ms, &out.score);
     if (!gj) return out;
@@ -598,6 +620,8 @@ void Engine::worker_main() {
             score_queue_.pop_front();
             if (job->abandoned && !score_queue_.empty()) {   // 没人等了，后面还有更新的请求：不算
                 job->done = true;
+                job->done_cv.notify_all();
+                if (job->partner) { job->partner->done = true; job->partner->done_cv.notify_all(); }
                 stats_.jobs_dropped++;
                 continue;
             }
@@ -747,16 +771,28 @@ void Engine::do_unload(const char * why) {
 
 void Engine::run_score(const std::shared_ptr<ScoreJob> & job) {
     DecodeStats st;
-    std::vector<double> scores;
+    std::vector<double> scores, gscores;
     const Clock::time_point t0 = Clock::now();
-    bool ok = model_ && (job->gen ? model_->generate(job->ctx, job->cand_tokens, job->beam, &scores, &st)
-                                  : model_->score(job->ctx, job->cand_tokens, &scores, &st));
+    const auto & pj = job->partner;
+    bool ok = model_ && (pj ? model_->score_generate(job->ctx, job->cand_tokens, pj->cand_tokens, pj->beam, &scores, &gscores, &st)
+                         : job->gen ? model_->generate(job->ctx, job->cand_tokens, job->beam, &scores, &st)
+                                    : model_->score(job->ctx, job->cand_tokens, &scores, &st));
     if (ok && job->gen) scores = top_k_flat(scores, job->k);
+    if (ok && pj) gscores = top_k_flat(gscores, pj->k);
     double ms = ms_between(t0, Clock::now());
 
     std::lock_guard<std::mutex> lk(mu_);
     stats_.jobs_done++;
     stats_.compute_ms.add(ms);
+    stats_.cand_tokens += (uint64_t)st.cand_tokens;
+    stats_.decode_calls += (uint64_t)st.decode_calls;
+    if (pj) {
+        if (ok) cache_.put(pj->key, gscores);
+        pj->ok = ok;
+        pj->scores = std::move(gscores);
+        pj->done = true;
+        pj->done_cv.notify_all();
+    }
     if (st.ctx_hit) stats_.ctx_hit++;
     else if (st.ctx_partial) stats_.ctx_partial++;
     else stats_.ctx_full++;

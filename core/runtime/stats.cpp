@@ -48,10 +48,12 @@ std::string EngineStats::json() const {
              (unsigned long long)unloads, (unsigned long long)decode_failures, (unsigned long long)ctx_hit,
              (unsigned long long)ctx_partial, (unsigned long long)ctx_full, (unsigned long long)ctx_full_long,
              (unsigned long long)prep_hit, (unsigned long long)prep_partial, (unsigned long long)prep_full, last_load_ms);
-    char g[160];
-    snprintf(g, sizeof g, "\"gen\":{\"requests\":%llu,\"ok\":%llu,\"timeout\":%llu},\"score_gen\":%llu,",
+    char g[256];
+    snprintf(g, sizeof g, "\"gen\":{\"requests\":%llu,\"ok\":%llu,\"timeout\":%llu},\"score_gen\":%llu,\"shared\":%llu,"
+             "\"cand_tokens\":%llu,\"decode_calls\":%llu,",
              (unsigned long long)gen_requests, (unsigned long long)gen_ok, (unsigned long long)gen_timeout,
-             (unsigned long long)sg_requests);
+             (unsigned long long)sg_requests, (unsigned long long)shared_jobs, (unsigned long long)cand_tokens,
+             (unsigned long long)decode_calls);
     return std::string(b) + g + "\"wait_ms\":" + wait_ms.json() + ",\"queue_ms\":" + queue_ms.json() +
            ",\"compute_ms\":" + compute_ms.json() + ",\"prepare_ms\":" + prepare_ms.json();
 }

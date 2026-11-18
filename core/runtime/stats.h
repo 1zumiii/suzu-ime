@@ -41,6 +41,8 @@ struct EngineStats {
     uint64_t gen_requests = 0;    // 候选生成的调用（不计入上面的 requests）
     uint64_t gen_ok = 0;
     uint64_t gen_timeout = 0;
+    uint64_t shared_jobs = 0;     // score_gen 合成一个任务、共用一次解码的次数
+    uint64_t cand_tokens = 0, decode_calls = 0;   // 工作线程打分与生成送进模型的候选字数、解码调用次数（累计）
     uint64_t sg_requests = 0;     // 第一阶段合并请求（score_gen）的调用；其中的打分与生成照常计入上面两类
     // 工作线程
     uint64_t prepares = 0, prepare_done = 0;
