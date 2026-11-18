@@ -9,6 +9,7 @@
 #include <jni.h>
 
 #include <algorithm>
+#include <atomic>
 #include <chrono>
 #include <condition_variable>
 #include <cstring>
@@ -49,6 +50,10 @@ struct ClientCounters {
     long long score_calls = 0, score_ok = 0, skipped = 0, timeouts = 0, down = 0, wait_max_ms = 0, over50 = 0, over100 = 0;
 } g_cnt;
 
+// 连续几次打分请求等到了时限还没有应答（守护进程整个卡住，而不是没在跑）。任何一次收到应答就清零。
+// 应用自己的推理服务没有监督进程，由 Kotlin 侧的看门狗读它（nativeTimeoutStreak），超过阈值就杀掉推理进程
+std::atomic<int> g_timeout_streak{0};
+
 void record_wait(long long ms) {
     if (ms > g_cnt.wait_max_ms) g_cnt.wait_max_ms = ms;
     if (ms > 50) g_cnt.over50++;
@@ -78,10 +83,11 @@ bool do_score(const std::string & ctx, const std::vector<std::string> & cands, i
     record_wait(waited);
     if (!ok) {
         bool timed_out = waited >= budget;
-        if (timed_out) g_cnt.timeouts++; else g_cnt.down++;
+        if (timed_out) { g_cnt.timeouts++; g_timeout_streak++; } else g_cnt.down++;
         *why = timed_out ? "timeout" : "down";
         return false;
     }
+    g_timeout_streak = 0;
     if (rep.empty() || rep[0] != "R") {
         *why = rep.size() >= 2 ? rep[1] : "";
         if (*why != "no_context" && *why != "few_candidates") g_cnt.skipped++;
@@ -162,10 +168,11 @@ bool score_gen_u(const std::string & ctx, const std::vector<std::string> & cands
     if (!ok || rep.size() < 5 || rep[0] != "U") {
         bool timed_out = !ok && waited >= budget;
         g_cnt.score_calls++;
-        if (timed_out) g_cnt.timeouts++; else g_cnt.down++;
+        if (timed_out) { g_cnt.timeouts++; g_timeout_streak++; } else g_cnt.down++;
         o->why = o->gen_why = timed_out ? "timeout" : "down";
         return true;
     }
+    g_timeout_streak = 0;
     const std::string & ss = rep[1];
     const std::string & gs = rep[2];
     o->score_tried = ss != "not_tried";
@@ -450,6 +457,11 @@ extern "C" __attribute__((visibility("default"))) int luaopen_rime_llm(lua_State
     lua_setfield(L, -2, "__gc");
     lua_setmetatable(L, -2);
     return 1;
+}
+
+// 应用自己的推理服务的看门狗（com.osfans.trime.suzu.ai.AppAiConnection）：连续超时的次数
+extern "C" JNIEXPORT jint JNICALL Java_com_osfans_trime_suzu_ai_AppAiConnection_nativeTimeoutStreak(JNIEnv *, jclass) {
+    return g_timeout_streak.load();
 }
 
 // Trime 的 com.osfans.trime.suzu.SuzuAppContext.nativeSet(ByteArray)：参数是 UTF-8 字节

@@ -1,6 +1,7 @@
 // 守护进程的状态：共享计数、状态 JSON、状态文件与令牌文件的写入。
 // 状态文件 ai_status.json 由改版 Trime 的 AI 徽标读取，旧字段（ts、role、enabled、model_loaded、student、rss_kb、
 // avg_score_ms、skipped、errors、restarts、last_exit 等）的名字与含义保持不变；新增字段放在 engine、client 两个对象里。
+// host 字段说明谁在跑工作进程：shell（Shizuku 或 adb 拉起的 rimellmd）或 app（应用自己的推理服务）。
 #pragma once
 
 #include <atomic>

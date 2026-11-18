@@ -11,6 +11,8 @@ import android.os.Handler
 import android.os.Looper
 import android.util.Log
 import com.osfans.trime.data.base.DataManager
+import com.osfans.trime.suzu.ai.AiBackend
+import com.osfans.trime.suzu.ai.AiBackends
 import rikka.shizuku.Shizuku
 import java.io.File
 
@@ -100,6 +102,53 @@ object AiDaemonLauncher {
         pidof rimellmd >/dev/null 2>&1 && echo STARTED || { echo START_FAIL; exit 15; }
         """.trimIndent()
 
+    private val stopScript =
+        """
+        pidof rimellmd >/dev/null 2>&1 || { echo NOT_RUNNING; exit 0; }
+        kill ${'$'}(pidof rimellmd) 2>/dev/null
+        i=0; while pidof rimellmd >/dev/null 2>&1 && [ ${'$'}i -lt 50 ]; do sleep 0.1; i=${'$'}((i+1)); done
+        pidof rimellmd >/dev/null 2>&1 && { echo KILL_FAIL; exit 16; }
+        echo STOPPED
+        """.trimIndent()
+
+    /** 以 shell 身份跑一段脚本，返回（标准输出，标准错误，退出码） */
+    private fun runShell(script: String): Triple<String, String, Int> {
+        val method =
+            Shizuku::class.java.getDeclaredMethod(
+                "newProcess",
+                Array<String>::class.java,
+                Array<String>::class.java,
+                String::class.java,
+            )
+        method.isAccessible = true
+        val proc = method.invoke(null, arrayOf("sh", "-c", script), null, null) as Process
+        val out = proc.inputStream.bufferedReader().readText().trim()
+        val err = proc.errorStream.bufferedReader().readText().trim()
+        return Triple(out, err, proc.waitFor())
+    }
+
+    /**
+     * 经 Shizuku 停掉守护进程（切换到应用内推理服务时用；监督进程收到 SIGTERM 会连同工作进程一起退出）。
+     * 没在跑算成功。结果回到主线程。
+     */
+    fun stop(onResult: (Result) -> Unit) {
+        Thread {
+            val result =
+                try {
+                    val (out, err, code) = runShell(stopScript)
+                    when {
+                        out.contains("STOPPED") || out.contains("NOT_RUNNING") -> Result.Started
+                        out.contains("KILL_FAIL") -> Result.Failed("Shizuku 守护进程停不下来，请重启手机后再试")
+                        else -> Result.Failed("停止 Shizuku 守护进程失败（错误码 $code）：${(out + " " + err).trim().take(120)}")
+                    }
+                } catch (e: Throwable) {
+                    Result.Failed("${e.javaClass.simpleName}: ${e.message?.take(100)}")
+                }
+            Log.i(TAG, "停止守护进程：$result")
+            main.post { onResult(result) }
+        }.start()
+    }
+
     /** 在后台线程里经 Shizuku 以 shell 身份启动守护进程，结果回到主线程。 */
     fun start(context: Context, onResult: (Result) -> Unit) {
         lastAttemptMs = System.currentTimeMillis()
@@ -112,19 +161,7 @@ object AiDaemonLauncher {
                     if (!File(libDir, "librimellmd.so").exists()) {
                         Result.Failed("安装包缺少 AI 服务组件，请重新安装完整版本")
                     } else {
-                        val method =
-                            Shizuku::class.java.getDeclaredMethod(
-                                "newProcess",
-                                Array<String>::class.java,
-                                Array<String>::class.java,
-                                String::class.java,
-                            )
-                        method.isAccessible = true
-                        val proc =
-                            method.invoke(null, arrayOf("sh", "-c", shellScript(libDir, rimeDir)), null, null) as Process
-                        val out = proc.inputStream.bufferedReader().readText().trim()
-                        val err = proc.errorStream.bufferedReader().readText().trim()
-                        val code = proc.waitFor()
+                        val (out, err, code) = runShell(shellScript(libDir, rimeDir))
                         replaced = out.contains("REPLACED")
                         when {
                             out.contains("RUNNING") -> Result.AlreadyRunning
@@ -154,7 +191,8 @@ object AiDaemonLauncher {
      * 本进程第一次显示键盘时要静默启动一次（返回 true 仅一次）：守护进程是旧版本就换掉，没在跑就拉起，
      * 已是安装包里的版本则什么都不做。APK 升级后输入法进程会重启，正好走到这里。
      */
-    fun takeFirstCheck(): Boolean {
+    fun takeFirstCheck(context: Context): Boolean {
+        if (AiBackends.current(context) != AiBackend.SHIZUKU) return false   // 选了应用内推理服务：不经 Shizuku 拉起
         if (checked || availability() != Availability.READY) return false
         checked = true
         Log.i(TAG, "首次检查守护进程版本")

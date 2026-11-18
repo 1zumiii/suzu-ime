@@ -6,10 +6,14 @@
 package com.osfans.trime.suzu
 
 import android.os.Bundle
+import android.widget.Toast
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.appcompat.app.AlertDialog
 import androidx.fragment.app.activityViewModels
 import androidx.lifecycle.lifecycleScope
+import androidx.preference.Preference
+import com.osfans.trime.suzu.ai.AiBackend
+import com.osfans.trime.suzu.ai.AiBackends
 import com.osfans.trime.ui.common.PaddingPreferenceFragment
 import com.osfans.trime.ui.main.MainViewModel
 import kotlinx.coroutines.flow.drop
@@ -65,7 +69,35 @@ class ModelFragment : PaddingPreferenceFragment() {
                 assetPrefs[asset] = pref
                 renderAsset(asset, pref)
             }
+            addPreference(
+                Preference(ctx).apply {
+                    val current = AiBackends.current(ctx)
+                    title = "AI 推理方式"
+                    isSingleLineTitle = false
+                    summary = "${current.title}\n${current.summary}"
+                    setOnPreferenceClickListener {
+                        chooseBackend()
+                        true
+                    }
+                },
+            )
         }
+    }
+
+    /** 在 Shizuku 守护进程与应用内推理服务之间切换，不需要重装。选当前这一项等于重启推理服务 */
+    private fun chooseBackend() {
+        val ctx = requireContext()
+        val all = AiBackend.entries
+        AlertDialog.Builder(ctx)
+            .setTitle("AI 推理方式")
+            .setSingleChoiceItems(all.map { "${it.title}\n${it.summary}" }.toTypedArray(), all.indexOf(AiBackends.current(ctx))) { d, which ->
+                d.dismiss()
+                AiBackends.switchTo(ctx, all[which]) { msg ->
+                    Toast.makeText(ctx.applicationContext, msg, Toast.LENGTH_LONG).show()
+                    if (isAdded) build()
+                }
+            }.setNegativeButton(android.R.string.cancel, null)
+            .show()
     }
 
     private fun onAssetClick(asset: SuzuAsset) {

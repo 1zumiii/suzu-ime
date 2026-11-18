@@ -36,6 +36,7 @@ tests/run_all.sh <core 的构建目录> <suzu.gguf> <suzu.vocab.txt> [--quick]
 | `parity/run_cases.lua`、`parity/compare.py`、`parity/data/` | 1293 题留出集逐题打分，与 Suzu-2.4 的基准对照 | 是 |
 | `keysim.lua` | 按键仿真：跳过率、等待时间分布；`chaos=` 可做故障注入（配合 `chaos_daemon.sh`） | 是 |
 | `test_daemon.py` | 守护进程：协议、认证、非法输入、时限、并发、换词典与附加词库变化后重读，合并请求 `U` 与分别请求 `Q`、`W` 的应答逐字相同。`--chaos` 做 kill -9、SIGSTOP、删除模型的恢复测试。`--host` 在本机运行，不加则经 adb 测手机上的守护进程 | 是 |
+| `test_embedded.py` | 应用内推理服务的嵌入入口（`rimellm_embedded`，与 Android 的 JNI 入口走同一个 `run_embedded`）：端口被占时等待而不退出、监听成功后才写令牌、认证与打分、`host` 字段为 `app`、没有监督进程、被杀后不自行重启 | 是 |
 | `test_student.py` | 在手机上另起一个守护进程核对排序与延迟（经 adb） | 是 |
 
 ## 与旧核心相比改写的检查

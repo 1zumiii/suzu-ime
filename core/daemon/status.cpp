@@ -86,13 +86,14 @@ std::string build_daemon_status(const Options & opt, DaemonState & st, Engine & 
              "\"scores\":%llu,\"skipped\":%llu,\"skip_unprepared\":0,\"skip_busy\":0,\"skip_timeout\":%llu,"
              "\"no_context\":%llu,\"last_score_ms\":%d,\"avg_score_ms\":%.1f,\"max_score_ms\":%.0f,"
              "\"student\":true,\"screen\":\"%s\",\"idle_unload_sec\":%d,\"restarts\":%d,\"last_exit\":\"%s\","
-             "\"last_request_s\":%lld,\"port\":%d,",
+             "\"last_request_s\":%lld,\"port\":%d,\"host\":\"%s\",",
              (long long)time(nullptr), state, (int)getpid(), ipc::kVersion, up, engine.enabled() ? "true" : "false",
              engine.is_ready() ? "true" : "false", read_rss_kb(), st.clients.load(), st.requests.load(),
              st.errors.load(), (unsigned long long)es.ok, (unsigned long long)es.skipped(),
              (unsigned long long)es.skip_timeout, (unsigned long long)es.no_context, st.last_score_ms.load(),
              es.wait_ms.mean(), es.wait_ms.max(), st.screen_off.load() ? "off" : "on", cfg.idle_unload_sec,
-             opt.restarts, json_escape(opt.last_exit).c_str(), st.last_request_s.load(), opt.port);
+             opt.restarts, json_escape(opt.last_exit).c_str(), st.last_request_s.load(), opt.port,
+             opt.embedded ? "app" : "shell");
     return std::string(head) + "\"engine\":{" + engine.status_fields() + "},\"client\":" + client + "}";
 }
 

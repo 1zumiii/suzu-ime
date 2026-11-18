@@ -105,6 +105,9 @@ daemon_tests() {
   [[ -x "$B/rimellmd" ]] || { echo "skip  test_daemon.py（构建目录里没有 rimellmd）"; return; }
   local chaos="--chaos"; [[ $QUICK -eq 1 ]] && chaos=""
   run "test_daemon.py --host $chaos" python3 -I test_daemon.py --host "$B/rimellmd" "$MODEL" "$VOCAB" $chaos
+  # 嵌入方式（Android 应用自己的推理服务走的路径）
+  if [[ -x "$B/rimellm_embedded" ]]; then run "test_embedded.py" python3 -I test_embedded.py "$B/rimellm_embedded" "$MODEL" "$VOCAB"
+  else echo "skip  test_embedded.py（构建目录里没有 rimellm_embedded）"; fi
 }
 
 cd "$REPO/tests"

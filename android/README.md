@@ -52,6 +52,7 @@ Trime（改版 APK）                              rimellmd（shell 身份，由
 - 自动启动：徽标为红色（离线）时，点按即可经 Shizuku 以 shell 身份启动守护进程，首次会弹出 Shizuku 的授权请求。键盘弹出时若发现离线，每分钟最多自动尝试一次。手机重启后，须先启动 Shizuku。
 - 孤儿保护：Trime 被卸载后，其数据目录随之消失，无法再通过它关闭守护进程。守护进程检测到该目录连续 10 分钟不存在（可用 `--orphan-sec` 调整）时自行退出，监督进程收到退出码 77 后同样结束，不再重启。重新安装 Trime 后，点按红色徽标即可再次启动。已用临时目录和另一个端口验证：目录删除 15 秒后，两个进程均退出。
 - 熄屏联动：Trime 在亮屏或熄屏时设置 Rime 选项 `screen_off`，由 Lua 转交给守护进程。默认不设单独的熄屏时限，仅保留该接口。
+- 应用内推理服务（实验，默认不用）：“设置 → 模型 → AI 推理方式”可改为应用自己的推理服务，切换无须重装。它在独立进程 `:suzu_ai` 里运行同一个工作进程（`core/daemon/embedded.h`，打包为 `librimellm_service.so`），线路协议、令牌与状态文件不变，客户端与 Lua 不区分两种方案。输入法以 `BIND_AUTO_CREATE` 绑定该服务，进程被回收后由 Android 重建，不需要 Shizuku。监督进程的职责由输入法一侧的看门狗承担：心跳连续 3 次失败，或连续 3 次打分请求等到超时仍无应答，就结束推理进程。状态文件的 `host` 字段为 `app`，启动、退出原因与看门狗事件记在 `Android/data/<包名>/files/rimellm/service_events.txt`。“高优先级”一项另加 `BIND_IMPORTANT`，推理线程优先级设为 `THREAD_PRIORITY_DISPLAY`，用于对比。
 
 ## 文件与代码入口
 
@@ -59,10 +60,11 @@ Trime（改版 APK）                              rimellmd（shell 身份，由
 | --- | --- |
 | `core/daemon/`、`core/client/`、`core/ipc/` | 守护进程、客户端库与线路协议（源码在推理核心目录） |
 | `daemon/rimellmctl.sh` | 电脑端的 `deploy`、`start`、`stop`、`restart`、`status`、`log` |
+| `tests/test_embedded.py` | 应用内推理服务所用嵌入入口的主机测试：端口被占时等待、令牌在监听成功后才写、`host` 字段、被杀后不自行重启 |
 | `tests/test_daemon.py` | 端到端测试：认证、非法输入、时限、正确性、并发；加 `--chaos` 还会做 `kill -9`、`SIGSTOP` 与删除模型的恢复测试；`--host` 在电脑上跑 |
 | `tools/bench_daemon.py` | 真实打分延迟基准（每次更换新候选） |
 | `trime/` | 改版 Trime 的完整源码，2026-11-01 由上游 `ad5a14be` 硬分叉而来，不再跟随上游。librime、OpenCC 等第三方源码是固定提交的子模块 |
-| `trime/app/src/main/java/com/osfans/trime/suzu/` | 本项目新增的代码：AI 徽标、Shizuku 启动、光标上文、选错修正、模块状态页。上游文件中的其他改动可用 `git diff 9338bb3 -- android/trime` 查看 |
+| `trime/app/src/main/java/com/osfans/trime/suzu/` | 本项目新增的代码：AI 徽标、Shizuku 启动、应用内推理服务（`ai/`）、光标上文、选错修正、模块状态页。上游文件中的其他改动可用 `git diff 9338bb3 -- android/trime` 查看 |
 | `trime/app/src/main/java/com/osfans/trime/suzu/SuzuAppContext.kt` | 光标上文：没有未上屏编码时用 `getTextBeforeCursor` 读光标前最多 60 个字，经 JNI 写进客户端库，Lua 的 `llm_context` 读取（`rime/lua/ai_rerank_app_ctx.lua`），读不到退回上屏历史；密码框、数字框、电话框和无痕模式不读，文字只在内存里 |
 | `trime/app/src/main/java/com/osfans/trime/suzu/SuzuFix.kt`、`FixChoicesUi.kt` | 选错修正建议（试验）：每次整段选词，Lua 把所选词和同页候选登记到客户端库（`fix_note`），上屏时由 `SuzuFix` 领取；停顿 1.5 秒后补上右侧已打的文字，给句中最近的几个词与各自的候选打整句分（经单独的连接请求守护进程），某个候选高出门槛时在工具栏提示“A → B”，点了才核对并替换。门槛：选了 AI 改过的首位为 5，其他为 8。光标换词：光标点到文字上时，在候选栏列出可替换的同音候选，点了只替换对应的一段。词库分不清光标处是词还是单字，要改的文字也可能本身有错，所以不判断边界：Lua 查出从光标处开始和跨过光标的 1 到 4 字各段的同音词，`SuzuFix` 逐段打整句分，统一按“比原文高多少”排序。替换结果相同的只留范围小的，比原文低 8 分以上的不列（暂定值），至少列 3 个，最多 8 个。最近整段选过的词还会列出选词时的同页候选。领取、定位、打分、出现、采纳、忽略等事件只记数字，写入用户目录的 `fix_stats.tsv`；密码框和无痕模式不查 |
 | `trime/app/src/main/java/com/osfans/trime/ime/keyboard/` | 键盘：`KeyModel.kt` 是按键数据、类型化的动作和纯函数的布局计算，`MainPages.kt` 是有独立布局的页面，`SymbolBoard.kt` 是表情、标点和颜文字共用的组件（内容在 `SymbolData.kt`），`SuzuKeyboard.kt` 管理当前页、Shift 状态并执行动作，`KeyCapView.kt` 只负责手势和绘制。数字页和符号页用 `AsciiPolicy.Follow`：进出时不改中英文状态，中文模式下进入时先上屏未完成的输入，避免数字键选中候选 |

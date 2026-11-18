@@ -279,6 +279,27 @@ std::string make_token() {
     return t;
 }
 
+// 监听 127.0.0.1:port，失败返回 -1（errno 保留）
+int listen_loopback(int port) {
+    int lfd = socket(AF_INET, SOCK_STREAM, 0);   // SOCK_CLOEXEC 与 accept4 在 macOS 上没有，统一用 fcntl 设置
+    if (lfd < 0) return -1;
+    fcntl(lfd, F_SETFD, FD_CLOEXEC);
+    int one = 1;
+    setsockopt(lfd, SOL_SOCKET, SO_REUSEADDR, &one, sizeof one);
+    struct sockaddr_in a;
+    memset(&a, 0, sizeof a);
+    a.sin_family = AF_INET;
+    a.sin_port = htons((uint16_t)port);
+    a.sin_addr.s_addr = htonl(INADDR_LOOPBACK);
+    if (bind(lfd, (struct sockaddr *)&a, sizeof a) != 0 || listen(lfd, 8) != 0) {
+        int e = errno;
+        close(lfd);
+        errno = e;
+        return -1;
+    }
+    return lfd;
+}
+
 std::string guess_vocab(const std::string & model) {
     if (model.size() > 5 && model.compare(model.size() - 5, 5, ".gguf") == 0) {
         std::string v = model.substr(0, model.size() - 5) + ".vocab.txt";
@@ -290,12 +311,14 @@ std::string guess_vocab(const std::string & model) {
 }  // namespace
 
 int run_worker(const Options & opt) {
-    signal(SIGPIPE, SIG_IGN);
-    struct sigaction sa;
-    memset(&sa, 0, sizeof sa);
-    sa.sa_handler = on_term;
-    sigaction(SIGTERM, &sa, nullptr);
-    sigaction(SIGINT, &sa, nullptr);
+    signal(SIGPIPE, SIG_IGN);   // 嵌入方式也要：对端断开时 send 不能杀掉宿主进程
+    if (!opt.embedded) {
+        struct sigaction sa;
+        memset(&sa, 0, sizeof sa);
+        sa.sa_handler = on_term;
+        sigaction(SIGTERM, &sa, nullptr);
+        sigaction(SIGINT, &sa, nullptr);
+    }
     mkdir(opt.log_dir.c_str(), 0775);
     log_set_dir(opt.log_dir);
 
@@ -324,22 +347,25 @@ int run_worker(const Options & opt) {
     if (c.vocab_path.empty()) log_event("no student vocab: reranking stays off (only Suzu models are supported)");
 
     w.token = make_token();
-    write_file_atomic(token_path(opt), w.token, 0660);
+    // 嵌入方式：端口可能还被 Shizuku 拉起的守护进程占着（切换方案的过渡期）。令牌等监听成功再写，
+    // 否则客户端会拿新令牌去连旧进程，认证失败
+    if (!opt.embedded) write_file_atomic(token_path(opt), w.token, 0660);
 
-    int lfd = socket(AF_INET, SOCK_STREAM, 0);   // SOCK_CLOEXEC 与 accept4 在 macOS 上没有，统一用 fcntl 设置
-    if (lfd >= 0) fcntl(lfd, F_SETFD, FD_CLOEXEC);
-    int one = 1;
-    setsockopt(lfd, SOL_SOCKET, SO_REUSEADDR, &one, sizeof one);
-    struct sockaddr_in a;
-    memset(&a, 0, sizeof a);
-    a.sin_family = AF_INET;
-    a.sin_port = htons((uint16_t)opt.port);
-    a.sin_addr.s_addr = htonl(INADDR_LOOPBACK);
-    if (bind(lfd, (struct sockaddr *)&a, sizeof a) != 0 || listen(lfd, 8) != 0) {
+    int lfd = listen_loopback(opt.port);
+    if (lfd < 0 && opt.embedded) {
+        log_event("bind/listen 127.0.0.1:%d failed (%s); retrying every 2s", opt.port, strerror(errno));
+        while (lfd < 0 && !g_stop.load()) {
+            usleep(2000 * 1000);
+            lfd = listen_loopback(opt.port);
+        }
+        if (lfd >= 0) log_event("port %d is free now", opt.port);
+    }
+    if (lfd < 0) {
         fprintf(stderr, "bind/listen 127.0.0.1:%d failed: %s\n", opt.port, strerror(errno));
         log_event("bind/listen 127.0.0.1:%d failed", opt.port);
         return 2;
     }
+    if (opt.embedded) write_file_atomic(token_path(opt), w.token, 0660);
     log_event("listening on 127.0.0.1:%d threads=%d idle=%ds restarts=%d last_exit=%s", opt.port, opt.threads,
               opt.idle_sec, opt.restarts, opt.last_exit.c_str());
 

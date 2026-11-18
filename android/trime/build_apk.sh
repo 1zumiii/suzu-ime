@@ -1,6 +1,7 @@
 #!/bin/bash
 # 从源码编出带 AI 重排的 Trime APK（arm64-v8a）：
-#   本目录的 Trime 源码（硬分叉自上游 ad5a14be）+ 客户端库 librime_llm.so + 守护进程 librimellmd.so（均由 core/ 构建）→ Gradle → 签名
+#   本目录的 Trime 源码（硬分叉自上游 ad5a14be）+ 客户端库 librime_llm.so + 守护进程 librimellmd.so
+#   + 应用内推理服务 librimellm_service.so（均由 core/ 构建）→ Gradle → 签名
 # 用法：android/trime/build_apk.sh [输出.apk]
 # 前提：JDK 17（brew install openjdk@17）、Android SDK（Gradle 会自动装平台）、NDK r28c（Trime 与推理部分共用）、
 #       CMake 3.31.6 的官方预编译包、llama.cpp 与 Lua 源码（见 core/README.md）、签名密钥（见 sign_apk.sh）。
@@ -56,10 +57,12 @@ DEPS="${DEPS:-$IME_DEPS}"     # llama.cpp 与 Lua 源码所在目录（布局见
 cmake -S "$REPO/core" -B "$W/build_host" -G Ninja -DCMAKE_TOOLCHAIN_FILE="$NDK/build/cmake/android.toolchain.cmake" \
   -DANDROID_ABI=arm64-v8a -DANDROID_PLATFORM=android-30 -DCMAKE_BUILD_TYPE=Release \
   -DSUZU_ANDROID_ARM_ARCH="$ARM_ARCH" -DSUZU_DEPS_ROOT="$DEPS" -DSUZU_BUILD_DAEMON=ON -DSUZU_BUILD_LUA_MODULE=OFF -DSUZU_LUA_HOST_LIB="$JNI_HOST" >/dev/null
-cmake --build "$W/build_host" --target rimellmd rime_llm_client -j8
+cmake --build "$W/build_host" --target rimellmd rime_llm_client rimellm_service -j8
 JL="$SRC/app/src/main/jniLibs/arm64-v8a"; mkdir -p "$JL"
 "$STRIP" --strip-unneeded -o "$JL/librime_llm.so" "$W/build_host/client/librime_llm.so"
 "$STRIP" --strip-unneeded -o "$JL/librimellmd.so" "$W/build_host/rimellmd"
+# 应用自己的推理服务（AI 推理方式选“应用内”时由独立进程 :suzu_ai 加载）
+"$STRIP" --strip-unneeded -o "$JL/librimellm_service.so" "$W/build_host/librimellm_service.so"
 
 # 3. Gradle（只编 arm64；未签名）
 ( cd "$SRC" && JAVA_HOME="$JAVA_HOME" PATH="$JAVA_HOME/bin:$PATH" ANDROID_HOME="$HOME/Library/Android/sdk" BUILD_ABI=arm64-v8a \

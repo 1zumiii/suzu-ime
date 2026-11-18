@@ -24,6 +24,7 @@ import com.osfans.trime.data.prefs.AppPrefs
 import com.osfans.trime.data.theme.ColorManager
 import com.osfans.trime.data.theme.ThemeManager
 import com.osfans.trime.receiver.RimeIntentReceiver
+import com.osfans.trime.suzu.ai.AppAiService
 import com.osfans.trime.ui.main.LogActivity
 import com.osfans.trime.util.isNightMode
 import kotlinx.coroutines.CoroutineName
@@ -92,6 +93,9 @@ class TrimeApplication : Application() {
 
     override fun onCreate() {
         super.onCreate()
+        // 应用自己的 AI 推理服务（独立进程 :suzu_ai）只跑推理：不初始化偏好、数据库与广播接收器，
+        // 否则会改写主进程记下的 pid、并发打开剪贴板数据库
+        if (isAiServiceProcess()) return
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.N && !userManager.isUserUnlocked) {
             isDirectBootMode = true
             registerReceiver(unlockReceiver, IntentFilter(Intent.ACTION_USER_UNLOCKED))
@@ -190,6 +194,16 @@ class TrimeApplication : Application() {
             e.fillInStackTrace()
             return
         }
+    }
+
+    private fun isAiServiceProcess(): Boolean {
+        val name =
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.P) {
+                getProcessName()
+            } else {
+                runCatching { File("/proc/self/cmdline").readText().trimEnd('\u0000') }.getOrDefault("")
+            }
+        return name.endsWith(AppAiService.PROCESS_SUFFIX)
     }
 
     override fun onConfigurationChanged(newConfig: Configuration) {

@@ -100,17 +100,33 @@ endif()
 
 # ---------------------------------------------------------------- 守护进程与客户端
 if(SUZU_BUILD_DAEMON)
-  add_executable(rimellmd
-    daemon/main.cpp
+  # 工作进程的公共部分：rimellmd（Shizuku 或 adb 以 shell 身份拉起）与应用自己的推理服务共用
+  add_library(suzu_daemon_core STATIC
     daemon/options.cpp
     daemon/server.cpp
     daemon/supervisor.cpp
-    daemon/status.cpp)
-  target_include_directories(rimellmd PRIVATE ${CMAKE_CURRENT_SOURCE_DIR})
-  target_link_libraries(rimellmd PRIVATE suzu_runtime)
+    daemon/status.cpp
+    daemon/embedded.cpp)
+  target_include_directories(suzu_daemon_core PUBLIC ${CMAKE_CURRENT_SOURCE_DIR})
+  target_link_libraries(suzu_daemon_core PUBLIC suzu_runtime)
   if(ANDROID)
-    target_link_libraries(rimellmd PRIVATE log)
+    target_link_libraries(suzu_daemon_core PUBLIC log)
+  endif()
+
+  add_executable(rimellmd daemon/main.cpp)
+  target_link_libraries(rimellmd PRIVATE suzu_daemon_core)
+  if(ANDROID)
     target_link_options(rimellmd PRIVATE -Wl,--gc-sections)
+  endif()
+
+  # 嵌入方式：Android 上是推理服务加载的 JNI 库 librimellm_service.so，主机上是测试用的小程序
+  if(ANDROID)
+    add_library(rimellm_service SHARED daemon/jni_service.cpp)
+    target_link_libraries(rimellm_service PRIVATE suzu_daemon_core)
+    target_link_options(rimellm_service PRIVATE -Wl,--gc-sections)
+  else()
+    add_executable(rimellm_embedded daemon/embedded_host.cpp)
+    target_link_libraries(rimellm_embedded PRIVATE suzu_daemon_core)
   endif()
 
   add_library(rime_llm_client MODULE client/rime_llm_client.cpp client/connection.cpp)

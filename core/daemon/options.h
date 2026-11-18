@@ -31,6 +31,9 @@ struct Options {
     int restarts = 0;
     std::string last_exit = "none";
     std::vector<std::string> raw_args;   // 原样传给子进程的参数
+    // 嵌入方式：工作进程跑在别的进程里（Android 应用自己的推理服务，见 daemon/embedded.h），不由命令行设置。
+    // 不装信号处理（宿主进程的信号归宿主管），端口被占时等它空出来而不是退出，令牌在监听成功之后才写。
+    bool embedded = false;
 };
 
 // 解析失败时打印用法并返回 false（exit_code 置为 64）

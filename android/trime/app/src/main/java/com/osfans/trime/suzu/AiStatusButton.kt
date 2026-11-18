@@ -16,6 +16,9 @@ import android.view.HapticFeedbackConstants
 import android.widget.TextView
 import android.widget.Toast
 import com.osfans.trime.data.base.DataManager
+import com.osfans.trime.suzu.ai.AiBackend
+import com.osfans.trime.suzu.ai.AiBackends
+import com.osfans.trime.suzu.ai.AppAiConnection
 import org.json.JSONObject
 
 object AiStatusButtonAction {
@@ -134,8 +137,22 @@ class AiStatusButton(
         visibility = VISIBLE
     }
 
-    /** 经 Shizuku 启动守护进程。userInitiated = 用户点的（可以弹授权/提示）；否则是静默的自动重试。 */
+    /**
+     * 启动推理服务。Shizuku 方案经 Shizuku 拉起守护进程；应用内方案绑定推理服务，绑着却离线就让它重建。
+     * userInitiated = 用户点的（可以弹授权/提示）；否则是静默的自动重试。
+     */
     private fun startDaemon(userInitiated: Boolean) {
+        val backend = AiBackends.current(context)
+        if (backend.isAppService) {
+            startingUntil = SystemClock.uptimeMillis() + START_MS
+            show(YELLOW, "AI 服务：正在启动…", "◐ AI")
+            if (userInitiated) pop()
+            handler.removeCallbacks(tick)
+            handler.postDelayed(tick, FAST_MS)
+            AiDaemonLauncher.info("启动应用内推理服务：userInitiated=$userInitiated")
+            AppAiConnection.ensureRunning(context, backend)
+            return
+        }
         when (AiDaemonLauncher.availability()) {
             AiDaemonLauncher.Availability.SHIZUKU_NOT_RUNNING ->
                 if (userInitiated) {
@@ -175,12 +192,15 @@ class AiStatusButton(
 
     private fun refresh() {
         val f = DataManager.userDataDir.resolve("ai_status.json")
-        // 从没部署过守护进程：只有 Shizuku 在运行时才显示（红色，点一下就能启动）；否则隐藏
-        if (!f.exists() && AiDaemonLauncher.availability() == AiDaemonLauncher.Availability.SHIZUKU_NOT_RUNNING) {
+        val backend = AiBackends.current(context)
+        // 从没部署过守护进程：Shizuku 方案只有 Shizuku 在运行时才显示（红色，点一下就能启动）；否则隐藏
+        if (!f.exists() && backend == AiBackend.SHIZUKU &&
+            AiDaemonLauncher.availability() == AiDaemonLauncher.Availability.SHIZUKU_NOT_RUNNING
+        ) {
             visibility = GONE
             return
         }
-        if (AiDaemonLauncher.takeFirstCheck()) startDaemon(userInitiated = false)
+        if (AiDaemonLauncher.takeFirstCheck(context)) startDaemon(userInitiated = false)
         val j =
             try {
                 JSONObject(f.readText())
@@ -224,8 +244,11 @@ class AiStatusButton(
                 show(YELLOW, "AI 服务：正在启动…", "◐ AI")
                 return
             }
-            // 键盘弹出时发现守护进程不在：每分钟最多自动经 Shizuku 拉起一次（授权过的情况下）
-            if (System.currentTimeMillis() - AiDaemonLauncher.lastAttemptMs > AUTO_RETRY_MS &&
+            // 键盘弹出时发现守护进程不在：每分钟最多自动经 Shizuku 拉起一次（授权过的情况下）。
+            // 应用内方案只在没绑定时补绑（绑定着时进程的重建归 Android 与看门狗）
+            if (backend.isAppService) {
+                if (!AppAiConnection.isBound()) startDaemon(userInitiated = false)
+            } else if (System.currentTimeMillis() - AiDaemonLauncher.lastAttemptMs > AUTO_RETRY_MS &&
                 AiDaemonLauncher.availability() == AiDaemonLauncher.Availability.READY
             ) {
                 startDaemon(userInitiated = false)
@@ -237,14 +260,15 @@ class AiStatusButton(
         val restarts = j?.optInt("restarts", 0) ?: 0
         val lastExit = j?.optString("last_exit", "none") ?: "none"
         // 长按详情用 Toast 显示，系统最多显示 2 行、每行约 24 个汉字，超出会被截断；所以每种状态都写成 2 行以内
-        val history = if (restarts > 0) "·重启$restarts" else ""
+        val history = (if (j?.optString("host") == "app") "·应用内" else "") + (if (restarts > 0) "·重启$restarts" else "")
         when {
             fresh && !enabled ->
                 show(GRAY, "AI 服务：已关闭\n点按开启，当前未加载模型", "○ AI")
             !fresh ->
                 show(
                     RED,
-                    (if (stopped) "AI 服务：已停止$history" else "AI 服务：离线$history") + "\n点按通过 Shizuku 启动",
+                    (if (stopped) "AI 服务：已停止$history" else "AI 服务：离线$history") +
+                        if (backend.isAppService) "\n点按重新启动应用内推理服务" else "\n点按通过 Shizuku 启动",
                 )
             j!!.optString("role") == "supervisor" ->
                 show(YELLOW, "AI 服务：正在重启\n上次退出 $lastExit，共 $restarts 次")

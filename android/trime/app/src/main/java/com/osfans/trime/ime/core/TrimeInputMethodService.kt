@@ -63,6 +63,7 @@ import splitties.systemservices.inputMethodManager
 import timber.log.Timber
 import com.osfans.trime.suzu.SuzuFix
 import com.osfans.trime.suzu.SuzuAppContext
+import com.osfans.trime.suzu.ai.AiBackends
 
 /** [輸入法][InputMethodService]主程序  */
 
@@ -179,6 +180,7 @@ open class TrimeInputMethodService : LifecycleInputMethodService() {
 
     override fun onCreate() {
         rime = RimeDaemon.createSession(javaClass.name)
+        AiBackends.onImeCreate(this)   // 选了应用内推理服务时绑定它；默认的 Shizuku 方案不受影响
         lifecycleScope.launch {
             jobs.consumeEach { it.join() }
         }
@@ -330,6 +332,7 @@ open class TrimeInputMethodService : LifecycleInputMethodService() {
         unregisterReceiver(rimeIntentReceiver)
         unregisterReceiver(screenStateReceiver)
         RimeDaemon.destroySession(javaClass.name)
+        AiBackends.onImeDestroy()
     }
 
     private fun handleReturnKey() {

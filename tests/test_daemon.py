@@ -159,6 +159,7 @@ def wait_ready(s, limit=30):
 
 try:
     check("daemon processes running (supervisor + worker)", len(env.pids()) == 2, str(env.pids()))
+    check("status host=shell", status().get("host") == "shell", str(status().get("host")))
 
     # ---- 认证与非法输入
     s = socket.create_connection(("127.0.0.1", PORT), timeout=5)

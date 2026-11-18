@@ -49,6 +49,12 @@ SPDX-License-Identifier: GPL-3.0-or-later
                 android:resource="@xml/method" />
         </service>
 
+        <!-- 应用自己的 AI 推理服务（实验，默认不用）：独立进程，只由本应用绑定。见 suzu/ai/AppAiService.kt -->
+        <service
+            android:name=".suzu.ai.AppAiService"
+            android:exported="false"
+            android:process=":suzu_ai" />
+
         <provider
             android:name="androidx.core.content.FileProvider"
             android:authorities="${applicationId}.fileprovider"
