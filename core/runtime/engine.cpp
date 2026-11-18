@@ -8,6 +8,10 @@
 #include <malloc.h>
 #endif
 
+#if defined(__APPLE__)
+#include <pthread/qos.h>
+#endif
+
 #include "llama.h"
 #include "runtime/clock.h"
 #include "runtime/log.h"
@@ -641,6 +645,11 @@ void Engine::shutdown() {
 // ---------------------------------------------------------------- 工作线程
 
 void Engine::worker_main() {
+#if defined(__APPLE__)
+    // macOS 上新线程不继承创建者的 QoS，一律从 DEFAULT 开始（2026-11-19 实测）。输入法线程是 USER_INTERACTIVE，
+    // 它在等这个线程的结果，所以把工作线程提到同一级。ggml 线程池的线程由 llama.cpp 创建，仍是 DEFAULT，暂不处理
+    pthread_set_qos_class_self_np(QOS_CLASS_USER_INTERACTIVE, 0);
+#endif
     std::unique_lock<std::mutex> lk(mu_);
     while (!stop_) {
         if (unload_requested_) {
@@ -690,6 +699,10 @@ void Engine::worker_main() {
         if (prepare_pending_) {
             prepare_pending_ = false;
             TokenSeq ctx = std::move(prepare_ctx_);
+            if (ctx == last_prepared_) {   // 排队期间打分任务已经算过同一段上文（前台接手）：不再做
+                track_prep_locked(ctx, kPrepDone, now_ms());
+                continue;
+            }
             lk.unlock();
             run_prepare(ctx);
             lk.lock();

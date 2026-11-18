@@ -49,7 +49,7 @@ struct EngineStats {
     uint64_t jobs_done = 0, jobs_dropped = 0;   // 被放弃（等待方已超时且有更新的请求）的任务
     uint64_t loads = 0, load_failures = 0, unloads = 0, decode_failures = 0;
     // 打分与生成任务里上文的命中情况。hit：完全命中。partial：复用了句首符以外的前缀，只解码新增的字。full：整段解码（最多复用句首符）。
-    // full_long：full 里解码不少于 20 个字的次数（窗口满后滑动等，手机上每次约 50 ms）
+    // full_long：full 里解码不少于 20 个字的次数（窗口满后滑动等，手机亮屏时每次约 32 ms）
     uint64_t ctx_hit = 0, ctx_partial = 0, ctx_full = 0, ctx_full_long = 0;
     uint64_t prep_hit = 0, prep_partial = 0, prep_full = 0;   // 预解码自身的同口径计数
     // 打分与生成任务没有完全命中上文时的归因（任务开始时判定，见 Engine::classify_miss_locked）。
