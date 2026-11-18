@@ -24,6 +24,7 @@ tests/run_all.sh <core 的构建目录> <suzu.gguf> <suzu.vocab.txt> [--quick]
 | `core/tools/score_gen_test.cpp`（`suzu_sg_test`） | 打分与生成共用一次解码：随机构造前缀大量重叠的上文、原生候选与生成词，核对与分别调用 `score`、`generate` 的结果一致。llama.cpp 的结果随同批的其他序列有微小浮动，分数差容许 0.15，束宽边缘近乎同分时展开到的词可能不同，不一致的不超过 1%。另报两种做法送进模型的字数。需 `-DSUZU_BUILD_TOOLS=ON` | 是 |
 | `student_test.lua`、`model_test.lua` | 加载、几组同音词的排序、粗略耗时 | 是 |
 | `gen_test.lua` | 候选生成：适用范围（全拼不生成）、简拼、混合输入、隔音符、三字词、词频名次、词表外字。束宽足够大时与逐个打分一致。`score_gen` 与分别调用 `score`、`generate` 的结果一致，两种模式的跳过规则，超时后打分结果照样进缓存 | 是 |
+| `ctx_miss_test.lua` | 上文未命中的归因：逐一构造预解码命中、准备了另一段上文、近期没有预解码、预解码来晚了、还在排队、被顶掉、准备过但槽位被改写，检查状态里 `ctx_miss` 只有对应的计数加一 | 是 |
 | `filter_test.lua` | 模拟 Rime 环境中的处理器与过滤器端到端测试 | 是 |
 | `unified_order_test.lua` | 统一排序加候选生成时的输出顺序：生成出新词或组内有重复文字时，英文与 emoji 候选留在原位（桩核心） | 否 |
 | `session_test.lua` | 同一个 Lua 状态里的多个会话与中途换方案：第二个会话也接上熄屏与 AI 开关的通知，换方案后词典目录与过滤器配置跟着换，组件销毁时断开通知（桩核心） | 否 |
