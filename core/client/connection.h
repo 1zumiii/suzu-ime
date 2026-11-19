@@ -2,12 +2,18 @@
 // 线程安全（内部一把锁）；所有操作都有总时限，连不上时立即返回失败，绝不拖住输入法线程。
 #pragma once
 
+#include <cstdint>
 #include <map>
 #include <mutex>
 #include <string>
 #include <vector>
 
 namespace suzu::client {
+
+struct RpcPeer {
+    uint32_t generation = 0;
+    bool sent = false;
+};
 
 class Connection {
 public:
@@ -22,7 +28,9 @@ public:
     void remember_lexicon(const std::string & name, int timeout_ms);
 
     // 一次请求/应答，总时限 timeout_ms（含必要的重连）。连接在上次请求之后才断开（守护进程刚重启）时，立即重连重试一次。
-    bool rpc(const std::vector<std::string> & req, int timeout_ms, std::vector<std::string> * rep);
+    bool rpc(const std::vector<std::string> & req, int timeout_ms, std::vector<std::string> * rep,
+             RpcPeer * peer = nullptr, const uint32_t * required_generation = nullptr);
+    uint32_t generation_for(const std::string & token) const;
 
     bool connected() const;
     // 当前连接上守护进程的协议版本（握手应答里的版本号）；没有连接时为 0
@@ -40,6 +48,8 @@ private:
     long long retry_at_ = 0;
     int fail_streak_ = 0;
     int peer_version_ = 0;
+    uint32_t generation_ = 0;
+    std::string peer_token_;   // 同一工作进程断线重连时保留统计
     std::string dir_;
     int port_ = 17920;
     std::map<std::string, long long> config_;

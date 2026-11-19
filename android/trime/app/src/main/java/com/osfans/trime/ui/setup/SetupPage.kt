@@ -7,6 +7,7 @@ package com.osfans.trime.ui.setup
 
 import android.content.Context
 import android.content.Intent
+import android.widget.Toast
 import androidx.core.content.edit
 import androidx.core.net.toUri
 import androidx.fragment.app.FragmentActivity
@@ -15,6 +16,8 @@ import com.osfans.trime.R
 import com.osfans.trime.suzu.AiDaemonLauncher
 import com.osfans.trime.suzu.SuzuAsset
 import com.osfans.trime.suzu.SuzuAssets
+import com.osfans.trime.suzu.ai.AiBackends
+import com.osfans.trime.suzu.ai.AppAiConnection
 import com.osfans.trime.data.base.DataManager
 import com.osfans.trime.util.InputMethodUtils
 import com.osfans.trime.util.appContext
@@ -48,6 +51,7 @@ enum class SetupPage(val required: Boolean) {
         Grammar -> context.getString(R.string.suzu_setup_grammar_hint, SuzuAsset.Grammar.sizeMb) + stateText(context, SuzuAsset.Grammar, context.getString(R.string.suzu_setup_grammar_skip))
         Ai -> when {
             !SuzuAssets.isInstalled(SuzuAsset.Model) -> context.getString(R.string.suzu_setup_ai_needs_model)
+            AiBackends.current(context).isAppService -> AiBackends.current(context).title
             else -> when (AiDaemonLauncher.availability()) {
                 AiDaemonLauncher.Availability.READY -> context.getString(R.string.suzu_setup_ai_ready)
                 AiDaemonLauncher.Availability.NEEDS_PERMISSION -> context.getString(R.string.suzu_setup_ai_permission)
@@ -66,7 +70,7 @@ enum class SetupPage(val required: Boolean) {
         Enable -> context.getText(R.string.setup__enable_ime)
         Select -> context.getText(R.string.setup__select_ime)
         Model, Grammar -> context.getText(if (SuzuAssets.state(asset!!) is SuzuAssets.State.Downloading) R.string.suzu_cancel_download else R.string.suzu_download)
-        Ai -> when (AiDaemonLauncher.availability()) {
+        Ai -> if (AiBackends.current(context).isAppService) context.getText(R.string.suzu_start_ai) else when (AiDaemonLauncher.availability()) {
             AiDaemonLauncher.Availability.READY -> context.getText(R.string.suzu_start_ai)
             AiDaemonLauncher.Availability.NEEDS_PERMISSION -> context.getText(R.string.suzu_grant_permission)
             AiDaemonLauncher.Availability.SHIZUKU_NOT_RUNNING -> context.getText(R.string.suzu_open_shizuku)
@@ -87,7 +91,7 @@ enum class SetupPage(val required: Boolean) {
             Enable -> InputMethodUtils.showImeEnablerActivity(activity)
             Select -> InputMethodUtils.showImePicker()
             Model, Grammar -> if (SuzuAssets.state(asset!!) is SuzuAssets.State.Downloading) SuzuAssets.cancel(asset!!) else SuzuAssets.start(asset!!)
-            Ai -> when (AiDaemonLauncher.availability()) {
+            Ai -> if (AiBackends.current(activity).isAppService) startAi(activity) else when (AiDaemonLauncher.availability()) {
                 AiDaemonLauncher.Availability.READY -> startAi(activity)
                 AiDaemonLauncher.Availability.NEEDS_PERMISSION -> AiDaemonLauncher.requestPermission { startAi(activity) }
                 AiDaemonLauncher.Availability.SHIZUKU_NOT_RUNNING -> openShizuku(activity)
@@ -98,8 +102,17 @@ enum class SetupPage(val required: Boolean) {
     private fun startAi(activity: FragmentActivity) {
         // 用户在引导里主动选择了启动，把 AI 开关记为开启（新装时默认关闭）
         DataManager.userDataDir.resolve("ai_enabled.state").writeText("1")
+        val backend = AiBackends.current(activity)
+        if (backend.isAppService) {
+            AiBackends.switchTo(activity, backend) { message ->
+                aiStarted = AppAiConnection.readyPid > 0
+                Toast.makeText(activity, message, Toast.LENGTH_LONG).show()
+                (activity as? SetupActivity)?.refreshCurrentFragment()
+            }
+            return
+        }
         AiDaemonLauncher.start(activity) { result ->
-            aiStarted = true
+            aiStarted = result !is AiDaemonLauncher.Result.Failed
             (activity as? SetupActivity)?.refreshCurrentFragment()
         }
     }

@@ -5,18 +5,27 @@
 
 package com.osfans.trime.suzu.ai
 
+import android.app.ActivityManager
 import android.content.Context
-import android.os.Handler
-import android.os.Looper
+import com.osfans.trime.TrimeApplication
+import com.osfans.trime.data.base.DataManager
 import com.osfans.trime.suzu.AiDaemonLauncher
+import com.osfans.trime.suzu.SuzuAsset
+import com.osfans.trime.suzu.SuzuAssets
+import kotlinx.coroutines.CoroutineStart
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.Job
+import kotlinx.coroutines.MainScope
+import kotlinx.coroutines.delay
+import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
+import kotlinx.coroutines.withTimeoutOrNull
 
 /**
  * AI 重排的推理由谁来跑。两种方案说同一套线路协议（127.0.0.1:17920、用户目录里的 llm_token 与 ai_status.json），
  * 客户端库 librime_llm.so 与 Lua 不区分，所以切换不用重装，也不用重新部署。同一时间只让一种方案在跑：
  * 端口只有一个，切换时先停旧的再起新的。
  *
- * 新增方案时：在这里加一项，在 [AiBackends.activate] 与 [AiBackends.deactivate] 里接上启停，
- * 状态徽标按 [isAppService] 等属性分支，不必改动客户端。
  */
 enum class AiBackend(
     val id: String,
@@ -45,64 +54,95 @@ enum class AiBackend(
 object AiBackends {
     private const val PREFS = "suzu_ai_backend"
     private const val KEY = "backend"
-    private val main = Handler(Looper.getMainLooper())
+    private val scope = MainScope()
+    private var transition: Job? = null
+    private var imeActive = false
+    val switching get() = transition?.isActive == true
+    val locked get() = TrimeApplication.getInstance().isDirectBootMode
 
-    fun current(context: Context): AiBackend =
-        AiBackend.fromId(context.getSharedPreferences(PREFS, Context.MODE_PRIVATE).getString(KEY, null))
+    fun current(context: Context): AiBackend {
+        if (locked) return AiBackend.DEFAULT
+        return AiBackend.fromId(context.getSharedPreferences(PREFS, Context.MODE_PRIVATE).getString(KEY, null))
+    }
 
-    /** 输入法服务创建时：当前是应用内方案就绑定推理服务（Shizuku 方案由状态徽标首次显示时拉起，保持原样） */
     fun onImeCreate(context: Context) {
-        val b = current(context)
-        if (b.isAppService) AppAiConnection.bind(context, b)
+        imeActive = true
+        val backend = current(context)
+        if (backend.isAppService && !switching) AppAiConnection.bind(context, backend)
     }
 
-    fun onImeDestroy() = AppAiConnection.unbind()
-
-    /**
-     * 切换方案：记下选择，停掉旧方案，再起新方案。[onDone] 在主线程上收到给用户看的一句话。
-     * 选的与当前相同时也重新拉起一遍（可当作“重启推理服务”用）。
-     */
-    fun switchTo(context: Context, target: AiBackend, onDone: (String) -> Unit) {
-        val app = context.applicationContext
-        val old = current(app)
-        app.getSharedPreferences(PREFS, Context.MODE_PRIVATE).edit().putString(KEY, target.id).apply()
-        AiEvents.append(app, "switch ${old.id} -> ${target.id}")
-        deactivate(app, old) { stopped ->
-            activate(app, target) { msg -> onDone(if (stopped.isEmpty()) msg else "$stopped\n$msg") }
-        }
-    }
-
-    private fun deactivate(context: Context, b: AiBackend, onDone: (String) -> Unit) {
-        // 应用内的推理服务无论如何都先解绑：进程里有模型，留着就占内存与端口
+    fun onImeDestroy() {
+        imeActive = false
         AppAiConnection.unbind()
-        if (b.isAppService) {
-            AppAiConnection.killServiceProcess(context, "switch")
-            main.postDelayed({ onDone("") }, 500)   // 等端口空出来
-            return
-        }
-        // Shizuku 方案：能连上 Shizuku 就停掉 rimellmd；连不上时它若还在跑，新方案会等端口空出来
-        if (AiDaemonLauncher.availability() == AiDaemonLauncher.Availability.READY) {
-            AiDaemonLauncher.stop { r -> onDone(if (r is AiDaemonLauncher.Result.Failed) r.reason else "") }
-        } else {
-            Thread {
-                val alive = PortProbe.alive()
-                main.post { onDone(if (alive) "Shizuku 未就绪，旧的守护进程停不下来，新方案会等它退出（重启手机即可）" else "") }
-            }.start()
-        }
     }
 
-    private fun activate(context: Context, b: AiBackend, onDone: (String) -> Unit) {
-        if (b.isAppService) {
-            AppAiConnection.bind(context, b)
-            onDone("已切换到${b.title}")
+    /** 所有入口在主线程调用。新选择取消旧切换，已经发出的 shell 命令按提交顺序执行。 */
+    fun switchTo(context: Context, target: AiBackend, onDone: (String) -> Unit) {
+        if (locked) {
+            onDone("请先解锁设备")
             return
         }
-        if (AiDaemonLauncher.availability() != AiDaemonLauncher.Availability.READY) {
-            onDone("已切换到${b.title}，Shizuku 就绪后点按键盘上的 AI 徽标启动")
-            return
+        val app = context.applicationContext
+        transition?.cancel()
+        val job = scope.launch(start = CoroutineStart.LAZY) {
+            val message = try {
+                change(app, target)
+            } catch (e: kotlinx.coroutines.CancellationException) {
+                throw e
+            } catch (e: Exception) {
+                "切换失败（${e.javaClass.simpleName}）"
+            }
+            AiEvents.append(app, message)
+            transition = null
+            onDone(message)
         }
-        AiDaemonLauncher.start(context) { r ->
-            onDone(if (r is AiDaemonLauncher.Result.Failed) r.reason else "已切换到${b.title}")
+        transition = job
+        job.start()
+    }
+
+    private suspend fun change(app: Context, target: AiBackend): String {
+        if (target.isAppService && !SuzuAssets.isInstalled(SuzuAsset.Model)) return "请先在模型页下载 Suzu 模型"
+        val old = current(app)
+        AiEvents.append(app, "switch ${old.id} -> ${target.id}")
+        AppAiConnection.unbind()
+        val exited = withTimeoutOrNull(10_000) {
+            val am = app.getSystemService(Context.ACTIVITY_SERVICE) as ActivityManager
+            val name = app.packageName + AppAiService.PROCESS_SUFFIX
+            while (withContext(Dispatchers.IO) { am.runningAppProcesses?.any { it.processName == name } == true }) delay(150)
+            true
         }
+        if (exited == null) return "应用内推理进程尚未退出，请稍后重试"
+
+        val shellReady = AiDaemonLauncher.availability() == AiDaemonLauncher.Availability.READY
+        if (shellReady && (target.isAppService || old == AiBackend.SHIZUKU)) {
+            val stop = AiDaemonLauncher.stop()
+            if (stop is AiDaemonLauncher.Result.Failed) return stop.reason
+        }
+        if (target.isAppService && withContext(Dispatchers.IO) { PortProbe.occupied() }) {
+            return "推理端口仍被占用，请确认 Shizuku 已授权并停止旧服务后重试"
+        }
+        app.getSharedPreferences(PREFS, Context.MODE_PRIVATE).edit().putString(KEY, target.id).apply()
+        if (target.isAppService) {
+            if (!imeActive) return "已保存${target.title}，启用输入法后启动"
+            if (!AppAiConnection.bind(app, target)) return AppAiConnection.problem ?: "绑定推理服务失败"
+        } else {
+            if (!shellReady) return "已保存 Shizuku 方案，Shizuku 就绪后点按 AI 徽标启动"
+            val start = AiDaemonLauncher.startShell(app)
+            if (start is AiDaemonLauncher.Result.Failed) return start.reason
+        }
+
+        return withTimeoutOrNull(15_000) {
+            while (true) {
+                if (target.isAppService) {
+                    if (!imeActive) return@withTimeoutOrNull "已保存${target.title}，启用输入法后启动"
+                    // 等待期间输入法可能已销毁又重新创建。
+                    if (!AppAiConnection.isBound() && AppAiConnection.problem == null) AppAiConnection.bind(app, target)
+                    AppAiConnection.problem?.let { return@withTimeoutOrNull it }
+                    if (AppAiConnection.readyPid > 0) break
+                } else if (withContext(Dispatchers.IO) { PortProbe.owner(DataManager.userDataDir)?.host == "shell" }) break
+                delay(200)
+            }
+            "已切换到${target.title}"
+        } ?: "已保存${target.title}，尚未确认服务就绪，请查看 AI 徽标"
     }
 }

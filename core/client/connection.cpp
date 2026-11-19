@@ -64,6 +64,11 @@ int Connection::peer_version() const {
     return fd_ >= 0 ? peer_version_ : 0;
 }
 
+uint32_t Connection::generation_for(const std::string & token) const {
+    std::lock_guard<std::mutex> lk(mu_);
+    return token == peer_token_ ? generation_ : 0;
+}
+
 void Connection::fail_locked() {
     close_locked();
     fail_streak_++;
@@ -118,6 +123,10 @@ bool Connection::connect_locked(long long deadline) {
         return false;
     }
     int version = rep.size() >= 3 ? atoi(rep[2].c_str()) : 0;
+    if (token != peer_token_) {
+        peer_token_ = token;
+        ++generation_;
+    }
     for (auto & kv : config_)
         if (!ipc::send_frame(fd, {"C", kv.first, std::to_string(kv.second)}, left())) { ::close(fd); fail_locked(); return false; }
     if (!lexicon_.empty() && !ipc::send_frame(fd, {"X", lexicon_}, left())) { ::close(fd); fail_locked(); return false; }
@@ -129,16 +138,22 @@ bool Connection::connect_locked(long long deadline) {
     return true;
 }
 
-bool Connection::rpc(const std::vector<std::string> & req, int timeout_ms, std::vector<std::string> * rep) {
+bool Connection::rpc(const std::vector<std::string> & req, int timeout_ms, std::vector<std::string> * rep,
+                     RpcPeer * peer, const uint32_t * required_generation) {
     std::lock_guard<std::mutex> lk(mu_);
     const long long deadline = ipc::mono_ms() + timeout_ms;   // 连接、认证、重发配置、请求本身，一共不超过 timeout_ms
     for (int attempt = 0; attempt < 2; attempt++) {
         bool was_connected = fd_ >= 0;
-        if (!connect_locked(deadline)) return false;
+        bool ready = connect_locked(deadline);
+        if (peer) *peer = {generation_, false};
+        if (!ready || (required_generation && *required_generation != generation_)) return false;
         long long t0 = ipc::mono_ms();
         int left = (int)(deadline - t0);
         if (left <= 0) return false;   // 连接已建好，留给下一次请求用
-        if (ipc::send_frame(fd_, req, left) && ipc::recv_frame(fd_, *rep, left, left)) return true;
+        if (ipc::send_frame(fd_, req, left)) {
+            if (peer) peer->sent = true;
+            if (ipc::recv_frame(fd_, *rep, left, left)) return true;
+        }
         bool quick = ipc::mono_ms() - t0 < 10;   // 立刻失败 = 对端已关闭，而不是超时
         if (was_connected && quick && attempt == 0) { close_locked(); retry_at_ = 0; continue; }
         fail_locked();   // 超时：连接上可能还有迟到的应答，断开重连

@@ -5,133 +5,153 @@
 
 package com.osfans.trime.suzu.ai
 
-import android.app.ActivityManager
 import android.content.ComponentName
 import android.content.Context
 import android.content.Intent
 import android.content.ServiceConnection
 import android.os.Handler
-import android.os.HandlerThread
 import android.os.IBinder
+import android.os.Looper
+import android.os.Message
+import android.os.Messenger
 import android.os.Process
 import android.os.SystemClock
 import com.osfans.trime.data.base.DataManager
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.Job
+import kotlinx.coroutines.MainScope
+import kotlinx.coroutines.delay
+import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
 
-/**
- * 输入法进程一侧：绑定 [AppAiService]，并替代 rimellmd 的监督进程做看门狗。
- *
- * 看门狗每 3 秒查一次：心跳（B → PONG）连续 3 次失败，或客户端库连续 3 次打分请求等到超时都没有应答
- * （librime_llm.so 的 nativeTimeoutStreak），就对推理进程调用 Process.killProcess。绑定还在，Android 会重建它。
- * 绑定或重建后的 10 秒内不判定（模型加载期间心跳照常应答，留余量给系统拉起进程）。
- */
+/** 绑定和生命周期回调均在主线程处理。每次 Binder 连接独占一次探测任务。 */
 object AppAiConnection {
     private const val BEAT_MS = 3000L
     private const val GRACE_MS = 10_000L
-    private const val MAX_FAILS = 3
-    private const val MAX_TIMEOUT_STREAK = 3
-
-    private val thread = HandlerThread("suzu-ai-watchdog").apply { start() }
-    private val handler = Handler(thread.looper)
-
-    @Volatile private var appContext: Context? = null
-    @Volatile private var bound = false
-    @Volatile private var connected = false
-    @Volatile private var graceUntil = 0L
-    private var pingFails = 0
-    private var streakBase = 0
-
-    private val clientLoaded = runCatching { System.loadLibrary("rime_llm") }.isSuccess
+    private val scope = MainScope()
+    private val clientLoaded by lazy { runCatching { System.loadLibrary("rime_llm") }.isSuccess }
+    private var binding: Binding? = null
+    var readyPid = 0
+        private set
+    var problem: String? = null
+        private set
 
     @JvmStatic
-    private external fun nativeTimeoutStreak(): Int
+    private external fun nativeTimeoutStreak(token: String): Int
 
-    private val conn =
-        object : ServiceConnection {
-            override fun onServiceConnected(name: ComponentName?, service: IBinder?) {
-                connected = true
-                graceUntil = SystemClock.uptimeMillis() + GRACE_MS
-                appContext?.let { AiEvents.append(it, "connected") }
-            }
+    fun isBound() = binding != null
 
-            // 推理进程死了（被回收、被杀或崩溃）：绑定还在，Android 会重建服务，这里只记一笔
-            override fun onServiceDisconnected(name: ComponentName?) {
-                connected = false
-                appContext?.let { AiEvents.append(it, "disconnected (process died)") }
-            }
-        }
-
-    fun isBound() = bound
-
-    @Synchronized
-    fun bind(context: Context, backend: AiBackend) {
-        if (bound) return
+    fun bind(context: Context, backend: AiBackend): Boolean {
+        if (binding != null) return true
         val app = context.applicationContext
-        appContext = app
-        val intent =
-            Intent(app, AppAiService::class.java)
-                .putExtra(AppAiService.EXTRA_RIME_DIR, DataManager.userDataDir.absolutePath)
-                .putExtra(AppAiService.EXTRA_BOOSTED, backend == AiBackend.APP_SERVICE_BOOSTED)
-        var flags = Context.BIND_AUTO_CREATE
-        if (backend == AiBackend.APP_SERVICE_BOOSTED) flags = flags or Context.BIND_IMPORTANT
-        bound = app.bindService(intent, conn, flags)
-        graceUntil = SystemClock.uptimeMillis() + GRACE_MS
-        pingFails = 0
-        AiEvents.append(app, "bind backend=${backend.id} ok=$bound")
-        if (bound) {
-            handler.removeCallbacksAndMessages(null)
-            handler.postDelayed(::watch, BEAT_MS)
+        val next = Binding(app, backend)
+        val intent = Intent(app, AppAiService::class.java)
+            .putExtra(AppAiService.EXTRA_RIME_DIR, DataManager.userDataDir.absolutePath)
+            .putExtra(AppAiService.EXTRA_BOOSTED, backend == AiBackend.APP_SERVICE_BOOSTED)
+        val flags = Context.BIND_AUTO_CREATE or
+            (if (backend == AiBackend.APP_SERVICE_BOOSTED) Context.BIND_IMPORTANT else 0)
+        problem = null
+        binding = next
+        val ok = runCatching { app.bindService(intent, next, flags) }.getOrDefault(false)
+        if (!ok) {
+            unbind()
+            problem = "无法绑定应用内推理服务，请点按重试"
         }
+        AiEvents.append(app, "bind backend=${backend.id} ok=$ok")
+        return ok
     }
 
-    @Synchronized
     fun unbind() {
-        handler.removeCallbacksAndMessages(null)
-        if (!bound) return
-        bound = false
-        connected = false
-        appContext?.let {
-            runCatching { it.unbindService(conn) }
-            AiEvents.append(it, "unbind")
-        }
+        val old = binding ?: return
+        binding = null
+        old.disconnect()
+        runCatching { old.app.unbindService(old) }
+        AiEvents.append(old.app, "unbind")
     }
 
-    /** 状态徽标点“启动”时：没绑定就绑定，绑定着却离线就杀掉推理进程让 Android 重建 */
-    fun ensureRunning(context: Context, backend: AiBackend) {
-        if (!bound) {
-            bind(context, backend)
-            return
-        }
-        handler.post {
-            if (!PortProbe.alive()) killServiceProcess(context, "manual restart")
-        }
-    }
+    private class Binding(val app: Context, val backend: AiBackend) : ServiceConnection {
+        private var binder: IBinder? = null
+        private var watch: Job? = null
 
-    /** 结束推理进程（同一 UID 的进程可以直接杀）。找不到时什么都不做 */
-    fun killServiceProcess(context: Context, why: String) {
-        val am = context.getSystemService(Context.ACTIVITY_SERVICE) as ActivityManager
-        val name = context.packageName + AppAiService.PROCESS_SUFFIX
-        val pid = am.runningAppProcesses?.firstOrNull { it.processName == name }?.pid ?: return
-        AiEvents.append(context, "kill pid=$pid ($why)")
-        Process.killProcess(pid)
-        graceUntil = SystemClock.uptimeMillis() + GRACE_MS
-        pingFails = 0
-    }
+        fun disconnect() {
+            watch?.cancel()
+            watch = null
+            binder = null
+            readyPid = 0
+            problem = null
+        }
 
-    private fun watch() {
-        if (!bound) return
-        val ctx = appContext ?: return
-        if (SystemClock.uptimeMillis() >= graceUntil) {
-            pingFails = if (PortProbe.alive()) 0 else pingFails + 1
-            val streak = if (clientLoaded) runCatching { nativeTimeoutStreak() }.getOrDefault(0) else 0
-            if (streak < streakBase) streakBase = 0   // 有过一次正常应答，计数清零了
-            when {
-                pingFails >= MAX_FAILS -> killServiceProcess(ctx, "watchdog: $pingFails heartbeats failed")
-                streak - streakBase >= MAX_TIMEOUT_STREAK -> {
-                    streakBase = streak
-                    killServiceProcess(ctx, "watchdog: $streak score requests timed out in a row")
+        override fun onServiceConnected(name: ComponentName, service: IBinder) {
+            if (binding !== this) return
+            disconnect()
+            binder = service
+            AiEvents.append(app, "connected")
+            val replies = Messenger(Handler(Looper.getMainLooper()) { msg ->
+                if (binding === this && binder === service) {
+                    if ((msg.arg2 == 1) != (backend == AiBackend.APP_SERVICE_BOOSTED)) {
+                        problem = "进程仍在使用上一次的优先级，请重新切换"
+                        return@Handler true
+                    }
+                    when (msg.what) {
+                        AppAiService.SERVING -> if (watch == null) monitor(service, msg.arg1)
+                        AppAiService.FAILED -> {
+                            watch?.cancel()
+                            readyPid = 0
+                            problem = msg.data.getString("error")
+                        }
+                    }
+                }
+                true
+            })
+            val subscribe = Message.obtain(null, AppAiService.SUBSCRIBE).apply { replyTo = replies }
+            runCatching { Messenger(service).send(subscribe) }
+                .onFailure { problem = "无法连接应用内推理服务，请点按重试" }
+        }
+
+        override fun onServiceDisconnected(name: ComponentName) {
+            if (binding !== this) return
+            disconnect()
+            AiEvents.append(app, "disconnected (process died)")
+        }
+
+        override fun onBindingDied(name: ComponentName) {
+            if (binding !== this) return
+            unbind()
+            bind(app, backend)
+        }
+
+        override fun onNullBinding(name: ComponentName) {
+            if (binding !== this) return
+            unbind()
+            problem = "应用内推理服务拒绝绑定，请点按重试"
+        }
+
+        private fun monitor(service: IBinder, pid: Int) {
+            val graceUntil = SystemClock.uptimeMillis() + GRACE_MS
+            watch = scope.launch {
+                var failures = 0
+                while (binding === this@Binding && binder === service) {
+                    val (owner, timeouts) = withContext(Dispatchers.IO) {
+                        val peer = PortProbe.owner(DataManager.userDataDir)
+                        val streak = if (peer?.host == "app" && peer.pid == pid && clientLoaded)
+                            nativeTimeoutStreak(peer.token) else 0
+                        peer to streak
+                    }
+                    if (binding !== this@Binding || binder !== service || !service.isBinderAlive) return@launch
+                    val ours = owner?.host == "app" && owner.pid == pid
+                    readyPid = if (ours) pid else 0
+                    problem = if (owner != null && !ours) "端口仍由其他推理进程占用，请重新切换" else null
+                    if (SystemClock.uptimeMillis() >= graceUntil) {
+                        failures = if (owner == null) failures + 1 else 0
+                        if (failures >= 3 || timeouts >= 3) {
+                            AiEvents.append(app, "watchdog kill pid=$pid probes=$failures timeouts=$timeouts")
+                            Process.killProcess(pid)
+                            return@launch
+                        }
+                    }
+                    delay(BEAT_MS)
                 }
             }
         }
-        handler.postDelayed(::watch, BEAT_MS)
     }
 }

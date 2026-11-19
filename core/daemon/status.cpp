@@ -29,24 +29,24 @@ bool read_enabled_state(const Options & o, bool * enabled) {
     return true;
 }
 
-void write_file_atomic(const std::string & path, const std::string & data, mode_t mode) {
-    if (path.empty()) return;
+bool write_file_atomic(const std::string & path, const std::string & data, mode_t mode) {
+    if (path.empty()) return false;
     std::string tmp = path + ".tmp";
     int fd = open(tmp.c_str(), O_WRONLY | O_CREAT | O_TRUNC | O_CLOEXEC, mode);
     if (fd >= 0) {
         ssize_t w = write(fd, data.data(), data.size());
         fchmod(fd, mode);
         close(fd);
-        if (w == (ssize_t)data.size() && rename(tmp.c_str(), path.c_str()) == 0) return;
+        if (w == (ssize_t)data.size() && rename(tmp.c_str(), path.c_str()) == 0) return true;
         unlink(tmp.c_str());
     }
     // /sdcard 上 rename 偶尔失败：退回直接写
     fd = open(path.c_str(), O_WRONLY | O_CREAT | O_TRUNC | O_CLOEXEC, mode);
     if (fd >= 0) {
         ssize_t w = write(fd, data.data(), data.size());
-        (void)w;
-        close(fd);
+        return close(fd) == 0 && w == (ssize_t)data.size();
     }
+    return false;
 }
 
 std::string json_escape(const std::string & s) {

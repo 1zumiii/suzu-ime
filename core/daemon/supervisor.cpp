@@ -135,9 +135,14 @@ int run_supervisor(Options opt) {
             }
             usleep(200 * 1000);
         }
+        if (g_stop.load()) return 0;
         if (WIFEXITED(st) && WEXITSTATUS(st) == kOrphanExit) {
             log_event("worker exited as orphan (Trime data dir gone); supervisor exiting");
             return 0;
+        }
+        if (WIFEXITED(st) && WEXITSTATUS(st) == kPortOccupiedExit) {
+            log_event("port occupied; leaving the active worker and its status intact");
+            return 2;
         }
         long long up_s = (ipc::mono_ms() - start) / 1000;
         opt.restarts++;

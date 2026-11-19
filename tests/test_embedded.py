@@ -85,7 +85,22 @@ try:
     s = socket.create_connection(("127.0.0.1", PORT), timeout=5)
     check("heartbeat", rpc(s, ["B"]) == ["PONG"])
     r = rpc(s, ["H", token])
-    check("auth with token", r[0] == "OK" and r[1] == str(proc.pid), str(r))
+    check("auth identifies this app worker", r[:2] == ["OK", str(proc.pid)] and r[3:] == ["app"], str(r))
+    # 在反向切换中，启动失败的 shell 也不能覆盖仍在监听的 app 的令牌。
+    shell = os.path.join(os.path.dirname(binp), "rimellmd")
+    contender = subprocess.run([shell, "--port", str(PORT), "--model", model, "--rime-dir", rime, "--log-dir", d],
+                               stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL, timeout=5)
+    with socket.create_connection(("127.0.0.1", PORT), timeout=5) as probe:
+        with open(token_file) as f:
+            hello = rpc(probe, ["H", f.read().strip()])
+    check("failed shell leaves app authenticated", contender.returncode == 2 and hello == r)
+    contender = subprocess.run([shell, "--supervise", "--port", str(PORT), "--model", model,
+                                "--rime-dir", rime, "--log-dir", d],
+                               stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL, timeout=5)
+    with open(status_file) as f:
+        current = json.load(f)
+    check("failed supervisor preserves app status", contender.returncode == 2 and current.get("pid") == proc.pid
+          and current.get("host") == "app")
     rpc(s, ["C", "enabled", "1"])
     ready = wait_for(lambda: rpc(s, ["P", "他在公司当"])[0] == "1" and rpc(s, ["I"])[0] == "1", 30)
     check("model ready", ready)

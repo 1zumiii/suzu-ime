@@ -142,6 +142,7 @@ class AiStatusButton(
      * userInitiated = 用户点的（可以弹授权/提示）；否则是静默的自动重试。
      */
     private fun startDaemon(userInitiated: Boolean) {
+        if (AiBackends.locked || AiBackends.switching) return
         val backend = AiBackends.current(context)
         if (backend.isAppService) {
             startingUntil = SystemClock.uptimeMillis() + START_MS
@@ -150,7 +151,11 @@ class AiStatusButton(
             handler.removeCallbacks(tick)
             handler.postDelayed(tick, FAST_MS)
             AiDaemonLauncher.info("启动应用内推理服务：userInitiated=$userInitiated")
-            AppAiConnection.ensureRunning(context, backend)
+            if (userInitiated) {
+                AiBackends.switchTo(context, backend) { msg -> Toast.makeText(context, msg, Toast.LENGTH_LONG).show() }
+            } else {
+                AppAiConnection.bind(context, backend)
+            }
             return
         }
         when (AiDaemonLauncher.availability()) {
@@ -191,6 +196,15 @@ class AiStatusButton(
     }
 
     private fun refresh() {
+        if (AiBackends.locked) {
+            visibility = GONE
+            return
+        }
+        if (AiBackends.switching) {
+            offlineNow = true
+            show(YELLOW, "正在切换 AI 推理方式", "◐ AI")
+            return
+        }
         val f = DataManager.userDataDir.resolve("ai_status.json")
         val backend = AiBackends.current(context)
         // 从没部署过守护进程：Shizuku 方案只有 Shizuku 在运行时才显示（红色，点一下就能启动）；否则隐藏
@@ -210,7 +224,10 @@ class AiStatusButton(
         val age = if (j != null) System.currentTimeMillis() / 1000 - j.optLong("ts", 0) else Long.MAX_VALUE
         // 守护进程退出时最后写一份 state=stopped：时间戳虽新，进程已经不在，按离线处理
         val stopped = j?.optString("state") == "stopped"
-        val fresh = j != null && age <= STALE_S && !stopped
+        val sameHost = if (backend.isAppService) {
+            AppAiConnection.readyPid > 0 && j?.optString("host") == "app" && j.optInt("pid") == AppAiConnection.readyPid
+        } else j?.optString("host") != "app"
+        val fresh = j != null && age <= STALE_S && !stopped && sameHost
         val enabled = j?.optBoolean("enabled", true) ?: true
         val loaded = j?.optBoolean("model_loaded") ?: false
         val loading = j?.optJSONObject("engine")?.optString("state") == "loading"
@@ -236,6 +253,11 @@ class AiStatusButton(
         }
 
         offlineNow = !fresh
+        if (!fresh && backend.isAppService && AppAiConnection.problem != null) {
+            alpha = 1f
+            show(RED, AppAiConnection.problem!!)
+            return
+        }
         if (!fresh) {
             val now = SystemClock.uptimeMillis()
             if (now < startingUntil) {                    // 刚经 Shizuku 启动，等它写出第一份状态

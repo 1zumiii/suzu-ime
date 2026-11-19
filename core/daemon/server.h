@@ -9,6 +9,7 @@
 namespace suzu::daemon {
 
 constexpr int kOrphanExit = 77;   // 因 Trime 被卸载（状态目录长期消失）而退出：监督进程见到它就不再重启
+constexpr int kPortOccupiedExit = 78;   // 另一个宿主持有端口及状态文件
 
 int run_worker(const Options & opt);
 

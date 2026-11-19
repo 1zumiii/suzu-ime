@@ -15,6 +15,12 @@ import com.osfans.trime.suzu.ai.AiBackend
 import com.osfans.trime.suzu.ai.AiBackends
 import rikka.shizuku.Shizuku
 import java.io.File
+import java.util.concurrent.Executors
+import kotlinx.coroutines.MainScope
+import kotlinx.coroutines.CoroutineStart
+import kotlinx.coroutines.asCoroutineDispatcher
+import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
 
 /**
  * 通过 Shizuku 在手机上直接拉起 AI 重排守护进程 rimellmd（不依赖电脑）。
@@ -34,6 +40,8 @@ object AiDaemonLauncher {
     private const val STUDENT_MODEL = "suzu.gguf"          // 放在 Trime 用户目录里即启用 Suzu 学生模型（需配套词表）
     private const val STUDENT_VOCAB = "suzu.vocab.txt"
     private val main = Handler(Looper.getMainLooper())
+    private val scope = MainScope()
+    private val shell = Executors.newSingleThreadExecutor().asCoroutineDispatcher()
 
     @Volatile
     var lastAttemptMs = 0L
@@ -131,60 +139,64 @@ object AiDaemonLauncher {
      * 经 Shizuku 停掉守护进程（切换到应用内推理服务时用；监督进程收到 SIGTERM 会连同工作进程一起退出）。
      * 没在跑算成功。结果回到主线程。
      */
-    fun stop(onResult: (Result) -> Unit) {
-        Thread {
-            val result =
-                try {
-                    val (out, err, code) = runShell(stopScript)
-                    when {
-                        out.contains("STOPPED") || out.contains("NOT_RUNNING") -> Result.Started
-                        out.contains("KILL_FAIL") -> Result.Failed("Shizuku 守护进程停不下来，请重启手机后再试")
-                        else -> Result.Failed("停止 Shizuku 守护进程失败（错误码 $code）：${(out + " " + err).trim().take(120)}")
-                    }
-                } catch (e: Throwable) {
-                    Result.Failed("${e.javaClass.simpleName}: ${e.message?.take(100)}")
+    suspend fun stop(): Result = withContext(shell) {
+        val result =
+            try {
+                val (out, err, code) = runShell(stopScript)
+                when {
+                    out.contains("STOPPED") || out.contains("NOT_RUNNING") -> Result.Started
+                    out.contains("KILL_FAIL") -> Result.Failed("Shizuku 守护进程停不下来，请重启手机后再试")
+                    else -> Result.Failed("停止 Shizuku 守护进程失败（错误码 $code）：${(out + " " + err).trim().take(120)}")
                 }
-            Log.i(TAG, "停止守护进程：$result")
-            main.post { onResult(result) }
-        }.start()
+            } catch (e: Throwable) {
+                Result.Failed("${e.javaClass.simpleName}: ${e.message?.take(100)}")
+            }
+        Log.i(TAG, "停止守护进程：$result")
+        result
     }
 
     /** 在后台线程里经 Shizuku 以 shell 身份启动守护进程，结果回到主线程。 */
     fun start(context: Context, onResult: (Result) -> Unit) {
+        if (AiBackends.locked || AiBackends.switching || AiBackends.current(context) != AiBackend.SHIZUKU) {
+            onResult(Result.Failed("当前推理方式未使用 Shizuku，或正在切换"))
+            return
+        }
+        scope.launch(start = CoroutineStart.UNDISPATCHED) { onResult(startShell(context)) }
+    }
+
+    suspend fun startShell(context: Context): Result = withContext(shell) {
         lastAttemptMs = System.currentTimeMillis()
-        Thread {
-            var replaced = false
-            val result =
-                try {
-                    val libDir = context.applicationInfo.nativeLibraryDir
-                    val rimeDir = DataManager.userDataDir.absolutePath
-                    if (!File(libDir, "librimellmd.so").exists()) {
-                        Result.Failed("安装包缺少 AI 服务组件，请重新安装完整版本")
-                    } else {
-                        val (out, err, code) = runShell(shellScript(libDir, rimeDir))
-                        replaced = out.contains("REPLACED")
-                        when {
-                            out.contains("RUNNING") -> Result.AlreadyRunning
-                            out.contains("STARTED") -> Result.Started
-                            out.contains("KILL_FAIL") ->
-                                Result.Failed("旧版 AI 服务停不下来，请重启手机后再试")
-                            out.contains("NO_MODEL") ->
-                                Result.Failed("模型文件不完整，请到“设置 → 词库”重新下载 Suzu 模型")
-                            else -> Result.Failed("AI 服务启动失败（错误码 $code）：${(out + " " + err).trim().take(120)}")
-                        }
+        var replaced = false
+        val result =
+            try {
+                val libDir = context.applicationInfo.nativeLibraryDir
+                val rimeDir = DataManager.userDataDir.absolutePath
+                if (!File(libDir, "librimellmd.so").exists()) {
+                    Result.Failed("安装包缺少 AI 服务组件，请重新安装完整版本")
+                } else {
+                    val (out, err, code) = runShell(shellScript(libDir, rimeDir))
+                    replaced = out.contains("REPLACED")
+                    when {
+                        out.contains("RUNNING") -> Result.AlreadyRunning
+                        out.contains("STARTED") -> Result.Started
+                        out.contains("KILL_FAIL") ->
+                            Result.Failed("旧版 AI 服务停不下来，请重启手机后再试")
+                        out.contains("NO_MODEL") ->
+                            Result.Failed("模型文件不完整，请到“设置 → 词库”重新下载 Suzu 模型")
+                        else -> Result.Failed("AI 服务启动失败（错误码 $code）：${(out + " " + err).trim().take(120)}")
                     }
-                } catch (e: Throwable) {
-                    Result.Failed("${e.javaClass.simpleName}: ${e.message?.take(100)}")
                 }
-            lastResult =
-                when (result) {
-                    Result.Started -> if (replaced) "已换成安装包里的版本并启动" else "已启动"
-                    Result.AlreadyRunning -> "已在运行"
-                    is Result.Failed -> "启动失败：${result.reason}"
-                }
-            if (result is Result.Failed) Log.w(TAG, lastResult) else Log.i(TAG, lastResult)
-            main.post { onResult(result) }
-        }.start()
+            } catch (e: Throwable) {
+                Result.Failed("${e.javaClass.simpleName}: ${e.message?.take(100)}")
+            }
+        lastResult =
+            when (result) {
+                Result.Started -> if (replaced) "已换成安装包里的版本并启动" else "已启动"
+                Result.AlreadyRunning -> "已在运行"
+                is Result.Failed -> "启动失败：${result.reason}"
+            }
+        if (result is Result.Failed) Log.w(TAG, lastResult) else Log.i(TAG, lastResult)
+        result
     }
 
     /**

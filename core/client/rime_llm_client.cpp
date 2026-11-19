@@ -7,6 +7,7 @@
 //   prepare      50 ms；is_ready 50 ms 且结果缓存 300 ms；touch 40 ms 且 1.5 秒最多一次；其余配置类 100~150 ms。
 //   连不上       立即返回（指数退避 0.5 s → 10 s 后才再试），候选保持原顺序。
 #include <jni.h>
+#include <unistd.h>
 
 #include <algorithm>
 #include <atomic>
@@ -26,6 +27,7 @@ namespace {
 
 namespace sl = suzu::lua;
 using suzu::client::Connection;
+using suzu::client::RpcPeer;
 
 constexpr int kMarginMs = 20;
 constexpr int kMaxCandidates = 11;
@@ -52,7 +54,20 @@ struct ClientCounters {
 
 // 连续几次打分请求等到了时限还没有应答（守护进程整个卡住，而不是没在跑）。任何一次收到应答就清零。
 // 应用自己的推理服务没有监督进程，由 Kotlin 侧的看门狗读它（nativeTimeoutStreak），超过阈值就杀掉推理进程
-std::atomic<int> g_timeout_streak{0};
+uint32_t g_counter_generation = 0;   // 计数由 Lua 线程写入
+std::atomic<uint64_t> g_timeout_streak{0};   // 高 32 位为宿主代号，低 32 位为连续超时数
+
+void select_generation(uint32_t generation) {
+    if (generation == g_counter_generation) return;
+    g_cnt = {};
+    g_counter_generation = generation;
+    g_timeout_streak.store(uint64_t(generation) << 32);
+}
+
+void score_reply(bool ok, bool timed_out) {
+    if (ok) g_timeout_streak.store(uint64_t(g_counter_generation) << 32);
+    else if (timed_out) g_timeout_streak.fetch_add(1);
+}
 
 void record_wait(long long ms) {
     if (ms > g_cnt.wait_max_ms) g_cnt.wait_max_ms = ms;
@@ -65,29 +80,34 @@ void report_counters() {
     const long long v[] = {g_cnt.score_calls, g_cnt.score_ok, g_cnt.skipped, g_cnt.timeouts, g_cnt.down,
                            g_cnt.wait_max_ms, g_cnt.over50, g_cnt.over100};
     for (long long x : v) req.push_back(std::to_string(x));
+    req.push_back(std::to_string(getpid()));
     std::vector<std::string> rep;
-    conn().rpc(req, 40, &rep);
+    RpcPeer peer;
+    conn().rpc(req, 40, &rep, &peer, &g_counter_generation);
+    select_generation(peer.generation);
 }
 
 // 打分请求（Q），含客户端计数。失败时 why 为原因（空串表示守护进程没给原因）
 bool do_score(const std::string & ctx, const std::vector<std::string> & cands, int budget, std::string * why,
               std::vector<std::string> * ranked, std::vector<double> * scores) {
-    g_cnt.score_calls++;
-    if (cands.size() < 2) { *why = "few_candidates"; return false; }
+    if (cands.size() < 2) { g_cnt.score_calls++; *why = "few_candidates"; return false; }
     std::vector<std::string> req = {"Q", std::to_string(budget), ctx};
     req.insert(req.end(), cands.begin(), cands.end());
     std::vector<std::string> rep;
     long long t0 = suzu::ipc::mono_ms();
-    bool ok = conn().rpc(req, budget + kMarginMs, &rep);
+    RpcPeer peer;
+    bool ok = conn().rpc(req, budget + kMarginMs, &rep, &peer);
     long long waited = suzu::ipc::mono_ms() - t0;
+    select_generation(peer.generation);
+    score_reply(ok, peer.sent && !ok && waited >= budget);
+    g_cnt.score_calls++;
     record_wait(waited);
     if (!ok) {
         bool timed_out = waited >= budget;
-        if (timed_out) { g_cnt.timeouts++; g_timeout_streak++; } else g_cnt.down++;
+        if (timed_out) g_cnt.timeouts++; else g_cnt.down++;
         *why = timed_out ? "timeout" : "down";
         return false;
     }
-    g_timeout_streak = 0;
     if (rep.empty() || rep[0] != "R") {
         *why = rep.size() >= 2 ? rep[1] : "";
         if (*why != "no_context" && *why != "few_candidates") g_cnt.skipped++;
@@ -160,19 +180,21 @@ bool score_gen_u(const std::string & ctx, const std::vector<std::string> & cands
     req.insert(req.end(), cands.begin(), cands.end());
     std::vector<std::string> rep;
     long long t0 = suzu::ipc::mono_ms();
-    bool ok = conn().rpc(req, budget + kMarginMs, &rep);
+    RpcPeer peer;
+    bool ok = conn().rpc(req, budget + kMarginMs, &rep, &peer);
     long long waited = suzu::ipc::mono_ms() - t0;
+    select_generation(peer.generation);
+    score_reply(ok, peer.sent && !ok && waited >= budget);
     if (ok && !rep.empty() && rep[0] == "ERR") return false;
     record_wait(waited);
     o->score_tried = o->gen_tried = true;
     if (!ok || rep.size() < 5 || rep[0] != "U") {
         bool timed_out = !ok && waited >= budget;
         g_cnt.score_calls++;
-        if (timed_out) { g_cnt.timeouts++; g_timeout_streak++; } else g_cnt.down++;
+        if (timed_out) g_cnt.timeouts++; else g_cnt.down++;
         o->why = o->gen_why = timed_out ? "timeout" : "down";
         return true;
     }
-    g_timeout_streak = 0;
     const std::string & ss = rep[1];
     const std::string & gs = rep[2];
     o->score_tried = ss != "not_tried";
@@ -265,7 +287,9 @@ int l_touch(lua_State *) {
     if (now - g_touch_at < 1500) return 0;   // 合并：守护进程的空闲时限是分钟级
     g_touch_at = now;
     std::vector<std::string> rep;
-    conn().rpc({"T"}, 40, &rep);
+    RpcPeer peer;
+    conn().rpc({"T"}, 40, &rep, &peer);
+    select_generation(peer.generation);
     if (now - g_report_at >= 5000) { g_report_at = now; report_counters(); }
     return 0;
 }
@@ -460,8 +484,13 @@ extern "C" __attribute__((visibility("default"))) int luaopen_rime_llm(lua_State
 }
 
 // 应用自己的推理服务的看门狗（com.osfans.trime.suzu.ai.AppAiConnection）：连续超时的次数
-extern "C" JNIEXPORT jint JNICALL Java_com_osfans_trime_suzu_ai_AppAiConnection_nativeTimeoutStreak(JNIEnv *, jclass) {
-    return g_timeout_streak.load();
+extern "C" JNIEXPORT jint JNICALL Java_com_osfans_trime_suzu_ai_AppAiConnection_nativeTimeoutStreak(JNIEnv * env, jclass, jstring token) {
+    const char * value = env->GetStringUTFChars(token, nullptr);
+    if (!value) return 0;
+    uint32_t generation = conn().generation_for(value);
+    env->ReleaseStringUTFChars(token, value);
+    uint64_t sample = g_timeout_streak.load();
+    return generation && generation == uint32_t(sample >> 32) ? jint(uint32_t(sample)) : 0;
 }
 
 // Trime 的 com.osfans.trime.suzu.SuzuAppContext.nativeSet(ByteArray)：参数是 UTF-8 字节

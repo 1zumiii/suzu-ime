@@ -10,9 +10,12 @@ import android.app.ApplicationExitInfo
 import android.app.Service
 import android.content.Context
 import android.content.Intent
-import android.os.Binder
 import android.os.Build
 import android.os.IBinder
+import android.os.Handler
+import android.os.Looper
+import android.os.Message
+import android.os.Messenger
 import android.os.Process
 import android.os.SystemClock
 import java.io.File
@@ -27,11 +30,34 @@ import java.io.File
  * - 所有绑定都解除时结束整个进程：推理线程停不下来，留着就一直占着模型内存和端口。
  */
 class AppAiService : Service() {
-    private val binder = Binder()
+    private val main = Handler(Looper.getMainLooper())
+    private var startupState = PREPARING
+    private var startupError = ""
+    private var boosted = false
+    private var client: Messenger? = null
+    private val endpoint = Messenger(Handler(Looper.getMainLooper()) { msg ->
+        if (msg.what == SUBSCRIBE) {
+            client = msg.replyTo
+            notifyClient()
+        }
+        true
+    })
+
+    private fun notifyClient() {
+        val message = Message.obtain(null, startupState, Process.myPid(), if (boosted) 1 else 0)
+        message.data.putString("error", startupError)
+        runCatching { client?.send(message) }
+    }
+
+    private fun publish(state: Int, error: String = "") = main.post {
+        startupState = state
+        startupError = error
+        notifyClient()
+    }
 
     override fun onBind(intent: Intent): IBinder {
         startOnce(intent)
-        return binder
+        return endpoint.binder
     }
 
     override fun onUnbind(intent: Intent?): Boolean = false
@@ -48,30 +74,31 @@ class AppAiService : Service() {
             started = true
         }
         val rimeDir = intent.getStringExtra(EXTRA_RIME_DIR)
-        val boosted = intent.getBooleanExtra(EXTRA_BOOSTED, false)
+        boosted = intent.getBooleanExtra(EXTRA_BOOSTED, false)
         val ctx = applicationContext
         Thread({
-            if (boosted) Process.setThreadPriority(Process.THREAD_PRIORITY_DISPLAY)   // 推理线程都由这条线程派生，继承优先级
+            if (boosted) runCatching { Process.setThreadPriority(Process.THREAD_PRIORITY_DISPLAY) }
+                .onFailure { AiEvents.append(ctx, "thread priority: ${it.javaClass.simpleName}") }
             val restarts = bumpRestarts(ctx)
             val lastExit = lastExitReason(ctx)
             AiEvents.append(ctx, "service start pid=${Process.myPid()} restarts=$restarts boosted=$boosted last_exit=$lastExit")
             val args = buildArgs(ctx, rimeDir, restarts, lastExit)
             if (args == null) {
-                AiEvents.append(ctx, "service: model files missing, not starting")
+                AiEvents.append(ctx, "service: model files missing or copy failed")
+                publish(FAILED, "模型文件缺失或复制失败，请检查存储空间并在模型页重新下载")
                 return@Thread
             }
             val code =
                 try {
                     System.loadLibrary("rimellm_service")
+                    publish(SERVING)
                     nativeRun(args)
                 } catch (e: Throwable) {
                     AiEvents.append(ctx, "service: native failed ${e.javaClass.simpleName}: ${e.message?.take(100)}")
                     -1
                 }
-            // 正常情况下 nativeRun 不返回。返回了说明启动失败：结束进程，由 Android 按绑定重建（系统自带退避）
             AiEvents.append(ctx, "service: native exited with $code")
-            SystemClock.sleep(1000)
-            Process.killProcess(Process.myPid())
+            publish(FAILED, "推理服务启动失败（错误码 $code），点按徽标重试")
         }, "suzu-ai-worker").start()
     }
 
@@ -110,6 +137,7 @@ class AppAiService : Service() {
     /** 本次开机以来推理服务进程启动的次数减一（第一次启动为 0），与 rimellmd 的 restarts 口径相同 */
     private fun bumpRestarts(ctx: Context): Int {
         val f = File(ctx.noBackupFilesDir, "rimellm/restarts.txt")
+        f.parentFile?.mkdirs()
         val boot = (System.currentTimeMillis() - SystemClock.elapsedRealtime()) / 60000   // 开机时刻（分钟），换了就是重启过手机
         val parts = runCatching { f.readText().trim().split(' ') }.getOrNull()
         val n = if (parts?.size == 2 && parts[0].toLongOrNull() == boot) (parts[1].toIntOrNull() ?: -1) + 1 else 0
@@ -151,6 +179,10 @@ class AppAiService : Service() {
         }
 
     companion object {
+        const val SUBSCRIBE = 1
+        const val PREPARING = 2
+        const val SERVING = 3
+        const val FAILED = 4
         const val PROCESS_SUFFIX = ":suzu_ai"
         const val EXTRA_RIME_DIR = "rime_dir"
         const val EXTRA_BOOSTED = "boosted"

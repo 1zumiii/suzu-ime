@@ -6,29 +6,41 @@
 package com.osfans.trime.suzu.ai
 
 import java.io.DataInputStream
+import java.io.DataOutputStream
+import java.io.File
+import java.io.IOException
 import java.net.InetSocketAddress
 import java.net.Socket
 
-/** 守护进程的心跳（B → PONG，不需要认证），与 rimellmd 的监督进程用的是同一个请求。不能在主线程上调用。 */
+/** 在后台线程核对持有共享端口和当前令牌的工作进程。旧版 shell 的握手没有宿主字段。 */
 object PortProbe {
     const val PORT = 17920
+    class Owner(val pid: Int, val host: String, val token: String)
 
-    fun alive(timeoutMs: Int = 1500): Boolean =
-        try {
-            Socket().use { s ->
-                s.tcpNoDelay = true
-                s.connect(InetSocketAddress("127.0.0.1", PORT), timeoutMs)
-                s.soTimeout = timeoutMs
-                // 帧：4 字节大端长度 + 内容
-                s.getOutputStream().apply { write(byteArrayOf(0, 0, 0, 1, 'B'.code.toByte())); flush() }
-                val inp = DataInputStream(s.getInputStream())
-                val n = inp.readInt()
-                if (n !in 1..64) return false
-                val b = ByteArray(n)
-                inp.readFully(b)
-                String(b, Charsets.UTF_8) == "PONG"
-            }
-        } catch (e: Exception) {
-            false
+    fun occupied(): Boolean = try {
+        Socket().use { it.connect(InetSocketAddress("127.0.0.1", PORT), 500) }
+        true
+    } catch (_: IOException) {
+        false
+    }
+
+    fun owner(dir: File): Owner? = try {
+        val token = File(dir, "llm_token").readText().trim()
+        if (token.isEmpty()) null else Socket().use { socket ->
+            socket.connect(InetSocketAddress("127.0.0.1", PORT), 1000)
+            socket.soTimeout = 1500
+            val request = "H\u001f$token".toByteArray()
+            DataOutputStream(socket.getOutputStream()).apply { writeInt(request.size); write(request) }
+            val input = DataInputStream(socket.getInputStream())
+            val size = input.readInt()
+            if (size !in 1..256) return@use null
+            val fields = ByteArray(size).also { input.readFully(it) }.decodeToString().split('\u001f')
+            val pid = fields.getOrNull(1)?.toIntOrNull()
+            if (fields.first() == "OK" && pid != null && pid > 0 && fields.size >= 3)
+                Owner(pid, fields.getOrElse(3) { "shell" }, token)
+            else null
         }
+    } catch (_: IOException) {
+        null
+    }
 }

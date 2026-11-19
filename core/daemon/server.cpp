@@ -175,7 +175,7 @@ struct Worker {
             } else if (op == 'H') {
                 if (f.size() >= 2 && token_ok(f[1])) {
                     authed = true;
-                    reply = {"OK", std::to_string((int)getpid()), ipc::kVersion};
+                    reply = {"OK", std::to_string((int)getpid()), ipc::kVersion, opt.embedded ? "app" : "shell"};
                 } else {
                     ipc::send_frame(fd, {"ERR", "auth"}, 1000);
                     break;
@@ -223,6 +223,8 @@ struct Worker {
                     if (i) j += ",";
                     j += "\"" + std::string(ipc::kClientCounterNames[i]) + "\":" + std::to_string(atoll(f[i + 1].c_str()));
                 }
+                if (f.size() > ipc::kClientCounterCount + 1)
+                    j += ",\"pid\":" + std::to_string(atoll(f[ipc::kClientCounterCount + 1].c_str()));
                 j += "}";
                 std::lock_guard<std::mutex> lk(st.client_mu);
                 st.client_report = j;
@@ -347,10 +349,6 @@ int run_worker(const Options & opt) {
     if (c.vocab_path.empty()) log_event("no student vocab: reranking stays off (only Suzu models are supported)");
 
     w.token = make_token();
-    // 嵌入方式：端口可能还被 Shizuku 拉起的守护进程占着（切换方案的过渡期）。令牌等监听成功再写，
-    // 否则客户端会拿新令牌去连旧进程，认证失败
-    if (!opt.embedded) write_file_atomic(token_path(opt), w.token, 0660);
-
     int lfd = listen_loopback(opt.port);
     if (lfd < 0 && opt.embedded) {
         log_event("bind/listen 127.0.0.1:%d failed (%s); retrying every 2s", opt.port, strerror(errno));
@@ -361,11 +359,19 @@ int run_worker(const Options & opt) {
         if (lfd >= 0) log_event("port %d is free now", opt.port);
     }
     if (lfd < 0) {
-        fprintf(stderr, "bind/listen 127.0.0.1:%d failed: %s\n", opt.port, strerror(errno));
+        int error = errno;
+        fprintf(stderr, "bind/listen 127.0.0.1:%d failed: %s\n", opt.port, strerror(error));
         log_event("bind/listen 127.0.0.1:%d failed", opt.port);
-        return 2;
+        return opt.child && error == EADDRINUSE ? kPortOccupiedExit : 2;
     }
-    if (opt.embedded) write_file_atomic(token_path(opt), w.token, 0660);
+    // 只有持有监听端口的宿主可以发布令牌，两种切换方向遵守同一顺序。
+    if (!opt.rime_dir.empty() && !write_file_atomic(token_path(opt), w.token, 0660)) {
+        log_event("cannot publish worker token");
+        if (opt.embedded) {
+            close(lfd);
+            return 2;
+        }
+    }
     log_event("listening on 127.0.0.1:%d threads=%d idle=%ds restarts=%d last_exit=%s", opt.port, opt.threads,
               opt.idle_sec, opt.restarts, opt.last_exit.c_str());
 
