@@ -199,6 +199,23 @@ m.share_decode = false
 q = m.score_gen("上个月我们部门新来了两位", C2, "jl", 10)
 m.share_decode = true
 check("share_decode 关闭：不合成任务，结果照常", q.ok and q.gen_ok and shared() == sh0 + 1)
+-- 上文已预解码、原生候选都是单字：打分不需要解码，合成任务在工作线程里拆开，先交付打分。
+-- 时限只有 2 ms 时打分照样返回（合成计算时要等生成的逐层解码，会一起超时）
+local function split() return tonumber(m.status():match('"split":(%d+)')) end
+local SINGLE = {"经", "精", "家", "局"}
+local HOT = {"我们明天早上八点在", "这件事情最后还是由", "他说下个月要去北京", "周末我打算在家里",
+             "老师让我们每天都要", "这家店的菜做得非常", "她刚才在电话里说要", "我们公司新来的那个",
+             "下雨天路上很滑所以", "这次考试的成绩比上"}
+local sp0, ok_n = split(), 0
+for _, c in ipairs(HOT) do
+  m.prepare(c); m.sleep_ms(300)
+  m.budget_ms = 2
+  q = m.score_gen(c, SINGLE, "jl", 10)
+  m.budget_ms = 2000
+  if q.ok then ok_n = ok_n + 1 end
+end
+check("热上文、单字候选、2 ms：打分全部返回", ok_n == #HOT, ok_n .. "/" .. #HOT)
+check("热上文、单字候选：合成任务被拆开", split() - sp0 == #HOT, tostring(split() - sp0))
 
 if fails > 0 then print(fails .. " FAILED"); os.exit(1) end
 print("ALL PASS")

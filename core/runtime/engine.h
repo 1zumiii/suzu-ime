@@ -163,6 +163,7 @@ private:
     void track_prep_locked(const TokenSeq & ctx, PrepState state, double t_ms, bool by_job = false);
     int classify_miss_locked(const TokenSeq & ctx, double t_ms) const;
     void clear_prep_track_locked();
+    void fail_queue_locked();
 
     mutable std::mutex mu_;
     std::condition_variable cv_;       // 唤醒工作线程

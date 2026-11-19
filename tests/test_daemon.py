@@ -289,6 +289,26 @@ try:
     u = rpc(s, ["U", "500", "b", "3", "短", "jl"] + cands)
     check("U both, short context: no_context, generation not tried", u[:3] == ["U", "no_context", "not_tried"], str(u[:5]))
     check("U: too few fields -> ERR op", rpc(s, ["U", "500", "b"])[0] == "ERR")
+    # 关 AI 时队里正好有合成任务（打分捎带生成）：生成那一半不在队列里，也要立刻结束，不能等满时限
+    if w[0] == "R":
+        busy = connect()
+        rpc(busy, ["Q", "1", "昨天下午我们在图书馆的二楼讨论了很久关于明年春天出去旅行的具体安排"] + cands)   # 工作线程在后台算长上文
+        got = {}
+        def merged():
+            c = connect()
+            t0 = time.time()
+            got["u"] = rpc(c, ["U", "1500", "b", "3", "早上起来发现外面下了很大的雪于是决定今天在家里好好整理", "jl"] + cands)
+            got["ms"] = (time.time() - t0) * 1000
+            c.close()
+        t = threading.Thread(target=merged)
+        t.start()
+        time.sleep(0.003)
+        rpc(s, ["C", "enabled", "0"])
+        t.join(5)
+        busy.close()
+        check("disable with a merged job queued: reply does not wait for the budget",
+              got.get("ms", 1e9) < 300, f'{got.get("ms", -1):.0f} ms {got.get("u", [""])[:3]}')
+        check("re-enable after disabling", wait_ready(s) is not None)
     lat = []
     for i in range(30):
         r, dt = timed_rpc(s, ["S", "0", "他在公司当"] + cands[i % 3:] + cands[:i % 3])

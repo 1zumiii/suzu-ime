@@ -90,7 +90,15 @@ m.prepare("孩子放学回来说"); m.sleep_ms(300)
 m.score("这本书我已经看了", CANDS, true)
 expect("准备过但槽位被改写：evicted", s, { evicted = 1 })
 
--- 8) 状态里有这个字段，格式正确
+-- 8) 预解码 A 已是 3 秒以前的事：打分 A 命中后，紧接着打分 B 仍是 no_prepare。
+-- 打分 A 会改写 A 的准备记录，但不能把那次旧的预解码请求当成刚刚发生
+m.prepare("我昨天在超市买了"); m.sleep_ms(3500)
+s = snap()
+m.score("我昨天在超市买了", CANDS, true)
+m.score("他们下午开会讨论", CANDS, true)
+expect("旧预解码之后打分命中，再打另一段：no_prepare", s, { no_prepare = 1 })
+
+-- 9) 状态里有这个字段，格式正确
 check("状态里有 ctx_miss 字段", m.status():match('"ctx_miss":{"no_prepare":{"n":%d+,"long":%d+,"ms":%d+}') ~= nil)
 
 print(fails == 0 and "ALL OK" or (fails .. " FAILED"))

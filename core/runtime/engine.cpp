@@ -326,8 +326,10 @@ bool Engine::prepare(const std::string & context) {
 void Engine::track_prep_locked(const TokenSeq & ctx, PrepState state, double t_ms, bool by_job) {
     for (auto it = prep_recent_.begin(); it != prep_recent_.end(); ++it) {
         if (it->ctx == ctx) {
-            // 已有记录：预解码请求的记录不因任务算过同一段上文而改成 by_job
-            PrepRec r{ctx, t_ms, state, by_job && it->by_job};
+            // 已有记录：预解码请求的记录不因任务算过同一段上文而改成 by_job，时刻也保留请求到达时的值。
+            // 否则任务算完会把旧请求“刷新”成刚发生，紧接着打另一段上文就被误计为 other_ctx
+            const bool keep_request = by_job && !it->by_job;
+            PrepRec r{ctx, keep_request ? it->t_ms : t_ms, state, by_job && it->by_job};
             prep_recent_.erase(it);
             prep_recent_.push_back(std::move(r));
             return;
@@ -724,8 +726,7 @@ void Engine::worker_main() {
         }
     }
     // 退出：还在排队的请求一律以失败结束
-    for (auto & job : score_queue_) { job->done = true; job->ok = false; job->done_cv.notify_all(); }
-    score_queue_.clear();
+    fail_queue_locked();
     lk.unlock();
     model_.reset();
 }
@@ -828,8 +829,7 @@ void Engine::do_unload(const char * why) {
     cache_.clear();
     last_prepared_.clear();
     clear_prep_track_locked();
-    for (auto & job : score_queue_) { job->done = true; job->ok = false; job->done_cv.notify_all(); }
-    score_queue_.clear();
+    fail_queue_locked();
     prepare_pending_ = false;
     if (state_ == EngineState::Ready) state_ = EngineState::Idle;
     if (had) {
@@ -839,7 +839,32 @@ void Engine::do_unload(const char * why) {
     // 配置变更引起的卸载：之后由下一次请求按新配置加载
 }
 
+// 排队的任务一律以失败结束。捎带的生成任务不在队列里，要一并唤醒，否则它的等待方要等满时限
+void Engine::fail_queue_locked() {
+    auto fail = [](ScoreJob & j) { j.done = true; j.ok = false; j.done_cv.notify_all(); };
+    for (auto & job : score_queue_) {
+        fail(*job);
+        if (job->partner) fail(*job->partner);
+    }
+    score_queue_.clear();
+}
+
 void Engine::run_score(const std::shared_ptr<ScoreJob> & job) {
+    // 上文已在槽里、原生候选都只有一个 token 时，单独打分不需要解码，合成任务省不下任何计算，
+    // 反而让打分结果等生成的逐层解码算完，时限紧时两边一起超时。这时拆开：先交付打分，再单独生成
+    if (job->partner && model_ && model_->has_context(job->ctx) &&
+        std::all_of(job->cand_tokens.begin(), job->cand_tokens.end(), [](const TokenSeq & t) { return t.size() <= 1; })) {
+        auto gen = std::move(job->partner);
+        {
+            std::lock_guard<std::mutex> lk(mu_);
+            stats_.shared_jobs--;
+            stats_.split_jobs++;
+        }
+        run_score(job);
+        gen->miss_kind = -1;   // 上文已命中，不参与归因
+        run_score(gen);
+        return;
+    }
     DecodeStats st;
     std::vector<double> scores, gscores;
     const Clock::time_point t0 = Clock::now();

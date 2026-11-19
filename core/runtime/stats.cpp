@@ -48,11 +48,11 @@ std::string EngineStats::json() const {
              (unsigned long long)unloads, (unsigned long long)decode_failures, (unsigned long long)ctx_hit,
              (unsigned long long)ctx_partial, (unsigned long long)ctx_full, (unsigned long long)ctx_full_long,
              (unsigned long long)prep_hit, (unsigned long long)prep_partial, (unsigned long long)prep_full, last_load_ms);
-    char g[256];
-    snprintf(g, sizeof g, "\"gen\":{\"requests\":%llu,\"ok\":%llu,\"timeout\":%llu},\"score_gen\":%llu,\"shared\":%llu,"
+    char g[384];
+    snprintf(g, sizeof g, "\"gen\":{\"requests\":%llu,\"ok\":%llu,\"timeout\":%llu},\"score_gen\":%llu,\"shared\":%llu,\"split\":%llu,"
              "\"cand_tokens\":%llu,\"decode_calls\":%llu,",
              (unsigned long long)gen_requests, (unsigned long long)gen_ok, (unsigned long long)gen_timeout,
-             (unsigned long long)sg_requests, (unsigned long long)shared_jobs, (unsigned long long)cand_tokens,
+             (unsigned long long)sg_requests, (unsigned long long)shared_jobs, (unsigned long long)split_jobs, (unsigned long long)cand_tokens,
              (unsigned long long)decode_calls);
     static const char * const kMissNames[kMissKinds] = {"no_prepare", "other_ctx", "queued", "replaced", "evicted"};
     std::string m = "\"ctx_miss\":{";
