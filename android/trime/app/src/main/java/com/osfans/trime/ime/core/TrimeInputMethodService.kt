@@ -387,9 +387,9 @@ open class TrimeInputMethodService : LifecycleInputMethodService() {
             candidatesEnd,
         )
         cursorUpdateIndex += 1
-        // 光标位置变了、而且不是输入法自己的编辑引起的（用户点击或拖动了光标，例如回头补充内容）：
-        // 通知 Lua 清空 AI 重排的上文和个人词对的“前一个词”
-        val jumped = oldSelStart != newSelStart && SystemClock.uptimeMillis() - lastOwnEditAt > 500
+        // 光标位置变了、而且不是输入法自己的编辑引起的（用户点击或拖动了光标，例如回头补充内容），
+        // 或者光标回到了 0（如发出消息后应用清空了输入框）：通知 Lua 清空 AI 重排的上文和个人词对的“前一个词”
+        val jumped = SuzuAppContext.cursorJumped(oldSelStart, newSelStart, SystemClock.uptimeMillis() - lastOwnEditAt)
         if (jumped) {
             postRimeJob { setRuntimeOption("ai_ctx_reset", true) }
         }
@@ -501,6 +501,10 @@ open class TrimeInputMethodService : LifecycleInputMethodService() {
         refreshAppContext()
         postRimeJob {
             setRuntimeOption("ai_no_log", noLog)
+            // 换了输入框，或者应用重新开始了输入（很多聊天软件点发送后会这样清空输入框）：
+            // 之前的上屏历史不再是光标前的内容，清空 AI 重排的上文和个人词对的“前一个词”。
+            // 输入框里如果还有文字，上面 refreshAppContext() 读到的光标前文字照常作为上文
+            setRuntimeOption("ai_ctx_reset", true)
             if (restarting) {
                 // when input restarts in the same editor, clear previous composition
                 clearComposition()

@@ -47,4 +47,14 @@ object SuzuAppContext {
     }
 
     fun clear() = push("")
+
+    /**
+     * 光标变化后，原来的上文（上屏历史、个人词对的“前一个词”）是否作废。
+     * 一般情况：光标位置变了，而且不是输入法自己 500 ms 内的编辑引起的（用户点击或拖动了光标）。
+     * 光标回到 0 时总是作废：前面已经没有文字，上屏历史不可能是光标前的内容。
+     * 例如用键盘的回车发出消息后，应用清空输入框，这一跳离输入法自己的回车不到 500 ms，以前会被当成自己的编辑，
+     * 刚发出去的那条消息就留在上屏历史里，成了下一条的上文。
+     */
+    fun cursorJumped(oldSelStart: Int, newSelStart: Int, msSinceOwnEdit: Long): Boolean =
+        oldSelStart != newSelStart && (newSelStart == 0 || msSinceOwnEdit > 500)
 }
