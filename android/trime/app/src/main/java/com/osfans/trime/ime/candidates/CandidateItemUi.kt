@@ -11,6 +11,7 @@ import android.graphics.Color
 import android.graphics.Paint
 import android.view.View
 import androidx.constraintlayout.widget.ConstraintLayout
+import androidx.core.graphics.ColorUtils
 import androidx.core.view.isVisible
 import com.osfans.trime.core.CandidateProto
 import com.osfans.trime.data.theme.Theme
@@ -174,10 +175,18 @@ class CandidateItemUi(
         text.setTextColor(tColor)
 
         val commentText = item.comment
-        comment.text = commentText
         // AI 标记（◇ ◈ ❖，可能两个连用）用候选字的颜色并略放大，在高亮底色上也看得清；位置仍按基线
-        val badge = commentText.isNotEmpty() && commentText.all { it in BADGES }
-        comment.setTextColor(if (badge) tColor else cColor)
+        val badge = commentText.isNotEmpty() && commentText.all { it in BADGES || it == DIM_MARK }
+        // 标记后跟 U+FE0E 表示模型参与了但没改首位：去掉这个不可见字符，标记画成半透明
+        val dim = badge && DIM_MARK in commentText
+        comment.text = if (dim) commentText.replace(DIM_MARK.toString(), "") else commentText
+        comment.setTextColor(
+            when {
+                dim -> ColorUtils.setAlphaComponent(tColor, (Color.alpha(tColor) * DIM_BADGE_ALPHA).toInt())
+                badge -> tColor
+                else -> cColor
+            },
+        )
         comment.textSize = if (badge) commentSize * BADGE_SCALE else commentSize
         // 空心的 ◇ 线条细，描边加粗；行视图会复用，其他注释要恢复成普通填充
         val hollow = badge && HOLLOW_BADGE in commentText
@@ -188,6 +197,8 @@ class CandidateItemUi(
 
     private companion object {
         const val BADGES = "◇◈❖"
+        const val DIM_MARK = '\uFE0E'
+        const val DIM_BADGE_ALPHA = 0.35f
         const val BADGE_SCALE = 1.25f
         const val HOLLOW_BADGE = '◇'
         const val HOLLOW_BADGE_STROKE_DP = 0.5f

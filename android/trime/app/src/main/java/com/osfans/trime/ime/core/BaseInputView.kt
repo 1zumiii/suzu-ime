@@ -108,7 +108,7 @@ abstract class BaseInputView(
                         rime.runIfReady { deleteCandidate(idx, global) }
                         true
                     }
-                    // AI 推理出来的候选（注释里带 ◇ 或 ◈）才提供“怪词”标记；已标记的提供取消
+                    // AI 推理出来的候选（注释里带 ◇ 或 ◈，含暗标记）才提供“怪词”标记；已标记的提供取消
                     val marked = text in weirdWords()
                     if (marked || comment.contains("◇") || comment.contains("◈")) {
                         menu.add(if (marked) R.string.suzu_unmark_word else R.string.suzu_mark_word).setOnMenuItemClickListener {

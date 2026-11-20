@@ -27,7 +27,10 @@
 --   stage2                  四字两阶段总开关，默认 true；另有方案开关 ai_stage2（方案菜单 / 手机三个点面板里的「单段/两段」）在运行时切换，两者都开才跑第二阶段
 --   stage2_context_chars    第二阶段只用最后 N 个字作为上文，默认 8（现场解码，越短越快）
 --   stage2_min_rest         剩余拼音至少 N 个字母才跑第二阶段，默认 4
---   badge / badge2          首选候选的注释标记：模型参与了排序的首选（含与 Rime 原首位相同的）/ 两阶段拼出来的首选，默认 ◇ / ◈（单字符，省空间；❖ 仍表示语法模型整句）
+--   badge / badge2          首选候选的注释标记：模型改了首位 / 两阶段拼出来的首选，默认 ◇ / ◈（单字符，省空间；❖ 仍表示语法模型整句）
+--   badge_dim               模型参与了排序、但首位与不用模型时相同：在 badge 后加不可见的 U+FE0E 表示“暗标记”，
+--                           Android 上画成半透明，Mac、Windows 的注释只能是纯文字，看起来与 badge 相同。默认 true；
+--                           false 时这种情况与改了首位一样挂 badge
 --   student_model / student_vocab / cpu_cores / idle_unload_minutes_student  见 ai_rerank_processor
 
 local DEFAULTS = {
@@ -47,7 +50,8 @@ local DEFAULTS = {
     generate = true,            -- 候选生成（只在统一排序下）；processor 据此给核心设置词典目录与 gen_beam
     gen_k = 10,                 -- 每次生成的词数
     ranker = "unified",         -- unified：统一排序（rank_unified.lua），关 AI 时也排序；legacy：旧的融合与门控
-    badge = "◇",       -- 模型参与了排序的首选
+    badge = "◇",       -- 模型改了首位
+    badge_dim = true,  -- 模型参与了排序、首位没变时挂暗标记（badge 后加 U+FE0E）
     badge2 = "◈",      -- 两阶段拼出来的首选（四字 = 两个两字词）
     debug_latency = false,
 }
@@ -289,6 +293,8 @@ local function init_config(env)
     if b ~= nil then cfg.badge = b end
     b = sc:get_string("llm_rerank/badge2")
     if b ~= nil then cfg.badge2 = b end
+    local bd = sc:get_bool("llm_rerank/badge_dim")
+    if bd ~= nil then cfg.badge_dim = bd end
     local gv = sc:get_bool("llm_rerank/generate")
     if gv ~= nil then cfg.generate = gv end
     v = sc:get_int("llm_rerank/gen_k")
@@ -842,10 +848,15 @@ local function inner(translation, env)
 
         for i, f in ipairs(sorted) do
             local c = cand_of[f]
-            -- ◇ 表示模型参与了这次排序：首位带模型分且上文权重 λ > 0。首位与 Rime 原首位相同时也标出，用来区分“模型看过并同意”和“模型没参与”
+            -- 模型参与了这次排序（首位带模型分且上文权重 λ > 0）时标出首位：改了首位挂 ◇，
+            -- 首位与不用模型时（λ = 0）相同挂暗的 ◇，用来区分“模型改了”“模型看过并同意”和“模型没参与”
+            local b = ""
             if i == 1 and cfg.badge ~= "" and ((lam > 0 and f.s ~= nil) or f ~= base_top) then
+                b = (f == base_top and cfg.badge_dim) and (cfg.badge .. "\u{FE0E}") or cfg.badge
+            end
+            if b ~= "" then
                 local cm = c.comment
-                emit(ShadowCandidate(c, c.type, c.text, (cm and cm ~= "") and (cm .. " " .. cfg.badge) or cfg.badge, true))
+                emit(ShadowCandidate(c, c.type, c.text, (cm and cm ~= "") and (cm .. " " .. b) or b, true))
             else
                 emit(c)
             end
