@@ -97,8 +97,13 @@ class KeyModelTest : BehaviorSpec({
     Given("符号板分页") {
         fun symbolsOf(category: String) = (0 until SymbolBoard.pageCount(category)).flatMap { n ->
             Pages.get("sym/$category/$n").rows.flatMap { it.keys }.mapNotNull { it.command }.filter {
-                it is KeyCommand.Insert || it is KeyCommand.Char
+                it is KeyCommand.Commit
             }
+        }
+
+        Then("英文标点原样上屏，不经 Rime") {
+            val en = symbolsOf("en").map { (it as KeyCommand.Commit).text }
+            en shouldContainAll listOf(",", "\\", "/", "()")
         }
 
         Then("分页不丢符号") {

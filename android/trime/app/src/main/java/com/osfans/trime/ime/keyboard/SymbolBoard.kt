@@ -92,11 +92,7 @@ object SymbolBoard {
     }
 
     private fun symbolKey(symbol: Symbol, width: Float, textSp: Float = 0f) =
-        if (symbol.after.isEmpty() && symbol.text.length == 1 && symbol.text[0].code < 128) {
-            key(KeyCommand.Char(symbol.text[0]), width, textSp = textSp)
-        } else {
-            key(KeyCommand.Insert(symbol.text, symbol.after), width, label = symbol.text, textSp = textSp)
-        }
+        key(KeyCommand.Commit(symbol.text, symbol.after), width, label = symbol.text, textSp = textSp)
 
     private fun grid(symbols: List<Symbol>, kind: Kind, width: Float, rowHeight: Float, textSp: Float = 0f) =
         symbols.chunked(kind.columns).map { row -> Row(rowHeight, row.map { symbolKey(it, width, textSp) }) }

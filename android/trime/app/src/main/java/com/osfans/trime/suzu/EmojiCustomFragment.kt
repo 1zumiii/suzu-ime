@@ -17,8 +17,9 @@ import com.osfans.trime.util.addPreference
 import com.osfans.trime.util.toast
 
 /**
- * 自定义表情关联：用户目录的 emoji_custom.txt，每行“键<Tab>表情”，由 Lua 的 emoji_custom.lua 读取，改完几秒内生效。
- * 键全是字母时按拼音处理（输入恰好是这串拼音时，表情排在首位后面）；含其他字符时按词处理（候选里出现这个词时，表情跟在它后面）。
+ * 候选映射：用户目录的 emoji_custom.txt（沿用旧文件名），每行“键<Tab>候选”，由 Lua 的 emoji_custom.lua 读取，改完几秒内生效。
+ * 候选可以是表情或任意文字，一个键可以映射多个，用空格隔开。
+ * 键全是字母时按拼音处理（输入恰好是这串拼音时，排在首位候选后面）；含其他字符时按词处理（候选里出现这个词时，紧跟在它后面）。
  */
 object EmojiCustom {
     data class Entry(val key: String, val emoji: String) {
@@ -27,7 +28,7 @@ object EmojiCustom {
 
     private val CODE = Regex("[a-z]+")
     private const val HEADER =
-        "# 自定义表情：每行“键<Tab>表情”，多个表情用空格隔开。键全是小写字母时按拼音匹配输入，否则按词匹配候选。\n"
+        "# 候选映射：每行“键<Tab>候选”，候选可以是表情或任意文字，多个用空格隔开。键全是小写字母时按拼音匹配输入，否则按词匹配候选。\n"
     private val file get() = DataManager.userDataDir.resolve("emoji_custom.txt")
 
     fun load(): List<Entry> = runCatching {
@@ -74,9 +75,9 @@ class EmojiCustomFragment : PaddingPreferenceFragment() {
         val ctx = requireContext()
         val list = EmojiCustom.load()
         preferenceScreen = preferenceManager.createPreferenceScreen(ctx).apply {
-            addCategory("关联") {
+            addCategory("映射") {
                 isIconSpaceReserved = false
-                addPreference("添加关联", "键可以是拼音（如 shang）或词（如 尴尬）") { edit(list, null) }
+                addPreference("添加映射", "键是拼音（如 shang）或词（如 尴尬），候选是表情或任意文字") { edit(list, null) }
                 for ((i, e) in list.withIndex()) {
                     addPreference(
                         "${e.emoji}　${e.key}",
@@ -88,7 +89,7 @@ class EmojiCustomFragment : PaddingPreferenceFragment() {
                 isIconSpaceReserved = false
                 addPreference(
                     "保存后几秒内生效",
-                    "自定义的表情不推迟到第二页，词库里相同的表情不再重复出现。一个键可以关联多个表情，用空格隔开。",
+                    "映射的候选不推迟到第二页，词库里相同的表情不再重复出现。一个键可以映射多个候选，用空格隔开，所以单个候选里不能有空格。",
                 )
             }
         }
@@ -103,7 +104,7 @@ class EmojiCustomFragment : PaddingPreferenceFragment() {
             setText(old?.key.orEmpty())
         }
         val emoji = EditText(ctx).apply {
-            hint = "表情，如 ☝️"
+            hint = "候选，如 ☝️ 或 张三，多个用空格隔开"
             inputType = InputType.TYPE_CLASS_TEXT
             setText(old?.emoji.orEmpty())
         }
@@ -115,13 +116,13 @@ class EmojiCustomFragment : PaddingPreferenceFragment() {
             addView(emoji)
         }
         AlertDialog.Builder(ctx)
-            .setTitle(if (old == null) "添加关联" else "编辑关联")
+            .setTitle(if (old == null) "添加映射" else "编辑映射")
             .setView(box)
             .setPositiveButton("保存") { _, _ ->
                 val k = EmojiCustom.normalizeKey(key.text.toString())
                 val e = EmojiCustom.normalizeEmoji(emoji.text.toString())
                 if (k == null || e == null) {
-                    ctx.toast("键和表情都不能为空")
+                    ctx.toast("键和候选都不能为空")
                     return@setPositiveButton
                 }
                 val next = list.toMutableList()

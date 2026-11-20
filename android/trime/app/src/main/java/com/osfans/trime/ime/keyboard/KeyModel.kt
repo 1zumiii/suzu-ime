@@ -43,6 +43,9 @@ sealed interface KeyCommand {
     /** 一段文字，之后依次按 [after] 里的键（如括号之间的左移） */
     data class Insert(val text: String, val after: List<Nav> = emptyList()) : KeyCommand
 
+    /** 符号板上的符号：原样上屏，不经 Rime 的标点映射，与中英文状态无关 */
+    data class Commit(val text: String, val after: List<Nav> = emptyList()) : KeyCommand
+
     /** 清空当前输入后，把 [input] 作为编码打给 Rime（符号反查） */
     data class Query(val input: String) : KeyCommand
 
@@ -184,6 +187,7 @@ fun KeySpec.activeCommand(state: KeyState): KeyCommand? = if (state.composing &&
 fun KeyCommand.defaultLabel(state: KeyState): String = when (this) {
     is KeyCommand.Char -> char.toString()
     is KeyCommand.Insert -> text
+    is KeyCommand.Commit -> text
     is KeyCommand.Editor -> op.label
     is KeyCommand.Query -> input
     is KeyCommand.Special -> when (nav) {

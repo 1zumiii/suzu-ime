@@ -173,6 +173,7 @@ class SuzuKeyboard(
             is KeyCommand.Char -> typeChar(command.char)
             is KeyCommand.Special -> press(command.nav)
             is KeyCommand.Insert -> insert(command.text, command.after)
+            is KeyCommand.Commit -> commitLiteral(command.text, command.after)
             is KeyCommand.Query -> service.postRimeJob { simulateKeySequence("{Escape}" + command.input) }
             is KeyCommand.Chord -> sendChord(command)
             is KeyCommand.Editor -> edit(command.op)
@@ -239,6 +240,15 @@ class SuzuKeyboard(
             } else {
                 service.commitText(text)
             }
+        }
+        after.forEach(::press)
+    }
+
+    /** 先上屏未完成的输入，再原样提交 [text]，中文模式下 `,` `\` 也不会被换成全角标点 */
+    private fun commitLiteral(text: String, after: List<Nav>) {
+        service.postRimeJob {
+            if (statusCached.isComposing) commitComposition()
+            service.commitText(text)
         }
         after.forEach(::press)
     }
