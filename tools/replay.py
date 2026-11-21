@@ -71,6 +71,13 @@ def han_count(t):
     return sum(1 for c in t or "" if "\u4e00" <= c <= "\u9fff" or "\u3400" <= c <= "\u4dbf")
 
 
+def ctx_han(rp):
+    """算 λ 用的上文汉字数。新记录有 hn（过滤器实际用的数，整段上文、最多 30），
+    旧记录只能从 c（末 30 个字符）重算，上文末尾标点多时会比当时少。"""
+    hn = rp.get("hn")
+    return hn if isinstance(hn, int) else min(han_count(rp.get("c", "")), 30)
+
+
 def u_lam(p, ctx_chars, input_len, use_model):
     if not use_model or ctx_chars < 2:
         return 0.0
@@ -110,7 +117,7 @@ def unified_top(rec, p):
         return (rec["of"], True) if rp.get("uni") else (None, False)
     g, _ = u_feats(g)
     use_model = any(e.get("s") is not None for e in g)
-    lam = u_lam(p, min(han_count(rp.get("c", "")), 30), len(rec["input"]), use_model)
+    lam = u_lam(p, ctx_han(rp), len(rec["input"]), use_model)
     smax = max((e["s"] for e in g if e.get("s") is not None), default=NEG)
     order = sorted(g, key=lambda e: (-u_score(e, p, lam, smax), e["r"]))
     if lam > 0 and p.get("top_gate", 0) > 0:      # 首位门控，与 rank_unified.gate_top 相同

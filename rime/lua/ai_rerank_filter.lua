@@ -783,14 +783,15 @@ local function inner(translation, env)
         if has_model then for i, w in ipairs(result) do mrank[w] = mrank[w] or i end end
         local feats = replay_cands(all, full_pos, n, mrank, has_model and scores or {}, input, okpp and pp.prev() or nil)
         local p = cfg.uni
-        local lam = ru.lam(p, math.min(ru.han_count(context), 30), #input, has_model)
+        local hn = math.min(ru.han_count(context), 30)   -- λ 用整段上文的汉字数，rp.c 只留末 30 个字符，回放从它重算会偏少
+        local lam = ru.lam(p, hn, #input, has_model)
         local cand_of = {}
         for i = 1, n do cand_of[feats[i]] = all[i] end
         local skip_tail = add_generated(feats, cand_of, all, n, has_model, best_e, input, context, llm, rp, gen_pre)
         local sorted = ru.order(feats, p, lam)
         local base_top = lam > 0 and ru.order(feats, p, 0)[1] or sorted[1]
         if ru.gate_top(sorted, base_top, p, lam) then flags.gated = 1 end
-        if rp then rp.g, rp.uni, rp.lam, rp.ucfg = feats, 1, lam, p end
+        if rp then rp.g, rp.uni, rp.lam, rp.ucfg, rp.hn = feats, 1, lam, p, hn end
 
         -- 第二阶段：拼出的句子与 Rime 的整句比分（rank_unified.stage2_wins），胜了置顶，否则放第二位。
         -- Rime 原首位不是整句（是前缀词等）时没有可比的对象，沿用旧做法置顶。

@@ -203,6 +203,9 @@ for _, ln in ipairs(lines) do
   if ln:find('"s2cmp":1') then n_cmp = n_cmp + 1 end
   if ln:find('"uni":1') and ln:find('"lam":0[,}]') then n_lam0 = n_lam0 + 1 end
 end
+local n_hn = 0
+for _, ln in ipairs(lines) do if ln:find('"uni":1') and ln:find('"hn":%d') then n_hn = n_hn + 1 end end
+check("统一排序：记录算 λ 用的上文汉字数 hn", n_hn == n_uni, n_hn .. "/" .. n_uni)
 local n_genrec = 0
 for _, ln in ipairs(lines) do if ln:find('"inr":0') and ln:find('"gen":1') then n_genrec = n_genrec + 1 end end
 check("生成：回放数据带生成标记", n_genrec >= 1, "records=" .. n_genrec)
