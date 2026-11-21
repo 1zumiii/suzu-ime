@@ -21,7 +21,38 @@ end
 
 local history = {}       -- 当前会话上屏词序列（base 之后）
 local prev_hist = {}
-local commit_base = 0    -- 上文基座：只认 commit_history 中 base 之后的新词（librime-lua 无法清 commit_history）
+-- 上文基座：清空上文那一刻 commit_history 的快照，只认快照之后新增的上屏。
+-- commit_history 最多 20 条，满了以后长度不变，不能按条数找新增部分（以前按条数：满 20 条后按方向键等编辑键，
+-- 之后的上文一直为空，直到退格或回车让 librime 清空记录；2026-11-21 在真实 librime 上复现）。
+-- 改按“快照的末尾与当前记录的开头重叠多少”找，与 input_log.flush_commits 的做法相同。
+local commit_base = {}
+-- 记录规整成 {text, type}：真实环境里是 CommitRecord（userdata），测试桩可能给表或别的值，都不能在回调里报错
+local function snapshot(all)
+    local s = {}
+    for i, r in ipairs(all or {}) do
+        local tr = type(r)
+        if tr == "table" or tr == "userdata" then
+            local ok, t, ty = pcall(function() return r.text, r.type end)
+            s[i] = { text = ok and tostring(t or "") or "", type = ok and tostring(ty or "") or "" }
+        else
+            s[i] = { text = tostring(r), type = "" }
+        end
+    end
+    return s
+end
+-- 返回 all 里属于快照的条数（快照末尾与 all 开头的最长重叠）；all[返回值 + 1] 起是新增的上屏
+local function base_overlap(base, all)
+    local cur = snapshot(all)
+    for len = math.min(#base, #cur), 1, -1 do
+        local match = true
+        for j = 1, len do
+            local a, b = base[#base - len + j], cur[j]
+            if a.text ~= b.text or a.type ~= b.type then match = false; break end
+        end
+        if match then return len end
+    end
+    return 0
+end
 local llm_prep = nil
 local last_prep_ctx = ""
 local load_tried = false
@@ -273,7 +304,7 @@ local function setup_ctx_reset(env)
             c:set_option(name, false)
             reset_history()
             local ch = c.commit_history
-            if ch then commit_base = #ch:to_table() end
+            if ch then commit_base = snapshot(ch:to_table()) end
             _G.llm_filter_cache = nil
             local il = package.loaded["input_log"]   -- 输入事件流：记一次失步（setup 顺序在 input_log 之前，不能直接引用）
             if il and env.input_log then pcall(il.note_reset, env) end
@@ -699,7 +730,7 @@ local function processor(key, env)
     -- 退格/删除/导航键（输入框内没有未上屏编码时）：编辑位置变化，上文重置
     if ctx.input == "" and is_edit_key(key:repr()) then
         reset_history()
-        commit_base = #ch:to_table()   -- 旧词永久忽略
+        commit_base = snapshot(ch:to_table())   -- 旧词永久忽略
         _G.llm_filter_cache = nil      -- 编辑后重打相同词必须重新推理
         trigger_prepare(ctx)              -- 上文已空 → 预解码空上文
         return 0                       -- kRejected：本键不再交给后面的处理器，直接还给应用（此时没有未上屏编码，Rime 没有可处理的）
@@ -707,14 +738,15 @@ local function processor(key, env)
 
     -- 同步 commit_history
     local all = ch:to_table()
-    if all and (#all < commit_base or (#all == 0 and #history > 0)) then
+    if all and #all == 0 and (#history > 0 or #commit_base > 0) then
         -- 引擎清空了 commit_history：基座归零，并丢弃已记的上文（否则旧上文会一直残留）
-        commit_base = 0
+        commit_base = {}
         reset_history()
     end
-    if all and #all > commit_base then
+    local from = all and base_overlap(commit_base, all) or 0
+    if all and #all > from then
         history = {}
-        for i = commit_base + 1, #all do
+        for i = from + 1, #all do
             local entry = all[i]
             if entry and entry.text and #entry.text >= 1 then
                 table.insert(history, entry.text)

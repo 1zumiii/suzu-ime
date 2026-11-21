@@ -414,5 +414,29 @@ do
   check("H. log contains no input/candidate text", not leaked)
 end
 
+-- G2: librime 的上屏记录最多 20 条，满了以后条数不变。按编辑键清空上文之后，新上屏的词仍要进上文
+--    （以前按条数记基座：满 20 条后按方向键，之后的上文一直为空，直到退格或回车让 librime 清空记录）
+do
+  local cap = {}
+  for i = 1, 20 do cap[i] = "旧" .. i end
+  local envc = mk_env("", cap, true)
+  press(envc, "a")
+  press(envc, "Left")
+  check("G2. edit key clears context", _G.ai_rerank_context_get() == "", _G.ai_rerank_context_get())
+  table.remove(cap, 1); cap[#cap + 1] = "今天"      -- librime 挤掉最旧的一条，条数仍是 20
+  press(envc, "a")
+  check("G2. commit after edit key at full history enters context", _G.ai_rerank_context_get() == "今天",
+        _G.ai_rerank_context_get())
+  table.remove(cap, 1); cap[#cap + 1] = "天气"
+  press(envc, "a")
+  check("G2. context keeps growing at full history", _G.ai_rerank_context_get() == "今天天气", _G.ai_rerank_context_get())
+  for i = #cap, 1, -1 do cap[i] = nil end            -- 退格、回车：librime 清空记录
+  press(envc, "a")
+  check("G2. engine clear resets context", _G.ai_rerank_context_get() == "", _G.ai_rerank_context_get())
+  cap[1] = "我们"
+  press(envc, "a")
+  check("G2. commit after engine clear enters context", _G.ai_rerank_context_get() == "我们", _G.ai_rerank_context_get())
+end
+
 print(fails == 0 and "ALL OK" or (fails .. " FAILED"))
 os.exit(fails == 0 and 0 or 1)
