@@ -31,18 +31,44 @@ import kotlin.coroutines.coroutineContext
 /** 下载到用户目录的文件：先写 .part，可断点续传，校验 sha256 后才改成正式文件名 */
 class RemoteFile(val name: String, val url: String, val sha256: String, val size: Long)
 
+enum class SuzuModel(
+    val title: String,
+    revision: String,
+    filename: String,
+    weightsSha: String,
+    weightsSize: Long,
+    vocabSha: String,
+    vocabSize: Long,
+    val topGate: String,
+) {
+    KD500(
+        "Suzu-UER6-KD500", "4a8fd6831e482569fd4503cc19ce3022e75cc027",
+        "suzu-uer6-kd500.q8_0.gguf",
+        "953fa76eca9d1b171cf9e819e9f0474f12c309be1bc7c1aad46db2916d0b3859", 52_811_488,
+        "16a9b481d23159418c6455d76f36569a9d97d6ce1d5303f5431ce0c621e4fc7c", 20_573, "1.5",
+    ),
+    Suzu24(
+        "Suzu-2.4", "b166ed00f744a3a8f68f7b1b8980a76c80ac9f25",
+        "suzu-2.4.q8_0.gguf",
+        "a2ff2c46110c7ba47746871eaf8ff37cc4fab58105ddbe11e0a768e340cdb996", 43_949_568,
+        "21f87a1ce1e99597342ed521787a1d7cac308edb6d2eddeb6c2db06c05668e5d", 30_005, "2.5",
+    ),
+    ;
+
+    private val url = "https://huggingface.co/IzumiThe3rd/$title/resolve/$revision/$filename"
+    val files = listOf(
+        RemoteFile("suzu.gguf", url, weightsSha, weightsSize),
+        RemoteFile("suzu.vocab.txt", "$url.vocab.txt", vocabSha, vocabSize),
+    )
+    val sizeMb: Long get() = (files.sumOf { it.size } + 500_000) / 1_000_000
+}
+
 /**
  * 不打进 APK 的可选资源。文件在就算启用：没有模型时 AI 不启动，没有语法模型时 Rime 不用它，
  * 所以取消下载或删除文件就等于关闭对应的功能。
  */
 enum class SuzuAsset(val title: String, val files: List<RemoteFile>) {
-    Model(
-        "Suzu 模型",
-        listOf(
-            RemoteFile("suzu.gguf", "$MODEL_BASE/suzu-2.4.q8_0.gguf", "a2ff2c46110c7ba47746871eaf8ff37cc4fab58105ddbe11e0a768e340cdb996", 43_949_568),
-            RemoteFile("suzu.vocab.txt", "$MODEL_BASE/suzu-2.4.q8_0.gguf.vocab.txt", "21f87a1ce1e99597342ed521787a1d7cac308edb6d2eddeb6c2db06c05668e5d", 30_005),
-        ),
-    ),
+    Model("Suzu 模型", SuzuModel.KD500.files),
     Grammar(
         "语法模型",
         listOf(
@@ -56,18 +82,23 @@ enum class SuzuAsset(val title: String, val files: List<RemoteFile>) {
     ),
     ;
 
-    val sizeMb: Long get() = (files.sumOf { it.size } + 524288) / 1048576
+    val sizeMb: Long
+        get() = if (this == Model) SuzuModel.KD500.sizeMb else (files.sumOf { it.size } + 524288) / 1048576
 }
 
 private const val MIN_GRAMMAR_BYTES = 1_048_576L
-private const val MODEL_BASE = "https://huggingface.co/IzumiThe3rd/Suzu-2.4/resolve/b166ed00f744a3a8f68f7b1b8980a76c80ac9f25"
+private const val MODEL_PATCH = "suzu_model.yaml"
+private const val MODEL_DOWNLOADS = ".suzu-model-downloads"
 
 object SuzuAssets {
     sealed interface State {
         data object Idle : State
 
-        data class Downloading(val doneMb: Long, val totalMb: Long) : State {
-            val percent: Int get() = if (totalMb > 0) (doneMb * 100 / totalMb).toInt().coerceIn(0, 100) else 0
+        data class Downloading(val doneBytes: Long, val totalBytes: Long, val model: SuzuModel? = null) : State {
+            private val unit = if (model == null) 1_048_576L else 1_000_000L
+            val doneMb: Long get() = doneBytes / unit
+            val totalMb: Long get() = (totalBytes + unit / 2) / unit
+            val percent: Int get() = if (totalBytes > 0) (doneBytes * 100 / totalBytes).toInt().coerceIn(0, 100) else 0
         }
 
         data class Failed(val message: String) : State
@@ -90,24 +121,29 @@ object SuzuAssets {
 
     /** 在后台下载，离开页面也继续。重复调用不会重复下载 */
     @Synchronized
-    fun start(asset: SuzuAsset) {
-        if (jobs[asset]?.isActive == true) return
+    fun start(asset: SuzuAsset, model: SuzuModel = SuzuModel.KD500) {
+        if (jobs[asset]?.isCompleted == false || isInstalled(asset)) return
+        val selectedModel = model.takeIf { asset == SuzuAsset.Model }
+        val files = selectedModel?.files ?: asset.files
+        val total = files.sumOf { it.size }
+        set(asset, State.Downloading(0, total, selectedModel))
         jobs[asset] = scope.launch {
-            val total = asset.files.sumOf { it.size }
             var finished = 0L
-            set(asset, State.Downloading(0, total / 1048576))
             runCatching {
-                userDir.mkdirs()
-                for (file in asset.files) {
-                    val target = userDir.resolve(file.name)
-                    if (!target.isFile) {
+                val dir = selectedModel?.let { userDir.resolve(MODEL_DOWNLOADS).resolve(it.name) } ?: userDir
+                dir.mkdirs()
+                for (file in files) {
+                    coroutineContext.ensureActive()
+                    val target = dir.resolve(file.name)
+                    if (!target.isFile || selectedModel != null && sha256(target) != file.sha256) {
                         download(file, target) { done ->
-                            set(asset, State.Downloading((finished + done) / 1048576, total / 1048576))
+                            set(asset, State.Downloading(finished + done, total, selectedModel))
                         }
                     }
                     finished += file.size
                 }
-                if (asset == SuzuAsset.Model) userDir.resolve("suzu.name").writeText("Suzu-2.4\n")
+                coroutineContext.ensureActive()
+                if (selectedModel != null) installModel(selectedModel, dir)
                 requestDeploy()
             }.onSuccess {
                 set(asset, State.Idle)
@@ -116,6 +152,31 @@ object SuzuAssets {
                 set(asset, if (it is kotlinx.coroutines.CancellationException) State.Idle else State.Failed(it.message ?: it.toString()))
             }
         }
+    }
+
+    private fun installModel(model: SuzuModel, staging: File) {
+        staging.resolve("suzu.name").writeText("${model.title}\n")
+        staging.resolve(MODEL_PATCH).writeText("patch:\n  llm_rerank/unified/top_gate: ${model.topGate}\n")
+        val names = model.files.map { it.name } + listOf("suzu.name", MODEL_PATCH)
+        val installed = mutableListOf<String>()
+        val backups = staging.resolve("backup")
+        backups.mkdirs()
+        try {
+            for (name in names) {
+                val target = userDir.resolve(name)
+                if (target.exists()) target.copyTo(backups.resolve(name), overwrite = true)
+                check(staging.resolve(name).renameTo(target)) { appContext.getString(R.string.suzu_file_save_failed) }
+                installed.add(name)
+            }
+        } catch (e: Exception) {
+            for (name in installed.asReversed()) {
+                val backup = backups.resolve(name)
+                val target = userDir.resolve(name)
+                if (backup.exists()) backup.renameTo(target) else target.delete()
+            }
+            throw e
+        }
+        staging.deleteRecursively()
     }
 
     /** 用用户自己下载的语法模型：检查扩展名和大小，不校验 sha256，因为可能是作者更新过的版本 */
@@ -148,7 +209,7 @@ object SuzuAssets {
                             out.write(buf, 0, n)
                             done += n
                             if (done - reported >= 1048576) {
-                                set(asset, State.Downloading(done / 1048576, size / 1048576))
+                            set(asset, State.Downloading(done, size))
                                 reported = done
                             }
                         }
@@ -178,7 +239,11 @@ object SuzuAssets {
             userDir.resolve(file.name).delete()
             userDir.resolve(file.name + ".part").delete()
         }
-        if (asset == SuzuAsset.Model) userDir.resolve("suzu.name").delete()
+        if (asset == SuzuAsset.Model) {
+            userDir.resolve("suzu.name").delete()
+            userDir.resolve(MODEL_PATCH).delete()
+            userDir.resolve(MODEL_DOWNLOADS).deleteRecursively()
+        }
         requestDeploy()
     }
 

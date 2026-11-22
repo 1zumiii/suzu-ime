@@ -15,6 +15,7 @@ import com.osfans.trime.R
 import com.osfans.trime.suzu.AiDaemonLauncher
 import com.osfans.trime.suzu.SuzuAsset
 import com.osfans.trime.suzu.SuzuAssets
+import com.osfans.trime.suzu.SuzuModel
 import com.osfans.trime.data.base.DataManager
 import com.osfans.trime.util.InputMethodUtils
 import com.osfans.trime.util.appContext
@@ -41,10 +42,10 @@ enum class SetupPage(val required: Boolean) {
         else -> context.getString(R.string.suzu_setup_optional_step, ordinal + 1)
     }
 
-    fun getHintText(context: Context): CharSequence = when (this) {
+    fun getHintText(context: Context, model: SuzuModel): CharSequence = when (this) {
         Enable -> context.getText(R.string.setup__enable_ime_hint)
         Select -> context.getText(R.string.setup__select_ime_hint)
-        Model -> context.getString(R.string.suzu_setup_model_hint, SuzuAsset.Model.sizeMb) + stateText(context, SuzuAsset.Model, context.getString(R.string.suzu_setup_model_skip))
+        Model -> context.getString(R.string.suzu_setup_model_hint, model.sizeMb) + stateText(context, SuzuAsset.Model, context.getString(R.string.suzu_setup_model_skip))
         Grammar -> context.getString(R.string.suzu_setup_grammar_hint, SuzuAsset.Grammar.sizeMb) + stateText(context, SuzuAsset.Grammar, context.getString(R.string.suzu_setup_grammar_skip))
         Ai -> when {
             !SuzuAssets.isInstalled(SuzuAsset.Model) -> context.getString(R.string.suzu_setup_ai_needs_model)
@@ -82,11 +83,18 @@ enum class SetupPage(val required: Boolean) {
     /** 语法模型较大，也可以选自己下载好的文件 */
     val canImportFile: Boolean get() = this == Grammar
 
-    fun getButtonAction(activity: FragmentActivity) {
+    fun getButtonAction(activity: FragmentActivity, model: SuzuModel) {
         when (this) {
             Enable -> InputMethodUtils.showImeEnablerActivity(activity)
             Select -> InputMethodUtils.showImePicker()
-            Model, Grammar -> if (SuzuAssets.state(asset!!) is SuzuAssets.State.Downloading) SuzuAssets.cancel(asset!!) else SuzuAssets.start(asset!!)
+            Model, Grammar -> {
+                val downloadAsset = requireNotNull(asset)
+                if (SuzuAssets.state(downloadAsset) is SuzuAssets.State.Downloading) {
+                    SuzuAssets.cancel(downloadAsset)
+                } else {
+                    SuzuAssets.start(downloadAsset, model)
+                }
+            }
             Ai -> when (AiDaemonLauncher.availability()) {
                 AiDaemonLauncher.Availability.READY -> startAi(activity)
                 AiDaemonLauncher.Availability.NEEDS_PERMISSION -> AiDaemonLauncher.requestPermission { startAi(activity) }

@@ -254,7 +254,9 @@
     <string name="color_mode_light">Light</string>
     <string name="color_mode_dark">Dark</string>
     <string name="suzu_setup_optional_step">Step %1$d (optional)</string>
-    <string name="suzu_setup_model_hint">Download the Suzu model (about %1$d MB) to rank candidates using the preceding text.</string>
+    <string name="suzu_setup_model_hint">Download the Suzu model (about %1$d MB) to rank candidates using the preceding text.\n\nThe model is hosted on Hugging Face. If your network cannot connect, enable a proxy and try again.</string>
+    <string name="suzu_setup_model_picker">Scoring model</string>
+    <string name="suzu_setup_model_recommended">%1$s (recommended)</string>
     <string name="suzu_setup_model_skip">Skipping this keeps AI ranking off. Typing still works.</string>
     <string name="suzu_setup_grammar_hint">Download the grammar model (about %1$d MB) to improve character selection when typing sentences. Wi-Fi is recommended.</string>
     <string name="suzu_setup_grammar_skip">Skipping this keeps the grammar model off. Other features still work.</string>

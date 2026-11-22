@@ -7,7 +7,7 @@
 #
 # 重新部署即可。custom.yaml 的 patch 下原有的其他项照常写在同一层，不冲突。
 # 注意写法：放在 patch 下用 __include。写成 patch 下的 __patch 会把方案原有的 processors、filters、switches
-# 整个换掉（输入法会坏），写在文件顶层则不生效（2026-10-23 用 rime_deployer 实测）。调好的参数（统一排序 alpha 0.05、首位门控 2.5、2 个字母起重排、候选 10 个）已是 Lua 的默认值，
+# 整个换掉（输入法会坏），写在文件顶层则不生效（2026-10-23 用 rime_deployer 实测）。调好的参数（统一排序 alpha 0.05、首位门控 1.5、2 个字母起重排、候选 10 个）已是 Lua 的默认值，
 # 这里不必再写；要改时在同一个 custom.yaml 的 patch 下写 llm_rerank/... 覆盖（可用的键见 ai_rerank_filter.lua 开头）。
 # 模型与推理核心（rime_llm.so / rime_llm.dll，手机为守护进程）的安装见各平台 README。
 

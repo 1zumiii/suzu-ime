@@ -77,7 +77,7 @@ Trime（改版 APK）                              rimellmd（shell 身份，由
 
 ## 学生模型 Suzu（输入法专用小模型）
 
-代号 Suzu：Suzu-1 是第一轮（8 层、384 维、约 16.5M 参数），Suzu-2 是第二轮（12 层、512 维、约 40.9M 参数），Suzu-2.1 在 Suzu-2 的权重上续训，Suzu-2.4 再补充简拼训练，结构都不变。手机上的文件名是 `suzu.gguf` 和 `suzu.vocab.txt`（旧版本叫 `student.*`，升级后需要改名）。
+引导页提供 Suzu-UER6-KD500 和 Suzu-2.4，默认选择 KD500。下载时一并安装对应的权重和词表，并为 KD500 使用首位门槛 1.5，为 Suzu-2.4 使用 2.5。手动更换时同时替换 Trime 用户目录中的 `suzu.gguf` 和 `suzu.vocab.txt`，再重启 AI 服务。模型说明见 [Suzu-UER6-KD500](https://huggingface.co/IzumiThe3rd/Suzu-UER6-KD500)。
 
 长按 AI 徽标可查看已加载的模型。已知权重显示版本名，其他权重显示 GGUF 模型名和 SHA-256 的前 8 位。
 

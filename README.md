@@ -2,13 +2,15 @@
 
 基于 Rime 的本地 AI 拼音输入法：包含 Android App（改版同文输入法）和 macOS、Windows 共用的推理核心，按上文重排候选、补全简拼。
 
-Android 版可从[发布页](https://github.com/1zumiii/suzu-ime/releases/tag/android-v0.2.0)下载。其他平台的配置和安装包见 [rime-suzu](https://github.com/1zumiii/rime-suzu)。
+Android 版可从 [发布页](https://github.com/1zumiii/suzu-ime/releases/latest) 下载。其他平台的配置和安装包见 [rime-suzu](https://github.com/1zumiii/rime-suzu)。
 
-简拼输入时，Rime 只按词库权重排列候选，目标词常常不在第一页。本项目使用 4000 万参数的字符级模型 [Suzu](https://github.com/1zumiii/Suzu)，根据光标前的文字为同音候选打分，并补充简拼中 Rime 未给出的词。模型文件 44 MB，三端均在本机运行，输入内容不出设备。
+本项目使用字符级模型 Suzu-UER6-KD500，根据光标前的文字为同音候选打分，并补充 Rime 未给出的简拼候选。模型文件约 52.8 MB，三端均在本机推理，输入内容不出设备。
 
 ## 效果
 
-测试方法：从留出集的句子里取一个词作为正确答案，在真实 librime 里逐键输入它的拼音或简拼，上文取答案之前的文字。表中的百分比是命中率：“首选”是正确答案排在第一位的题目占比，“前 5 名”是正确答案出现在前 5 个候选里的题目占比。题数为两字母简拼 407、混合输入 291、全拼 216，均为抽样。
+在 2,400 道固定候选的两字母简拼题中，Suzu-UER6-KD500 的首选准确率为 59.5%，Suzu-2.4 为 41.5%。在鼠须管的 librime 链路中，使用门槛 1.5 重算得到 KD500 的首选准确率为 54.0%。测试条件和全拼结果见 [模型卡](https://huggingface.co/IzumiThe3rd/Suzu-UER6-KD500)。
+
+下表是 Suzu-2.x 在另一套留出集上的历史结果。测试在 librime 中逐键输入，抽样包括 407 道两字母简拼、291 道混合输入和 216 道全拼题。
 
 | 输入 | 关 AI（Rime 原顺序） | Suzu-2.1 | Suzu-2.4 |
 |---|---|---|---|
@@ -19,7 +21,7 @@ Android 版可从[发布页](https://github.com/1zumiii/suzu-ime/releases/tag/an
 
 结果来自留出集测试，不代表日常输入的准确率。测试方法、样本量与版本对比见 [Suzu 的模型说明](https://github.com/1zumiii/Suzu)。
 
-速度与内存：打分 p99 指 99% 的打分在此时间内完成。常驻内存指加载模型并稳态打分后的进程驻留集，含被映射的模型文件页（约 44 MB）。
+以下速度与内存数据来自 Suzu-2.x。打分 p99 指 99% 的打分在此时间内完成。常驻内存包含已映射的模型文件页（约 44 MB）。
 
 默认配置下（统一排序加候选生成）的按键仿真，100 个词，Suzu-2.1 与 Suzu-2.4 的延迟没有可见差别：
 
@@ -54,11 +56,11 @@ Android 版可从[发布页](https://github.com/1zumiii/suzu-ime/releases/tag/an
 
 ## 快速开始
 
-Android 使用改版 Trime，方案、Lua 和默认词库随 APK 提供，APK 可从[发布页](https://github.com/1zumiii/suzu-ime/releases/tag/android-v0.2.0)下载。安装后可在引导页下载模型，并通过 Shizuku 启动 AI 服务。词库和模型可在“设置 → 词库”中管理，见 [android/README.md](android/README.md)。
+Android 使用改版 Trime，方案、Lua 和默认词库随 APK 提供。安装后可在引导页下载模型，并通过 Shizuku 启动 AI 服务。词库和模型可在“设置 → 词库”中管理，见 [Android 说明](android/README.md)。
 
 macOS 与 Windows 的安装步骤如下：
 
-1. 从 Hugging Face 下载模型 [Suzu-2.4](https://huggingface.co/IzumiThe3rd/Suzu-2.4) 的 `suzu.gguf` 与 `suzu.vocab.txt`。
+1. 下载 [Suzu-UER6-KD500](https://huggingface.co/IzumiThe3rd/Suzu-UER6-KD500) 的 GGUF 权重和配套词表，分别保存为 `suzu.gguf` 和 `suzu.vocab.txt`。升级时须同时替换两个文件。
 2. Rime 的配置、Lua 脚本和词库包使用 [rime-suzu](https://github.com/1zumiii/rime-suzu)，按其说明安装。
 3. 按平台安装推理核心：
    - macOS：`macos/install_llm.sh core/build/rime_llm.so suzu.gguf suzu.vocab.txt`，详见 [macos/README.md](macos/README.md)
@@ -76,7 +78,7 @@ patch:
 
 重新部署后，方案即接入处理器、过滤器、AI 开关和快捷键（Control+Shift+5）。引用须放在 `patch` 下，并使用 `__include`。若使用 `__patch`，会替换方案原有的整个处理器与过滤器列表。若写在文件顶层，则不生效。
 
-Lua 默认值已采用调优后的参数：2 个字母起重排、参与重排的候选 10 个、统一排序的名次先验系数 0.05、首位门控 2.5，无需复制 rime-suzu 的配置。需要调整时，在同一个 `patch` 下用 `llm_rerank/...` 覆盖。可用配置键见 `rime/lua/ai_rerank_filter.lua` 与 `rank_unified.lua` 开头的说明。
+Lua 从 2 个字母起重排，每组打分 10 个候选，统一排序的名次先验系数为 0.05。KD500 的首位门控默认值为 1.5。继续使用 Suzu-2.4 时，可在同一个 `patch` 下将 `llm_rerank/unified/top_gate` 设为 2.5。其他配置键见 `rime/lua/ai_rerank_filter.lua` 和 `rank_unified.lua`。
 
 ## 文档
 

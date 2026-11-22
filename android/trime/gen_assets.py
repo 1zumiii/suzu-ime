@@ -95,7 +95,12 @@ def make_suzu(src, shared):
         text = read(tgt)
         write(tgt, text.rstrip("\n") + "\n" + read(os.path.join(src, "llm-android", "trime", ov)))
     custom = read(os.path.join(shared, f"{BASE}.custom.yaml"))
-    custom = custom.rstrip("\n") + "\n  # 当前词库包（App 写在用户目录），没有这个文件时忽略\n  __patch: suzu_pack:/patch?\n"
+    custom = custom.rstrip("\n") + (
+        "\n  # App 在用户目录写入选用的词库包和模型配置。\n"
+        "  __patch:\n"
+        "    - suzu_pack:/patch?\n"
+        "    - suzu_model:/patch?\n"
+    )
     write(os.path.join(shared, f"{SCHEMA}.custom.yaml"), custom)
     os.remove(os.path.join(shared, f"{BASE}.custom.yaml"))
 
