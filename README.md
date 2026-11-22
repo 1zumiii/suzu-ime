@@ -8,16 +8,22 @@ Android 版可从 [发布页](https://github.com/1zumiii/suzu-ime/releases/lates
 
 ## 效果
 
-同一批固定候选按模型分排序。首选准确率为正确答案排在第一位的题目占比。
+同一批固定候选只按模型分排序，首选准确率为正确答案排在第一位的题目占比：
 
 | 评测 | 题数 | Suzu-UER6-KD500 | Suzu-2.4 |
 |---|---:|---:|---:|
 | 两字母简拼，每题 48 个候选 | 2,400 | 59.5% | 41.5% |
 | 全拼同音词，每题最多 5 个候选 | 1,293 | 92.81% | 92.73% |
 
-在鼠须管的 librime 中逐键输入并记录实际候选，再用这些候选和分数重算首位门控。KD500 在按帖子划分的 1,190 道简拼验证题上，门槛 1.5 的首选准确率为 54.0%，门槛 2.5 为 50.0%。评测条件见 [KD500 模型卡](https://huggingface.co/IzumiThe3rd/Suzu-UER6-KD500)。
+在鼠须管的 librime 中逐键采集候选，再用记录的候选和分数回算排序。按帖子划分的两字母简拼验证题上，首选准确率如下：
 
-同一批题里，不用模型分（同一批候选按 Rime 原名次排序）的首选为 28.6%，Suzu-2.4 在门槛 2.5 下为 39.3%（来自较早一轮，验证题 1,192 道）。
+| 设置 | 题数 | 首选 |
+|---|---:|---:|
+| 不用模型分（同一批候选按 Rime 原名次排序） | 1,190 | 28.6% |
+| Suzu-2.4，门槛 2.5（另一轮评测，未逐题配对） | 1,192 | 39.3% |
+| Suzu-UER6-KD500，门槛 1.5（默认） | 1,190 | **54.0%** |
+
+评测条件见 [KD500 模型卡](https://huggingface.co/IzumiThe3rd/Suzu-UER6-KD500)。
 
 延迟与内存：
 
@@ -26,7 +32,7 @@ Android 版可从 [发布页](https://github.com/1zumiii/suzu-ime/releases/lates
 | Android | ASUS Zenfone 10，守护进程 2 线程，每组 10 个候选 | 每次打分多 1.5～2 ms，打分加生成的 P99 约 20 ms，常驻内存约 151 MB（Suzu-2.4 约 109 MB） |
 | Windows | 桌面 4 线程，每题 10 个候选 | 上文已缓存时 P50 / P99 为 5.3 / 7.3 ms（Suzu-2.4 为 4.9 / 7.1 ms），现场解码上文时为 9.3 / 21.8 ms（Suzu-2.4 为 8.8 / 20.7 ms） |
 
-两项均用同结构、未蒸馏的版本测得，蒸馏不改变结构和计算量。推理请求设有等待时限，超时后当次输入继续使用已有候选。各平台的按键仿真与其他测量见 [技术报告](docs/technical-report.md)，其中部分数字仍是 Suzu-2.x 时期测的。
+推理请求设有等待时限，超时后当次输入继续使用已有候选。各平台的按键仿真见 [技术报告](docs/technical-report.md)。
 
 ## 功能
 
@@ -49,20 +55,35 @@ Android 版可从 [发布页](https://github.com/1zumiii/suzu-ime/releases/lates
 
 ## 快速开始
 
-Android 使用改版 Trime，方案、Lua 和默认词库随 APK 提供。安装后可在引导页下载模型，并通过 Shizuku 启动 AI 服务。词库和模型可在“设置 → 词库”中管理，见 [Android 说明](android/README.md)。
+### macOS 与 Windows
 
-macOS 与 Windows 的安装步骤如下：
+安装整套输入法（配置、词库、模型和推理核心）请用 [rime-suzu](https://github.com/1zumiii/rime-suzu#安装) 的一行安装命令，无需自己编译。
 
-1. 下载 [Suzu-UER6-KD500](https://huggingface.co/IzumiThe3rd/Suzu-UER6-KD500) 的 GGUF 权重和配套词表，分别保存为 `suzu.gguf` 和 `suzu.vocab.txt`。升级时须同时替换两个文件。
-2. Rime 的配置、Lua 脚本和词库包使用 [rime-suzu](https://github.com/1zumiii/rime-suzu)，按其说明安装。
-3. 按平台安装推理核心：
+### Android
+
+从 [发布页](https://github.com/1zumiii/suzu-ime/releases/latest) 下载 APK，支持 arm64、Android 11 及以上。
+
+1. 安装后按引导启用并选择输入法，这时已经可以正常打字。
+2. 在引导页或“设置 → 模型”下载打分模型，默认选 Suzu-UER6-KD500。
+3. 安装并启动 [Shizuku](https://shizuku.rikka.app/)，再点工具栏的 AI 徽标启动 AI 服务。手机重启后要先启动 Shizuku，再启动 AI 服务。
+
+词库在“设置 → 词库”中切换，详见 [Android 说明](android/README.md)。
+
+从旧版本覆盖安装时，用户词典、设置和已下载的模型都会保留。已下载的 Suzu-2.4 不会自动换成 KD500，要换时在“设置 → 模型”中删除旧模型再下载。之前装的是其他签名的同文输入法时，须先卸载才能安装，卸载会清空用户词典，请先备份手机上的 `Android/data/com.osfans.trime/files/rime` 目录。
+
+### 手动安装推理核心
+
+已有自己的 Rime 配置，或想自己编译时，按以下步骤安装：
+
+1. 下载 [Suzu-UER6-KD500](https://huggingface.co/IzumiThe3rd/Suzu-UER6-KD500) 的 GGUF 权重和配套词表，分别保存为 `suzu.gguf` 和 `suzu.vocab.txt`。两个文件要成对使用，换模型时一起替换。
+2. 按平台安装推理核心：
    - macOS：`macos/install_llm.sh core/build/rime_llm.so suzu.gguf suzu.vocab.txt`，详见 [macos/README.md](macos/README.md)
    - Windows：见 [windows/README.md](windows/README.md)
-4. 核心的构建与接口见 [core/README.md](core/README.md)。
+3. 核心的构建与接口见 [core/README.md](core/README.md)。
 
 ### 接入已有的 Rime 配置
 
-已有 Rime 配置可直接接入。将 `rime/lua/` 下的 Lua 文件放入 Rime 用户目录的 `lua/`，将 `rime/suzu_ime.yaml` 放入用户目录，再在目标方案的 `<方案名>.custom.yaml` 中添加：
+先按上一节装好推理核心、权重和词表，再接入方案。将 `rime/lua/` 下的 Lua 文件放入 Rime 用户目录的 `lua/`，将 `rime/suzu_ime.yaml` 放入用户目录，再在目标方案的 `<方案名>.custom.yaml` 中添加：
 
 ```yaml
 patch:
