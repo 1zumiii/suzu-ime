@@ -132,7 +132,7 @@ object AiDaemonLauncher {
                             out.contains("KILL_FAIL") ->
                                 Result.Failed("旧版 AI 服务停不下来，请重启手机后再试")
                             out.contains("NO_MODEL") ->
-                                Result.Failed("模型文件不完整，请到“设置 → 词库”重新下载 Suzu 模型")
+                                Result.Failed("模型文件不完整，请到“设置 → 模型”重新下载 Suzu 模型")
                             else -> Result.Failed("AI 服务启动失败（错误码 $code）：${(out + " " + err).trim().take(120)}")
                         }
                     }
