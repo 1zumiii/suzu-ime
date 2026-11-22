@@ -10,6 +10,8 @@
 -- 配置（方案里的 llm_rerank 节点）：
 --   code_pattern            触发的编码正则（全串匹配），默认 [a-z]{2,}（2 个字母起，两字母简拼如 zm 也重排；单个字母不重排，避开置顶词）
 --   max_candidates          参与重排的候选数，默认 10（单字等同音词多的输入，正确的字常在词库第 6 到 8 位：5 个时约 77% 进得来，8 个约 95%）
+--                           不能超过核心一次打分的上限：进程内核心由 processor 按此调大；手机守护进程由 --n-seq-max 决定，
+--                           超过时第一次按键保持原顺序，之后降到核心上限，并在 llm_errors.txt 记一行
 --   generate                候选生成（只在 ranker: unified 下），默认 true；核心没有生成接口或没有词典时自动不生成；gen_k 每次生成的词数，默认 10；
 --                           gen_beam 核心每层展开的节点数（processor 读取），默认 20。见 add_generated
 --   expected_length_weight  预期词长加成，全拼设 0（默认 0）
@@ -349,6 +351,13 @@ local function get_scores(llm, cands)
     return scores
 end
 
+-- 打分组大小：llm_rerank/max_candidates，超过核心上限时降到核心上限（_G.llm_cand_cap 由打分时发现，processor 重读配置时清掉）
+local function cand_limit()
+    local cap = _G.llm_cand_cap
+    if cap and cap < cfg.max_candidates then return cap end
+    return cfg.max_candidates
+end
+
 -- yield 包装：capture 非空时把候选收集起来，否则直接 yield
 local capture = nil
 local function Y(c)
@@ -415,7 +424,7 @@ local function second_stage(env, llm, context, w1, rest)
                 if txt and txt ~= "" and not seen[txt] and not is_weird(txt) and drawable(txt) then
                     seen[txt] = true
                     cands2[#cands2 + 1] = txt
-                    if #cands2 >= cfg.max_candidates then break end
+                    if #cands2 >= cand_limit() then break end
                 end
             end
         end
@@ -718,7 +727,7 @@ local function inner(translation, env)
     if _G.ai_rerank_context_get then ctx_text = _G.ai_rerank_context_get() end
     local context = (ctx_text or ""):gsub('%s+', '')
     if rp then rp.c = tail_chars(context, 30) end   -- 模型实际看到的上文（核心只取最后 30 个字）
-    local kmax = cfg.max_candidates
+    local kmax = cand_limit()
     local cands = {}
     for i, c in ipairs(all) do
         if i > kmax then break end
@@ -763,6 +772,16 @@ local function inner(translation, env)
             ok, result, why = pcall(function() return llm.score(context, cands, false) end)
         end
         if ok and type(result) == "table" then
+            -- 排名表保留词表外的候选，长度只反映核心实际接收了几个候选。
+            local k = #result
+            if k >= 2 and k < #cands then
+                _G.llm_cand_cap = k
+                flags.s1 = "cap" .. k
+                append_line("llm_errors.txt", string.format("%s max_candidates=%d 核心仅返回 %d 个候选，打分组降到 %d",
+                    os.date("%Y-%m-%d %H:%M:%S"), kmax, k, k))
+                for _, c in ipairs(orig) do Y(c) end
+                return
+            end
             scores = get_scores(llm, cands)
             _G.llm_filter_cache = { key = key1, result = result, scores = scores }
             flags.s1 = "miss"

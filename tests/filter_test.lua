@@ -438,5 +438,36 @@ do
   check("G2. commit after engine clear enters context", _G.ai_rerank_context_get() == "我们", _G.ai_rerank_context_get())
 end
 
+-- L: 打分组超过核心上限（手机守护进程的 --n-seq-max 配小了）。核心只给前几个候选打分，
+--    以前过滤器拿不全分数就整次作废，每次按键都静默不重排。现在第一次保持原顺序并记下上限，之后降到上限照常重排
+do
+  local old_seq = llm.n_seq_max
+  local large = mk_env("", {}, true, { ["llm_rerank/max_candidates"] = 20 })
+  large.engine.schema.schema_id = "large"
+  press(large, "b")
+  check("L. processor raises core cap for 20 candidates", llm.n_seq_max == 21, tostring(llm.n_seq_max))
+  press(mk_env("", {}, true), "b")
+  check("L. processor keeps the higher cap on a schema switch", llm.n_seq_max == 21, tostring(llm.n_seq_max))
+  llm.n_seq_max = 4                                   -- 核心上限 3 个候选，过滤器的打分组是 5 个
+  local t1 = os.time()
+  while not llm.is_ready() do llm.score("你好", { "世界", "是借" }); os.execute("sleep 0.3"); if os.time() - t1 > 60 then break end end
+  hist = { "他长期缺乏锻炼，没有" }
+  press(mk_env("", hist, true), "b")
+  _G.llm_filter_cache = nil
+  local env = mk_env("jingli", hist, true, { ["llm_rerank/scan_limit"] = 80 })
+  env.engine.schema.schema_id = "cap_test"
+  local cands = function() return { mk("经理", 0, 6), mk("经历", 0, 6), mk("精力", 0, 6), mk("敬礼", 0, 6), mk("警力", 0, 6) } end
+  local texts1 = run(env, cands())
+  check("L. over cap: first key keeps native order", texts1[1] == "经理", table.concat(texts1, ","))
+  check("L. over cap: cap learned", _G.llm_cand_cap == 3, tostring(_G.llm_cand_cap))
+  local texts2 = run(env, cands())
+  check("L. over cap: next key reranks within cap", texts2[1] == "精力" and #texts2 == 5, table.concat(texts2, ","))
+  local ef = io.open(ud .. "/llm_errors.txt", "r")
+  local etxt = ef and ef:read("*a") or ""; if ef then ef:close() end
+  check("L. over cap: logged once without input text", select(2, etxt:gsub("打分组降到 3", "")) == 1 and not etxt:find("精力", 1, true))
+  llm.n_seq_max = old_seq
+  _G.llm_cand_cap = nil
+end
+
 print(fails == 0 and "ALL OK" or (fails .. " FAILED"))
 os.exit(fails == 0 and 0 or 1)

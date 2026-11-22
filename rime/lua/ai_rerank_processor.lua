@@ -213,6 +213,16 @@ local function apply_config(env, cpp)
     end
     local cores = sc:get_int("llm_rerank/cpu_cores")
     if cores then cpp.n_threads = cores end
+    -- 核心一次打分的候选上限（n_seq_max − 1，默认 11）要容得下过滤器的打分组（llm_rerank/max_candidates，默认 10）。
+    -- 不够时核心只给前几个候选打分，过滤器拿不全分数，整次重排作废。进程内核心在这里调大，只调大不调小；
+    -- 手机守护进程的上限由启动参数 --n-seq-max 决定，这里改不了，过滤器发现不够时自动降到核心上限（_G.llm_cand_cap）
+    if not cpp.set_enabled then
+        local mc = sc:get_int("llm_rerank/max_candidates") or 10
+        pcall(function()
+            if (tonumber(cpp.n_seq_max) or 0) < mc + 1 then cpp.n_seq_max = mc + 1 end
+        end)
+    end
+    _G.llm_cand_cap = nil
     -- 候选生成（llm_rerank/generate）：词典是用户目录里随方案部署的词库目录，默认 cn_dicts（雾凇）；
     -- 方案可用 llm_rerank/lexicon_dir 指定别的目录（如白霜 cn_dicts_frost），切换方案时词典跟着换，模型不重载。
     -- 进程内核心直接设置；手机的守护进程由启动参数决定 --gen-beam，词典目录名经 set_lexicon 下发
