@@ -5,6 +5,7 @@
 
 package com.osfans.trime.suzu
 
+import android.content.Context
 import android.content.Intent
 import android.net.Uri
 import android.provider.OpenableColumns
@@ -21,6 +22,7 @@ import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.launch
+import org.json.JSONObject
 import timber.log.Timber
 import java.io.File
 import java.net.HttpURLConnection
@@ -67,26 +69,19 @@ enum class SuzuModel(
  * 不打进 APK 的可选资源。文件在就算启用：没有模型时 AI 不启动，没有语法模型时 Rime 不用它，
  * 所以取消下载或删除文件就等于关闭对应的功能。
  */
-enum class SuzuAsset(val title: String, val files: List<RemoteFile>) {
-    Model("Suzu 模型", SuzuModel.KD500.files),
-    Grammar(
-        "语法模型",
-        listOf(
-            RemoteFile(
-                "wanxiang-lts-zh-hans.gram",
-                "https://github.com/amzxyz/rime-wanxiang-data/releases/download/LTS/wanxiang-lts-zh-hans.gram",
-                "9eedac1d836f3fdafb61b162035c8937253aedc106be40b2b957d9ab64e9ed89",
-                418_078_764,
-            ),
-        ),
-    ),
-    ;
-
-    val sizeMb: Long
-        get() = if (this == Model) SuzuModel.KD500.sizeMb else (files.sumOf { it.size } + 524288) / 1048576
+enum class SuzuAsset(val title: String, val fileNames: List<String>, val sizeMb: Long) {
+    Model("Suzu 模型", SuzuModel.KD500.files.map { it.name }, SuzuModel.KD500.sizeMb),
+    Grammar("语法模型", listOf(GRAMMAR_FILE), 400),
 }
 
 private const val MIN_GRAMMAR_BYTES = 1_048_576L
+private const val GRAMMAR_FILE = "wanxiang-lts-zh-hans.gram"
+private const val GRAMMAR_INFO = "wanxiang.grammar.json"
+private const val GRAMMAR_PART_DIGEST = "$GRAMMAR_FILE.part.sha256"
+private const val GRAMMAR_REPO = "amzxyz/rime-wanxiang-data"
+private const val GRAMMAR_RELEASE_API = "https://api.github.com/repos/$GRAMMAR_REPO/releases/tags/LTS"
+private const val GRAMMAR_DOWNLOAD = "https://github.com/$GRAMMAR_REPO/releases/download/LTS/$GRAMMAR_FILE"
+private val SHA256_HEX = Regex("[0-9a-f]{64}")
 private const val MODEL_PATCH = "suzu_model.yaml"
 private const val MODEL_DOWNLOADS = ".suzu-model-downloads"
 
@@ -111,7 +106,19 @@ object SuzuAssets {
 
     private val userDir get() = DataManager.userDataDir
 
-    fun isInstalled(asset: SuzuAsset) = asset.files.all { userDir.resolve(it.name).isFile }
+    fun isInstalled(asset: SuzuAsset) = asset.fileNames.all { userDir.resolve(it).isFile }
+
+    fun installedGrammarDescription(context: Context): String {
+        val target = userDir.resolve(GRAMMAR_FILE)
+        val info = runCatching { JSONObject(userDir.resolve(GRAMMAR_INFO).readText()) }.getOrNull()
+        if (info == null || info.optLong("size") != target.length() || info.optLong("modified") != target.lastModified()) {
+            return GRAMMAR_FILE
+        }
+        val name = info.optString("name").ifBlank { context.getString(R.string.suzu_grammar_lts_name) }
+        val date = info.optString("date")
+        val fingerprint = info.optString("sha256").takeIf(SHA256_HEX::matches)?.let { "SHA-256 ${it.take(8)}" }.orEmpty()
+        return listOf(name, date, fingerprint).filter { it.isNotEmpty() }.joinToString(" · ")
+    }
 
     fun state(asset: SuzuAsset): State = _states.value.getValue(asset)
 
@@ -124,26 +131,11 @@ object SuzuAssets {
     fun start(asset: SuzuAsset, model: SuzuModel = SuzuModel.KD500) {
         if (jobs[asset]?.isCompleted == false || isInstalled(asset)) return
         val selectedModel = model.takeIf { asset == SuzuAsset.Model }
-        val files = selectedModel?.files ?: asset.files
-        val total = files.sumOf { it.size }
-        set(asset, State.Downloading(0, total, selectedModel))
+        val estimatedTotal = selectedModel?.files?.sumOf { it.size } ?: asset.sizeMb * 1_048_576
+        set(asset, State.Downloading(0, estimatedTotal, selectedModel))
         jobs[asset] = scope.launch {
-            var finished = 0L
             runCatching {
-                val dir = selectedModel?.let { userDir.resolve(MODEL_DOWNLOADS).resolve(it.name) } ?: userDir
-                dir.mkdirs()
-                for (file in files) {
-                    coroutineContext.ensureActive()
-                    val target = dir.resolve(file.name)
-                    if (!target.isFile || selectedModel != null && sha256(target) != file.sha256) {
-                        download(file, target) { done ->
-                            set(asset, State.Downloading(finished + done, total, selectedModel))
-                        }
-                    }
-                    finished += file.size
-                }
-                coroutineContext.ensureActive()
-                if (selectedModel != null) installModel(selectedModel, dir)
+                if (selectedModel == null) downloadGrammar() else downloadModel(selectedModel, estimatedTotal)
                 requestDeploy()
             }.onSuccess {
                 set(asset, State.Idle)
@@ -152,6 +144,78 @@ object SuzuAssets {
                 set(asset, if (it is kotlinx.coroutines.CancellationException) State.Idle else State.Failed(it.message ?: it.toString()))
             }
         }
+    }
+
+    private suspend fun downloadModel(model: SuzuModel, total: Long) {
+        val dir = userDir.resolve(MODEL_DOWNLOADS).resolve(model.name)
+        dir.mkdirs()
+        var finished = 0L
+        for (file in model.files) {
+            coroutineContext.ensureActive()
+            val target = dir.resolve(file.name)
+            if (!target.isFile || sha256(target) != file.sha256) {
+                download(file, target) { done ->
+                    set(SuzuAsset.Model, State.Downloading(finished + done, total, model))
+                }
+            }
+            finished += file.size
+        }
+        coroutineContext.ensureActive()
+        installModel(model, dir)
+    }
+
+    private suspend fun downloadGrammar() {
+        val conn = (URL(GRAMMAR_RELEASE_API).openConnection() as HttpURLConnection).apply {
+            connectTimeout = 15_000
+            readTimeout = 30_000
+            setRequestProperty("Accept", "application/vnd.github+json")
+            setRequestProperty("User-Agent", "Suzu-IME")
+        }
+        val release = try {
+            val code = conn.responseCode
+            check(code == HttpURLConnection.HTTP_OK) { appContext.getString(R.string.suzu_download_http_error, code) }
+            conn.inputStream.bufferedReader().use { JSONObject(it.readText()) }
+        } finally {
+            conn.disconnect()
+        }
+        val assets = release.optJSONArray("assets")
+        val asset = (0 until (assets?.length() ?: 0)).mapNotNull { assets?.optJSONObject(it) }
+            .firstOrNull { it.optString("name") == GRAMMAR_FILE && it.optString("browser_download_url") == GRAMMAR_DOWNLOAD }
+        val checksum = asset?.optString("digest").orEmpty()
+        val digest = checksum.removePrefix("sha256:")
+        val size = asset?.optLong("size") ?: 0
+        check(checksum.startsWith("sha256:") && SHA256_HEX.matches(digest) && size >= MIN_GRAMMAR_BYTES) {
+            appContext.getString(R.string.suzu_grammar_metadata_unavailable)
+        }
+        coroutineContext.ensureActive()
+        userDir.mkdirs()
+        val partDigest = userDir.resolve(GRAMMAR_PART_DIGEST)
+        if (!partDigest.isFile || partDigest.readText() != digest) {
+            val part = userDir.resolve("$GRAMMAR_FILE.part")
+            check(!part.exists() || part.delete()) { appContext.getString(R.string.suzu_file_save_failed) }
+            partDigest.writeText(digest)
+        }
+        val target = userDir.resolve(GRAMMAR_FILE)
+        set(SuzuAsset.Grammar, State.Downloading(0, size))
+        download(RemoteFile(GRAMMAR_FILE, GRAMMAR_DOWNLOAD, digest, size), target) { done ->
+            set(SuzuAsset.Grammar, State.Downloading(done, size))
+        }
+        writeGrammarInfo(target, "", asset?.optString("updated_at").orEmpty().take(10), digest)
+        partDigest.delete()
+    }
+
+    private fun writeGrammarInfo(target: File, name: String, date: String, digest: String) {
+        runCatching {
+            userDir.resolve(GRAMMAR_INFO).writeText(
+                JSONObject()
+                    .put("name", name)
+                    .put("date", date)
+                    .put("sha256", digest)
+                    .put("size", target.length())
+                    .put("modified", target.lastModified())
+                    .toString(),
+            )
+        }.onFailure { Timber.w(it, "Failed to save grammar model information") }
     }
 
     private fun installModel(model: SuzuModel, staging: File) {
@@ -183,11 +247,11 @@ object SuzuAssets {
     @Synchronized
     fun importGrammar(uri: Uri) {
         val asset = SuzuAsset.Grammar
-        if (jobs[asset]?.isActive == true) return
+        if (jobs[asset]?.isCompleted == false) return
         jobs[asset] = scope.launch {
             val resolver = appContext.contentResolver
-            val target = userDir.resolve(asset.files.single().name)
-            val part = File(target.parentFile, target.name + ".part")
+            val target = userDir.resolve(GRAMMAR_FILE)
+            val part = userDir.resolve("$GRAMMAR_FILE.import")
             runCatching {
                 val (name, size) = resolver.query(uri, null, null, null, null)?.use { c ->
                     check(c.moveToFirst()) { appContext.getString(R.string.suzu_file_unreadable) }
@@ -197,6 +261,7 @@ object SuzuAssets {
                 check(name.endsWith(".gram")) { appContext.getString(R.string.suzu_grammar_file_required) }
                 check(size >= MIN_GRAMMAR_BYTES) { appContext.getString(R.string.suzu_grammar_file_too_small) }
                 userDir.mkdirs()
+                set(asset, State.Downloading(0, size))
                 resolver.openInputStream(uri)!!.use { input ->
                     part.outputStream().use { out ->
                         val buf = ByteArray(64 * 1024)
@@ -209,13 +274,17 @@ object SuzuAssets {
                             out.write(buf, 0, n)
                             done += n
                             if (done - reported >= 1048576) {
-                            set(asset, State.Downloading(done, size))
+                                set(asset, State.Downloading(done, size))
                                 reported = done
                             }
                         }
                     }
                 }
+                check(part.length() >= MIN_GRAMMAR_BYTES) { appContext.getString(R.string.suzu_grammar_file_too_small) }
+                val digest = sha256(part)
+                coroutineContext.ensureActive()
                 check(part.renameTo(target)) { appContext.getString(R.string.suzu_file_save_failed) }
+                writeGrammarInfo(target, name, "", digest)
                 requestDeploy()
             }.onSuccess {
                 set(asset, State.Idle)
@@ -235,14 +304,18 @@ object SuzuAssets {
     /** 删除资源和没下完的部分，对应的功能随之关闭 */
     fun delete(asset: SuzuAsset) {
         cancel(asset)
-        for (file in asset.files) {
-            userDir.resolve(file.name).delete()
-            userDir.resolve(file.name + ".part").delete()
+        for (name in asset.fileNames) {
+            userDir.resolve(name).delete()
+            userDir.resolve(name + ".part").delete()
         }
         if (asset == SuzuAsset.Model) {
             userDir.resolve("suzu.name").delete()
             userDir.resolve(MODEL_PATCH).delete()
             userDir.resolve(MODEL_DOWNLOADS).deleteRecursively()
+        } else {
+            userDir.resolve(GRAMMAR_INFO).delete()
+            userDir.resolve(GRAMMAR_PART_DIGEST).delete()
+            userDir.resolve("$GRAMMAR_FILE.import").delete()
         }
         requestDeploy()
     }

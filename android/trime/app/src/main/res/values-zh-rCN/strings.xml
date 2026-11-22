@@ -257,7 +257,12 @@
     <string name="suzu_setup_model_picker">打分模型</string>
     <string name="suzu_setup_model_recommended">%1$s（推荐）</string>
     <string name="suzu_setup_model_skip">跳过后 AI 重排保持关闭，仍可正常打字。</string>
-    <string name="suzu_setup_grammar_hint">下载语法模型（约 %1$d MB），改善整句输入时的同音字选择。建议连接 Wi-Fi。</string>
+    <string name="suzu_setup_grammar_hint">下载万象 LTS 语法模型（约 %1$d MB），改善整句输入时的同音字选择。建议连接 Wi-Fi。</string>
+    <string name="suzu_grammar_lts_name">万象 LTS</string>
+    <string name="suzu_grammar_available">点按下载万象 LTS（约 %1$d MB），或导入本地文件。</string>
+    <string name="suzu_grammar_installed">当前模型：%1$s\n点按可删除。</string>
+    <string name="suzu_grammar_download_lts">下载万象 LTS（约 %1$d MB）</string>
+    <string name="suzu_grammar_metadata_unavailable">无法取得万象 LTS 的校验信息。请重试，或选择已下载的文件。</string>
     <string name="suzu_setup_grammar_skip">跳过后不使用语法模型，其他功能不受影响。</string>
     <string name="suzu_setup_ai_needs_model">启动 AI 服务前需先下载 Suzu 模型，也可跳过此步骤。</string>
     <string name="suzu_setup_ai_ready">Shizuku 已就绪，点按下方按钮启动 AI 服务。手机重启后，需先重新启动 Shizuku。</string>

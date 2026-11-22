@@ -10,6 +10,7 @@ import androidx.activity.result.contract.ActivityResultContracts
 import androidx.appcompat.app.AlertDialog
 import androidx.fragment.app.activityViewModels
 import androidx.lifecycle.lifecycleScope
+import com.osfans.trime.R
 import com.osfans.trime.ui.common.PaddingPreferenceFragment
 import com.osfans.trime.ui.main.MainViewModel
 import kotlinx.coroutines.flow.drop
@@ -43,8 +44,11 @@ class ModelFragment : PaddingPreferenceFragment() {
         pref.percent = (state as? SuzuAssets.State.Downloading)?.percent
         pref.summary = when {
             state is SuzuAssets.State.Downloading -> "正在下载 ${state.percent}%（${state.doneMb} / ${state.totalMb} MB），点按取消"
+            asset == SuzuAsset.Grammar && SuzuAssets.isInstalled(asset) ->
+                getString(R.string.suzu_grammar_installed, SuzuAssets.installedGrammarDescription(requireContext()))
             SuzuAssets.isInstalled(asset) -> "已安装，点按可删除并关闭此功能"
             state is SuzuAssets.State.Failed -> "下载失败：${state.message}\n点按重试"
+            asset == SuzuAsset.Grammar -> getString(R.string.suzu_grammar_available, asset.sizeMb)
             else -> "未安装，此功能已关闭。点按下载（约 ${asset.sizeMb} MB）"
         }
     }
@@ -92,7 +96,7 @@ class ModelFragment : PaddingPreferenceFragment() {
             asset == SuzuAsset.Grammar ->
                 AlertDialog.Builder(requireContext())
                     .setTitle(asset.title)
-                    .setItems(arrayOf("下载（约 ${asset.sizeMb} MB）", "选择已下载的文件")) { _, which ->
+                    .setItems(arrayOf(getString(R.string.suzu_grammar_download_lts, asset.sizeMb), getString(R.string.suzu_choose_downloaded_file))) { _, which ->
                         if (which == 0) SuzuAssets.start(asset) else pickGrammar.launch(arrayOf("*/*"))
                     }.show()
             else -> SuzuAssets.start(asset)
