@@ -63,7 +63,7 @@ def stage1(g, inp, p):
 
 
 U_DEFAULTS = {"alpha": 0.05, "beta": 0, "dw_unknown": 3000, "mu": 0.6, "fb": 0, "pg": 1.5, "cg": 3.0, "fp": 3.0,
-              "lam_max": 1.0, "lam_ctx_full": 4, "lam_short": 0.5, "top_gate": 2.5}
+              "lam_max": 1.0, "lam_ctx_full": 4, "lam_short": 0.5, "top_gate": 1.5}
 
 
 def han_count(t):
