@@ -305,6 +305,7 @@ int run_worker(const Options & opt) {
     w.idle_normal = opt.idle_sec;
 
     EngineConfig c;
+    c.identify_model = true;
     c.model_path = opt.model;
     c.vocab_path = opt.student_vocab.empty() ? guess_vocab(opt.model) : opt.student_vocab;
     c.n_threads = opt.threads;

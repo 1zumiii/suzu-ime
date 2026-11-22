@@ -22,6 +22,14 @@ object AiStatusButtonAction {
     const val TOGGLE = "ai_toggle"
 }
 
+internal fun loadedModelName(name: String, hash: String): String =
+    when (hash) {
+        "953fa76e" -> "Suzu-UER6-KD500"
+        "a2ff2c46" -> "Suzu-2.4"
+        "" -> name.ifBlank { "未知模型" }
+        else -> "${name.ifBlank { "未知模型" }}·$hash"
+    }
+
 /**
  * AI 重排守护进程（rimellmd）的状态指示和手动启停。读用户目录里的 ai_status.json。
  * 颜色表示开关与健康，实心/空心表示模型在不在内存里：
@@ -94,14 +102,6 @@ class AiStatusButton(
             true
         }
     }
-
-    /** 当前学生模型的显示名：用户目录里 suzu.name 的第一行（如 Suzu-2），没有就显示 Suzu */
-    private fun modelName(): String =
-        try {
-            DataManager.userDataDir.resolve("suzu.name").readText().lineSequence().firstOrNull()?.trim().orEmpty().ifEmpty { "Suzu" }
-        } catch (e: Exception) {
-            "Suzu"
-        }
 
     private fun dpToPx(dp: Int) = (dp * resources.displayMetrics.density).toInt()
 
@@ -238,6 +238,8 @@ class AiStatusButton(
         val lastExit = j?.optString("last_exit", "none") ?: "none"
         // 长按详情用 Toast 显示，系统最多显示 2 行、每行约 24 个汉字，超出会被截断；所以每种状态都写成 2 行以内
         val history = if (restarts > 0) "·重启$restarts" else ""
+        val model = j?.optJSONObject("model")
+        val modelName = loadedModelName(model?.optString("name").orEmpty(), model?.optString("sha256_prefix").orEmpty())
         when {
             fresh && !enabled ->
                 show(GRAY, "AI 服务：已关闭\n点按开启，当前未加载模型", "○ AI")
@@ -251,7 +253,7 @@ class AiStatusButton(
             loaded ->
                 show(
                     GREEN,
-                    "AI 服务：在线（${modelName()}）\n${j.optLong("rss_kb") / 1024} MB·均${"%.0f".format(j.optDouble("avg_score_ms"))} ms·" +
+                    "AI 服务：在线（$modelName）\n${j.optLong("rss_kb") / 1024} MB·均${"%.0f".format(j.optDouble("avg_score_ms"))} ms·" +
                         "跳${j.optLong("skipped")}错${j.optLong("errors")}$history",
                 )
             loading -> {

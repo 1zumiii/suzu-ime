@@ -46,7 +46,7 @@ std::vector<double> top_k_flat(const std::vector<double> & sc, int k) {
 bool load_affecting_changed(const EngineConfig & a, const EngineConfig & b) {
     return a.model_path != b.model_path || a.vocab_path != b.vocab_path || a.n_threads != b.n_threads ||
            a.context_chars != b.context_chars || a.max_candidates != b.max_candidates || a.repack != b.repack ||
-           a.poll != b.poll ||
+           a.poll != b.poll || a.identify_model != b.identify_model ||
            a.lexicon_dir.empty() != b.lexicon_dir.empty() || a.gen_beam != b.gen_beam;   // 词典目录换成另一个不在此列：只重读词典
 }
 
@@ -276,6 +276,11 @@ EngineState Engine::state() const {
 EngineStats Engine::stats() const {
     std::lock_guard<std::mutex> lk(mu_);
     return stats_;
+}
+
+ModelIdentity Engine::model_identity() const {
+    std::lock_guard<std::mutex> lk(mu_);
+    return state_ == EngineState::Ready ? identity_ : ModelIdentity{};
 }
 
 std::string Engine::status_fields() const {
@@ -743,6 +748,7 @@ void Engine::do_load(const EngineConfig & cfg) {
     log_event("loading model: %s threads=%d", cfg.model_path.c_str(), cfg.n_threads);
     const Clock::time_point t0 = Clock::now();
     ModelOptions mo;
+    mo.identify_model = cfg.identify_model;
     mo.model_path = cfg.model_path;
     mo.vocab_path = cfg.vocab_path;
     // 线程数不超过核数减一：线程数等于核数时，任何一个线程被别的进程抢占都会让整批解码停下来等它（实测偶发 50~90 ms 的毛刺）
@@ -786,6 +792,7 @@ void Engine::do_load(const EngineConfig & cfg) {
     static std::once_flag exit_hook;
     if (this == &shared_engine()) std::call_once(exit_hook, [] { std::atexit([] { shared_engine().shutdown(); }); });
     model_ = std::move(m);
+    identity_ = model_->identity();
     vocab_ = std::make_shared<Vocab>(model_->vocab());
     loaded_gen_ = gen;
     state_ = EngineState::Ready;

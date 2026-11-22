@@ -72,6 +72,16 @@ long read_rss_kb() {
 
 std::string build_daemon_status(const Options & opt, DaemonState & st, Engine & engine, const char * state) {
     EngineStats es = engine.stats();
+    ModelIdentity model = engine.model_identity();
+    std::string model_json = "null";
+    if (model.layers > 0) {
+        std::string hash;
+        if (model.hash.valid() && model.hash.wait_for(std::chrono::seconds(0)) == std::future_status::ready) {
+            hash = model.hash.get();
+        }
+        model_json = "{\"name\":\"" + json_escape(model.name) + "\",\"sha256_prefix\":\"" + hash +
+                     "\",\"layers\":" + std::to_string(model.layers) + ",\"vocab_size\":" + std::to_string(model.vocab_size) + "}";
+    }
     EngineConfig cfg = engine.config();
     std::string client;
     {
@@ -88,12 +98,12 @@ std::string build_daemon_status(const Options & opt, DaemonState & st, Engine & 
              "\"student\":true,\"screen\":\"%s\",\"idle_unload_sec\":%d,\"restarts\":%d,\"last_exit\":\"%s\","
              "\"last_request_s\":%lld,\"port\":%d,",
              (long long)time(nullptr), state, (int)getpid(), ipc::kVersion, up, engine.enabled() ? "true" : "false",
-             engine.is_ready() ? "true" : "false", read_rss_kb(), st.clients.load(), st.requests.load(),
+             model.layers > 0 ? "true" : "false", read_rss_kb(), st.clients.load(), st.requests.load(),
              st.errors.load(), (unsigned long long)es.ok, (unsigned long long)es.skipped(),
              (unsigned long long)es.skip_timeout, (unsigned long long)es.no_context, st.last_score_ms.load(),
              es.wait_ms.mean(), es.wait_ms.max(), st.screen_off.load() ? "off" : "on", cfg.idle_unload_sec,
              opt.restarts, json_escape(opt.last_exit).c_str(), st.last_request_s.load(), opt.port);
-    return std::string(head) + "\"engine\":{" + engine.status_fields() + "},\"client\":" + client + "}";
+    return std::string(head) + "\"model\":" + model_json + ",\"engine\":{" + engine.status_fields() + "},\"client\":" + client + "}";
 }
 
 std::string build_supervisor_status(const Options & opt, const char * state, int backoff_s) {

@@ -10,7 +10,7 @@
 --chaos：kill -9 工作进程、SIGSTOP 冻结工作进程、删除模型文件后重启，验证监督进程自动恢复、令牌更换、
          删掉模型后守护进程照常应答（只是不打分）。
 """
-import json, os, shutil, signal, socket, struct, subprocess, sys, tempfile, threading, time
+import hashlib, json, os, shutil, signal, socket, struct, subprocess, sys, tempfile, threading, time
 
 SEP = "\x1f"
 fails = 0
@@ -196,10 +196,24 @@ try:
     rpc(s, ["C", "enabled", "0"])
     r = rpc(s, ["S", "0", "他在公司当", "经理", "经历"])
     check("disabled -> scoring refused with reason off", r[:2] == ["N", "off"], str(r))
+    if isinstance(env, Host):
+        check("disabled -> no loaded model identity", status()["model"] is None)
 
     # ---- 推理
     t = wait_ready(s)
     check("model loads and context prepares", t is not None, f"{t:.1f}s" if t else "")
+    if isinstance(env, Host):
+        digest = hashlib.sha256()
+        with open(env.model, "rb") as weights:
+            for chunk in iter(lambda: weights.read(65536), b""):
+                digest.update(chunk)
+        for _ in range(100):
+            model = status().get("model") or {}
+            if model.get("sha256_prefix"):
+                break
+            time.sleep(0.05)
+        check("status identifies loaded GGUF", model.get("sha256_prefix") == digest.hexdigest()[:8]
+              and model["layers"] > 0 and model["vocab_size"] > 0, str(model))
     time.sleep(0.3)
     # ---- 候选生成（W，版本 3）：简拼生成；全拼不适用。手机上没有开 --gen-beam 时为 no_lexicon
     r = None

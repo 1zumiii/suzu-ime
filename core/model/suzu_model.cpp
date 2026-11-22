@@ -3,12 +3,16 @@
 #include <algorithm>
 #include <chrono>
 #include <cmath>
+#include <cstdio>
 #include <cstdlib>
 #include <cstring>
 #include <thread>
 
 #include "ggml-cpu.h"
 #include "llama.h"
+extern "C" {
+#include "sha256/sha256.h"
+}
 #include "model/prefix_tree.h"
 
 namespace suzu {
@@ -72,6 +76,22 @@ std::string meta(llama_model * m, const char * key) {
     return buf;
 }
 
+using ModelFile = std::unique_ptr<FILE, decltype(&std::fclose)>;
+
+std::string hash_prefix(ModelFile file) {
+    if (std::fseek(file.get(), 0, SEEK_SET) != 0) return {};
+    sha256_t ctx;
+    sha256_init(&ctx);
+    unsigned char buf[32768];
+    while (size_t n = std::fread(buf, 1, sizeof buf, file.get())) sha256_update(&ctx, buf, n);
+    if (std::ferror(file.get())) return {};
+    unsigned char digest[SHA256_DIGEST_SIZE];
+    sha256_final(&ctx, digest);
+    char prefix[9];
+    std::snprintf(prefix, sizeof prefix, "%02x%02x%02x%02x", digest[0], digest[1], digest[2], digest[3]);
+    return prefix;
+}
+
 }  // namespace
 
 std::unique_ptr<SuzuModel> SuzuModel::load(const ModelOptions & opt, std::string * err) {
@@ -84,7 +104,13 @@ std::unique_ptr<SuzuModel> SuzuModel::load(const ModelOptions & opt, std::string
     mp.load_mode = LLAMA_LOAD_MODE_MMAP;
     mp.n_gpu_layers = 0;              // Suzu 很小，CPU 比 GPU 快（见设计说明）
     mp.use_extra_bufts = opt.repack;
-    self->model_ = llama_model_load_from_file(opt.model_path.c_str(), mp);
+    ModelFile file(nullptr, &std::fclose);
+    if (opt.identify_model) {
+        file.reset(std::fopen(opt.model_path.c_str(), "rb"));
+        if (file) self->model_ = llama_model_load_from_file_ptr(file.get(), mp);
+    } else {
+        self->model_ = llama_model_load_from_file(opt.model_path.c_str(), mp);
+    }
     if (!self->model_) {
         if (err) *err = "model unreadable: " + opt.model_path;
         return nullptr;
@@ -136,6 +162,17 @@ std::unique_ptr<SuzuModel> SuzuModel::load(const ModelOptions & opt, std::string
     self->slots_.resize((size_t)slots);
     for (int i = 0; i < slots; i++) self->slots_[i].seq = i;
     for (int s = seq_max - 1; s >= slots; s--) self->free_seqs_.push_back(s);
+    if (file) {
+        self->identity_.name = meta(self->model_, "general.name");
+        self->identity_.layers = llama_model_n_layer(self->model_);
+        self->identity_.vocab_size = self->n_vocab_;
+        // Hash the handle used by llama: the path may already refer to a replacement.
+        try {
+            self->identity_.hash = std::async(std::launch::async, hash_prefix, std::move(file)).share();
+        } catch (const std::system_error &) {
+            // Thread creation failed; metadata and inference remain available.
+        }
+    }
     return self;
 }
 

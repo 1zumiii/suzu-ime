@@ -74,6 +74,7 @@ struct ScoreGenResult {
 };
 
 struct EngineConfig {
+    bool identify_model = false;
     std::string model_path;
     std::string vocab_path;
     int n_threads = 4;
@@ -126,6 +127,7 @@ public:
     // 状态：JSON 字段列表（不含外层花括号），只含数字与状态名
     std::string status_fields() const;
     EngineStats stats() const;
+    ModelIdentity model_identity() const;
 
     // 停止工作线程并释放模型（可再次使用：下一个请求会重新启动工作线程）
     void shutdown();
@@ -173,6 +175,7 @@ private:
     bool stop_ = false;
 
     EngineConfig cfg_;
+    ModelIdentity identity_;
     uint64_t cfg_gen_ = 0;             // 影响加载的配置每变一次加一
     uint64_t loaded_gen_ = 0;          // 当前模型对应的配置代次
     bool enabled_ = true;

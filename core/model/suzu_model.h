@@ -14,6 +14,7 @@
 
 #include <algorithm>
 #include <cstdint>
+#include <future>
 #include <memory>
 #include <string>
 #include <vector>
@@ -27,6 +28,7 @@ struct ggml_threadpool;
 namespace suzu {
 
 struct ModelOptions {
+    bool identify_model = false;
     std::string model_path;
     std::string vocab_path;
     int n_threads = 4;
@@ -54,6 +56,13 @@ struct DecodeStats {
     bool ctx_partial = false;    // 上文部分命中（只解码了新增的字）
 };
 
+struct ModelIdentity {
+    std::string name;
+    int layers = 0;
+    int vocab_size = 0;
+    std::shared_future<std::string> hash;
+};
+
 class SuzuModel {
 public:
     // 加载模型与词表。失败返回空指针，err 里写原因（只含路径与数字）。
@@ -65,6 +74,7 @@ public:
     const Vocab & vocab() const { return vocab_; }
     const ModelOptions & options() const { return opt_; }
     int n_ctx_train() const { return n_ctx_train_; }
+    const ModelIdentity & identity() const { return identity_; }
 
     // 确保这条上文的 KV 与末位 logits 已在缓存里。ctx 须为 Vocab::encode_context 的结果（非空）。
     bool prepare(const TokenSeq & ctx, DecodeStats * st);
@@ -92,6 +102,7 @@ public:
 
 private:
     SuzuModel() = default;
+    ModelIdentity identity_;
 
     struct ContextSlot {
         int seq = 0;

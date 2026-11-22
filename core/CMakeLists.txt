@@ -53,6 +53,7 @@ include(cmake/deps.cmake)
 
 # ---------------------------------------------------------------- 推理层
 add_library(suzu_model STATIC
+  ${SUZU_LLAMA_DIR}/vendor/hash/sha256/sha256.c
   model/vocab.cpp
   model/prefix_tree.cpp
   model/suzu_model.cpp)
@@ -61,6 +62,7 @@ add_library(suzu_model STATIC
 add_library(suzu_lexicon STATIC lexicon/lexicon.cpp)
 target_include_directories(suzu_lexicon PUBLIC ${CMAKE_CURRENT_SOURCE_DIR})
 target_include_directories(suzu_model PUBLIC ${CMAKE_CURRENT_SOURCE_DIR})
+target_include_directories(suzu_model PRIVATE ${SUZU_LLAMA_DIR}/vendor/hash)
 target_link_libraries(suzu_model PUBLIC llama)
 if(SUZU_TEST_HOOKS)
   target_compile_definitions(suzu_model PRIVATE SUZU_TEST_HOOKS=1)
