@@ -64,7 +64,7 @@ Trime（改版 APK）                              rimellmd（shell 身份，由
 | `trime/` | 改版 Trime 的完整源码，2026-11-01 由上游 `ad5a14be` 硬分叉而来，不再跟随上游。librime、OpenCC 等第三方源码是固定提交的子模块 |
 | `trime/app/src/main/java/com/osfans/trime/suzu/` | 本项目新增的代码：AI 徽标、Shizuku 启动、光标上文、选错修正、模块状态页。上游文件中的其他改动可用 `git diff 9338bb3 -- android/trime` 查看 |
 | `trime/app/src/main/java/com/osfans/trime/suzu/SuzuAppContext.kt` | 光标上文：没有未上屏编码时用 `getTextBeforeCursor` 读光标前最多 60 个字，经 JNI 写进客户端库，Lua 的 `llm_context` 读取（`rime/lua/ai_rerank_app_ctx.lua`），读不到退回上屏历史；密码框、数字框、电话框和无痕模式不读，文字只在内存里 |
-| `trime/app/src/main/java/com/osfans/trime/suzu/SuzuFix.kt`、`FixChoicesUi.kt` | 选错修正建议（试验）：每次整段选词，Lua 把所选词和同页候选登记到客户端库（`fix_note`），上屏时由 `SuzuFix` 领取；停顿 1.5 秒后补上右侧已打的文字，给句中最近的几个词与各自的候选打整句分（经单独的连接请求守护进程），某个候选高出门槛时在工具栏提示“A → B”，点了才核对并替换。门槛：选了 AI 改过的首位为 5，其他为 8。光标换词：光标点到文字上时，在候选栏列出可替换的同音候选，点了只替换对应的一段。词库分不清光标处是词还是单字，要改的文字也可能本身有错，所以不判断边界：Lua 查出从光标处开始和跨过光标的 1 到 4 字各段的同音词，`SuzuFix` 逐段打整句分，统一按“比原文高多少”排序。替换结果相同的只留范围小的，比原文低 8 分以上的不列（暂定值），至少列 3 个，最多 8 个。最近整段选过的词还会列出选词时的同页候选。领取、定位、打分、出现、采纳、忽略等事件只记数字，写入用户目录的 `fix_stats.tsv`；密码框和无痕模式不查 |
+| `trime/app/src/main/java/com/osfans/trime/suzu/SuzuFix.kt`、`FixChoicesUi.kt` | 选错修正建议（试验）：每次整段选词，Lua 把所选词和同页候选登记到客户端库（`fix_note`），上屏时由 `SuzuFix` 领取；停顿 1.5 秒后补上右侧已打的文字，给句中最近的几个词与各自的候选打整句分（经单独的连接请求守护进程），某个候选高出门控时在工具栏提示“A → B”，点了才核对并替换。门控：选了 AI 改过的首位为 5，其他为 8。光标换词：光标点到文字上时，在候选栏列出可替换的同音候选，点了只替换对应的一段。词库分不清光标处是词还是单字，要改的文字也可能本身有错，所以不判断边界：Lua 查出从光标处开始和跨过光标的 1 到 4 字各段的同音词，`SuzuFix` 逐段打整句分，统一按“比原文高多少”排序。替换结果相同的只留范围小的，比原文低 8 分以上的不列（暂定值），至少列 3 个，最多 8 个。最近整段选过的词还会列出选词时的同页候选。领取、定位、打分、出现、采纳、忽略等事件只记数字，写入用户目录的 `fix_stats.tsv`；密码框和无痕模式不查 |
 | `trime/app/src/main/java/com/osfans/trime/ime/keyboard/` | 键盘：`KeyModel.kt` 是按键数据、类型化的动作和纯函数的布局计算，`MainPages.kt` 是有独立布局的页面，`SymbolBoard.kt` 是表情、标点和颜文字共用的组件（内容在 `SymbolData.kt`），`SuzuKeyboard.kt` 管理当前页、Shift 状态并执行动作，`KeyCapView.kt` 只负责手势和绘制。数字页和符号页用 `AsciiPolicy.Follow`：进出时不改中英文状态，中文模式下进入时先上屏未完成的输入，避免数字键选中候选。表情、标点和颜文字页的符号用 `KeyCommand.Commit` 原样上屏，不经 Rime 的标点映射，与中英文状态无关 |
 | `trime/app/src/main/java/com/osfans/trime/data/theme/BuiltinTheme.kt` | 内置主题：样式、工具栏、液体键盘和浅色、深色两套配色。配色可选跟随系统、浅色或深色（`AppPrefs.Keyboard.colorMode`） |
 | `trime/gen_assets.py` | 构建时生成 `assets/shared` 和词库包，由 `build_apk.sh` 调用 |
@@ -77,9 +77,9 @@ Trime（改版 APK）                              rimellmd（shell 身份，由
 
 ## 学生模型 Suzu（输入法专用小模型）
 
-引导页和“设置 → 模型”列出可下载的模型，从新到旧排列，默认选第一个。在“设置 → 模型”点按模型即可换用其他模型。下载时一并安装对应的权重和词表，并写入该模型的首位门槛（当前两个模型都是 1.5）。AI 服务正在运行时会自动重启，载入新模型。手动更换时同时替换 Trime 用户目录中的 `suzu.gguf` 和 `suzu.vocab.txt`，再点 AI 徽标启动服务，守护进程发现模型与用户目录中的不同时会重启。默认模型为 [Suzu-UER6-PG200](https://huggingface.co/IzumiThe3rd/Suzu-UER6-PG200)。[Suzu-UER12-PG100](https://huggingface.co/IzumiThe3rd/Suzu-UER12-PG100) 准确率更高，打分耗时约为两倍，在 Zenfone 10 上连续输入时约 12% 的请求超时并回退到 Rime 原顺序，适合性能更强的手机。
+引导页和“设置 → 模型”列出可下载的模型，从新到旧排列，默认选第一个。在“设置 → 模型”点按模型即可换用其他模型。下载时一并安装对应的权重和词表，并写入该模型的首位门控（当前两个模型都是 1.5）。AI 服务正在运行时会自动重启，载入新模型。手动更换时同时替换 Trime 用户目录中的 `suzu.gguf` 和 `suzu.vocab.txt`，再点 AI 徽标启动服务，守护进程发现模型与用户目录中的不同时会重启。默认模型为 [Suzu-UER6-PG200](https://huggingface.co/IzumiThe3rd/Suzu-UER6-PG200)。[Suzu-UER12-PG100](https://huggingface.co/IzumiThe3rd/Suzu-UER12-PG100) 准确率更高，打分耗时约为两倍，在 Zenfone 10 上连续输入时约 12% 的请求超时并回退到 Rime 原顺序，适合性能更强的手机。
 
-模型列表来自仓库根目录的 [models.json](../models.json)。App 打开模型页时拉取 main 分支上的这个文件并缓存，拉取失败时用缓存或安装包内置的列表。每个条目写明 Hugging Face 仓库、固定的 revision、文件名、权重与词表的 SHA-256 和大小，以及首位门槛。仓库必须在 `IzumiThe3rd/` 名下，revision 必须是 40 位提交号，不合格的条目不显示。`min_app` 可选，高于 App 版本号（`versionCode`）的条目不显示。发布新模型时，把条目加到列表最前面。已有明显更好替代的旧模型从列表中撤下，`SuzuModels.kt` 的 `RETIRED` 只保留它的名字，用于徽标显示。
+模型列表来自仓库根目录的 [models.json](../models.json)。App 打开模型页时拉取 main 分支上的这个文件并缓存，拉取失败时用缓存或安装包内置的列表。每个条目写明 Hugging Face 仓库、固定的 revision、文件名、权重与词表的 SHA-256 和大小，以及首位门控。仓库必须在 `IzumiThe3rd/` 名下，revision 必须是 40 位提交号，不合格的条目不显示。`min_app` 可选，高于 App 版本号（`versionCode`）的条目不显示。发布新模型时，把条目加到列表最前面。已有明显更好替代的旧模型从列表中撤下，`SuzuModels.kt` 的 `RETIRED` 只保留它的名字，用于徽标显示。
 
 长按 AI 徽标可查看已加载的模型。列表中的权重显示版本名，其他权重显示 GGUF 模型名和 SHA-256 的前 8 位。
 
