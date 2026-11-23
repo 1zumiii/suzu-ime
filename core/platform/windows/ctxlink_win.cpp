@@ -426,8 +426,25 @@ static bool uia_read(IUIAutomation * uia, std::string & out, DWORD & pid) {
                                           TextUnit_Character, -64, &moved);
                     BSTR txt = nullptr;
                     if (SUCCEEDED(r->GetText(-1, &txt)) && txt) {
-                        ret = bstr_to_utf8(txt, out);
-                        SysFreeString(txt);
+                        // Chromium 系（Electron 桌面应用、浏览器）的 TextPattern 属于整个网页文档，
+                        // 往前 64 字会越出输入框，读进按钮、标签的文字；越界处 UIA 用 U+FFFC
+                        // （嵌入对象）标出子元素。只留最后一个 U+FFFC 之后的文字，即光标所在
+                        // 这段连续正文。回放统计（2026-11-23，ime-51）：977/2897 条上文含 U+FFFC，
+                        // 截掉的部分以 Claude 桌面端的“Chat mode”按钮文字为主。
+                        UINT n = SysStringLen(txt);
+                        UINT cut = 0;
+                        for (UINT i = n; i > 0; --i) {
+                            if (txt[i - 1] == 0xFFFC) { cut = i; break; }
+                        }
+                        if (cut > 0) {
+                            BSTR tail = SysAllocStringLen(txt + cut, n - cut);
+                            SysFreeString(txt);
+                            txt = tail;
+                        }
+                        if (txt) {
+                            ret = bstr_to_utf8(txt, out);
+                            SysFreeString(txt);
+                        }
                     }
                     r->Release();
                 }
