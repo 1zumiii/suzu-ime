@@ -34,6 +34,16 @@ Android 版可从 [发布页](https://github.com/1zumiii/suzu-ime/releases/lates
 
 推理请求设有等待时限，超时后当次输入继续使用已有候选。各平台的按键仿真见 [技术报告](docs/technical-report.md)。
 
+Android 真实使用中的打分耗时（同一台 ASUS Zenfone 10，取自守护进程的统计）：
+
+| | 旧核心 | 新核心，优化前 | 新核心，优化后 |
+|---|---:|---:|---:|
+| 中位数 | 17～30 ms | 8.5 ms | 6.6 ms |
+| p99 | 未统计 | 35.9 ms | 31.1 ms |
+| 最大 | 105 ms | 62.6 ms | 41.4 ms |
+
+优化后一段用的是 KD500，其余两段是 Suzu 字符级模型。各段的条件和优化内容见 [技术报告：Android 真实使用对比](docs/technical-report.md#android-真实使用对比)。
+
 ## 功能
 
 - 重排：按上文为同一拼音的候选打分，调整顺序。
