@@ -31,46 +31,12 @@ import java.security.MessageDigest
 import kotlin.coroutines.coroutineContext
 
 /** 下载到用户目录的文件：先写 .part，可断点续传，校验 sha256 后才改成正式文件名 */
-class RemoteFile(val name: String, val url: String, val sha256: String, val size: Long)
-
-enum class SuzuModel(
-    val title: String,
-    revision: String,
-    filename: String,
-    weightsSha: String,
-    weightsSize: Long,
-    vocabSha: String,
-    vocabSize: Long,
-    val topGate: String,
-) {
-    KD500(
-        "Suzu-UER6-KD500", "4a8fd6831e482569fd4503cc19ce3022e75cc027",
-        "suzu-uer6-kd500.q8_0.gguf",
-        "953fa76eca9d1b171cf9e819e9f0474f12c309be1bc7c1aad46db2916d0b3859", 52_811_488,
-        "16a9b481d23159418c6455d76f36569a9d97d6ce1d5303f5431ce0c621e4fc7c", 20_573, "1.5",
-    ),
-    Suzu24(
-        "Suzu-2.4", "b166ed00f744a3a8f68f7b1b8980a76c80ac9f25",
-        "suzu-2.4.q8_0.gguf",
-        "a2ff2c46110c7ba47746871eaf8ff37cc4fab58105ddbe11e0a768e340cdb996", 43_949_568,
-        "21f87a1ce1e99597342ed521787a1d7cac308edb6d2eddeb6c2db06c05668e5d", 30_005, "2.5",
-    ),
-    ;
-
-    private val url = "https://huggingface.co/IzumiThe3rd/$title/resolve/$revision/$filename"
-    val files = listOf(
-        RemoteFile("suzu.gguf", url, weightsSha, weightsSize),
-        RemoteFile("suzu.vocab.txt", "$url.vocab.txt", vocabSha, vocabSize),
-    )
-    val sizeMb: Long get() = (files.sumOf { it.size } + 500_000) / 1_000_000
-}
-
 /**
  * 不打进 APK 的可选资源。文件在就算启用：没有模型时 AI 不启动，没有语法模型时 Rime 不用它，
  * 所以取消下载或删除文件就等于关闭对应的功能。
  */
 enum class SuzuAsset(val title: String, val fileNames: List<String>, val sizeMb: Long) {
-    Model("Suzu 模型", SuzuModel.KD500.files.map { it.name }, SuzuModel.KD500.sizeMb),
+    Model("Suzu 模型", SuzuModels.BUILTIN.first().files.map { it.name }, SuzuModels.BUILTIN.first().sizeMb),
     Grammar("语法模型", listOf(GRAMMAR_FILE), 400),
 }
 
@@ -128,8 +94,10 @@ object SuzuAssets {
 
     /** 在后台下载，离开页面也继续。重复调用不会重复下载 */
     @Synchronized
-    fun start(asset: SuzuAsset, model: SuzuModel = SuzuModel.KD500) {
-        if (jobs[asset]?.isCompleted == false || isInstalled(asset)) return
+    fun start(asset: SuzuAsset, model: SuzuModel = SuzuModels.default) {
+        if (jobs[asset]?.isCompleted == false) return
+        // 模型已装时只有换成另一个模型才下载
+        if (isInstalled(asset) && (asset != SuzuAsset.Model || installedModelTitle() == model.title)) return
         val selectedModel = model.takeIf { asset == SuzuAsset.Model }
         val estimatedTotal = selectedModel?.files?.sumOf { it.size } ?: asset.sizeMb * 1_048_576
         set(asset, State.Downloading(0, estimatedTotal, selectedModel))
@@ -147,7 +115,7 @@ object SuzuAssets {
     }
 
     private suspend fun downloadModel(model: SuzuModel, total: Long) {
-        val dir = userDir.resolve(MODEL_DOWNLOADS).resolve(model.name)
+        val dir = userDir.resolve(MODEL_DOWNLOADS).resolve(model.id)
         dir.mkdirs()
         var finished = 0L
         for (file in model.files) {
@@ -241,7 +209,17 @@ object SuzuAssets {
             throw e
         }
         staging.deleteRecursively()
+        // AI 服务正在跑时重启它，换上新模型
+        AiDaemonLauncher.reloadIfRunning(appContext)
     }
+
+    /** 当前装的模型名（suzu.name 第一行），没有模型时为 null */
+    fun installedModelTitle(): String? =
+        if (!isInstalled(SuzuAsset.Model)) {
+            null
+        } else {
+            runCatching { userDir.resolve("suzu.name").readLines().firstOrNull()?.trim() }.getOrNull()?.ifBlank { null }
+        }
 
     /** 用用户自己下载的语法模型：检查扩展名和大小，不校验 sha256，因为可能是作者更新过的版本 */
     @Synchronized

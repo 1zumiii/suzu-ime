@@ -75,13 +75,15 @@ object AiDaemonLauncher {
         }
     }
 
-    private fun shellScript(libDir: String, rimeDir: String): String =
+    private fun shellScript(libDir: String, rimeDir: String, onlyIfRunning: Boolean = false): String =
         """
         D=/data/local/tmp/rimellm
         mkdir -p ${'$'}D || exit 11
+        ${if (onlyIfRunning) "pidof rimellmd >/dev/null 2>&1 || { echo NOT_RUNNING; exit 0; }" else ""}
         if pidof rimellmd >/dev/null 2>&1; then
-          cmp -s "$libDir/librimellmd.so" ${'$'}D/rimellmd && { echo RUNNING; exit 0; }
-          # 正在跑的是别的版本（APK 升级后，或早先用 adb 推的）：停掉，下面换上安装包里的
+          cmp -s "$libDir/librimellmd.so" ${'$'}D/rimellmd && cmp -s "$rimeDir/$STUDENT_MODEL" ${'$'}D/suzu.gguf &&
+            cmp -s "$rimeDir/$STUDENT_VOCAB" ${'$'}D/suzu.vocab.txt && { echo RUNNING; exit 0; }
+          # 程序或模型与用户目录里的不同（APK 升级、换了模型，或早先用 adb 推的）：停掉，下面换上新的
           kill ${'$'}(pidof rimellmd) 2>/dev/null
           i=0; while pidof rimellmd >/dev/null 2>&1 && [ ${'$'}i -lt 50 ]; do sleep 0.1; i=${'$'}((i+1)); done
           pidof rimellmd >/dev/null 2>&1 && { echo KILL_FAIL; exit 16; }
@@ -101,10 +103,19 @@ object AiDaemonLauncher {
         """.trimIndent()
 
     /** 在后台线程里经 Shizuku 以 shell 身份启动守护进程，结果回到主线程。 */
-    fun start(context: Context, onResult: (Result) -> Unit) {
+    fun start(context: Context, onResult: (Result) -> Unit) = execute(context, false, onResult)
+
+    /** 换模型后调用：AI 服务在跑就重启它以载入新模型，没在跑则什么都不做 */
+    fun reloadIfRunning(context: Context) {
+        if (availability() != Availability.READY) return
+        execute(context, true) {}
+    }
+
+    private fun execute(context: Context, onlyIfRunning: Boolean, onResult: (Result) -> Unit) {
         lastAttemptMs = System.currentTimeMillis()
         Thread {
             var replaced = false
+            var notRunning = false
             val result =
                 try {
                     val libDir = context.applicationInfo.nativeLibraryDir
@@ -121,12 +132,14 @@ object AiDaemonLauncher {
                             )
                         method.isAccessible = true
                         val proc =
-                            method.invoke(null, arrayOf("sh", "-c", shellScript(libDir, rimeDir)), null, null) as Process
+                            method.invoke(null, arrayOf("sh", "-c", shellScript(libDir, rimeDir, onlyIfRunning)), null, null) as Process
                         val out = proc.inputStream.bufferedReader().readText().trim()
                         val err = proc.errorStream.bufferedReader().readText().trim()
                         val code = proc.waitFor()
                         replaced = out.contains("REPLACED")
+                        notRunning = out.contains("NOT_RUNNING")
                         when {
+                            notRunning -> Result.AlreadyRunning
                             out.contains("RUNNING") -> Result.AlreadyRunning
                             out.contains("STARTED") -> Result.Started
                             out.contains("KILL_FAIL") ->
@@ -139,9 +152,10 @@ object AiDaemonLauncher {
                 } catch (e: Throwable) {
                     Result.Failed("${e.javaClass.simpleName}: ${e.message?.take(100)}")
                 }
+            if (notRunning) return@Thread
             lastResult =
                 when (result) {
-                    Result.Started -> if (replaced) "已换成安装包里的版本并启动" else "已启动"
+                    Result.Started -> if (replaced) "已更新并重新启动" else "已启动"
                     Result.AlreadyRunning -> "已在运行"
                     is Result.Failed -> "启动失败：${result.reason}"
                 }

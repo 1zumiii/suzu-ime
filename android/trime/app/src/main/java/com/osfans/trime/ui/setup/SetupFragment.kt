@@ -19,14 +19,17 @@ import com.osfans.trime.databinding.FragmentSetupBinding
 import com.osfans.trime.suzu.SuzuAsset
 import com.osfans.trime.suzu.SuzuAssets
 import com.osfans.trime.suzu.SuzuModel
+import com.osfans.trime.suzu.SuzuModels
 import com.osfans.trime.util.serializable
+import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
 
 class SetupFragment : Fragment() {
     private lateinit var binding: FragmentSetupBinding
 
     private val page: SetupPage by lazy { requireArguments().serializable("page")!! }
-    private var selectedModel = SuzuModel.KD500
+    private var selectedModel: SuzuModel = SuzuModels.default
+    private var models: List<SuzuModel> = emptyList()
 
     private val pickGrammar = registerForActivityResult(ActivityResultContracts.OpenDocument()) { uri ->
         uri?.let(SuzuAssets::importGrammar)
@@ -40,29 +43,18 @@ class SetupFragment : Fragment() {
         binding = FragmentSetupBinding.inflate(inflater)
         if (page == SetupPage.Model) {
             val downloading = SuzuAssets.state(SuzuAsset.Model) as? SuzuAssets.State.Downloading
-            selectedModel = downloading?.model ?: SuzuModel.entries.firstOrNull {
-                it.name == savedInstanceState?.getString("selected_model")
-            } ?: selectedModel
-            binding.modelPicker.adapter = ArrayAdapter(
-                requireContext(),
-                android.R.layout.simple_spinner_item,
-                SuzuModel.entries.map { model ->
-                    if (model == SuzuModel.KD500) {
-                        getString(R.string.suzu_setup_model_recommended, model.title)
-                    } else {
-                        model.title
-                    }
-                },
-            ).apply { setDropDownViewResource(android.R.layout.simple_spinner_dropdown_item) }
-            binding.modelPicker.setSelection(selectedModel.ordinal)
+            selectedModel = downloading?.model ?: SuzuModels.byId(savedInstanceState?.getString("selected_model")) ?: SuzuModels.default
             binding.modelPicker.onItemSelectedListener = object : AdapterView.OnItemSelectedListener {
                 override fun onItemSelected(parent: AdapterView<*>?, view: View?, position: Int, id: Long) {
-                    selectedModel = SuzuModel.entries[position]
+                    models.getOrNull(position)?.let { selectedModel = it }
                     sync()
                 }
 
                 override fun onNothingSelected(parent: AdapterView<*>?) = Unit
             }
+            // 名录从新到旧排列，第一项是默认模型
+            viewLifecycleOwner.lifecycleScope.launch { SuzuModels.list.collect(::showModels) }
+            viewLifecycleOwner.lifecycleScope.launch(Dispatchers.IO) { SuzuModels.refresh() }
         }
         sync()
         viewLifecycleOwner.lifecycleScope.launch {
@@ -76,7 +68,20 @@ class SetupFragment : Fragment() {
 
     override fun onSaveInstanceState(outState: Bundle) {
         super.onSaveInstanceState(outState)
-        outState.putString("selected_model", selectedModel.name)
+        outState.putString("selected_model", selectedModel.id)
+    }
+
+    private fun showModels(list: List<SuzuModel>) {
+        models = list
+        binding.modelPicker.adapter = ArrayAdapter(
+            requireContext(),
+            android.R.layout.simple_spinner_item,
+            list.map { it.title },
+        ).apply { setDropDownViewResource(android.R.layout.simple_spinner_dropdown_item) }
+        val index = list.indexOfFirst { it.id == selectedModel.id }
+        if (index < 0) selectedModel = list.first()
+        binding.modelPicker.setSelection(index.coerceAtLeast(0))
+        sync()
     }
 
     // Called on window focus changed

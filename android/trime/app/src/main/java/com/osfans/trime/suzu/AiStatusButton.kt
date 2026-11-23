@@ -23,11 +23,9 @@ object AiStatusButtonAction {
 }
 
 internal fun loadedModelName(name: String, hash: String): String =
-    when (hash) {
-        "953fa76e" -> "Suzu-UER6-KD500"
-        "a2ff2c46" -> "Suzu-2.4"
-        "" -> name.ifBlank { "未知模型" }
-        else -> "${name.ifBlank { "未知模型" }}·$hash"
+    when {
+        hash.isEmpty() -> name.ifBlank { "未知模型" }
+        else -> SuzuModels.titleForHash(hash) ?: "${name.ifBlank { "未知模型" }}·$hash"
     }
 
 /**

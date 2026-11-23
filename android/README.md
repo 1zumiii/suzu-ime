@@ -77,13 +77,15 @@ Trime（改版 APK）                              rimellmd（shell 身份，由
 
 ## 学生模型 Suzu（输入法专用小模型）
 
-引导页提供 Suzu-UER6-KD500 和 Suzu-2.4，默认选择 KD500。下载时一并安装对应的权重和词表，并为 KD500 使用首位门槛 1.5，为 Suzu-2.4 使用 2.5。手动更换时同时替换 Trime 用户目录中的 `suzu.gguf` 和 `suzu.vocab.txt`，再重启 AI 服务。模型说明见 [Suzu-UER6-KD500](https://huggingface.co/IzumiThe3rd/Suzu-UER6-KD500)。
+引导页和“设置 → 模型”列出可下载的模型，从新到旧排列，默认选第一个。在“设置 → 模型”点按模型即可换用其他模型。下载时一并安装对应的权重和词表，并写入该模型的首位门槛（KD500 为 1.5，Suzu-2.4 为 2.5）。AI 服务正在运行时会自动重启，载入新模型。手动更换时同时替换 Trime 用户目录中的 `suzu.gguf` 和 `suzu.vocab.txt`，再点 AI 徽标启动服务，守护进程发现模型与用户目录中的不同时会重启。模型说明见 [Suzu-UER6-KD500](https://huggingface.co/IzumiThe3rd/Suzu-UER6-KD500)。
 
-长按 AI 徽标可查看已加载的模型。已知权重显示版本名，其他权重显示 GGUF 模型名和 SHA-256 的前 8 位。
+模型列表来自仓库根目录的 [models.json](../models.json)。App 打开模型页时拉取 main 分支上的这个文件并缓存，拉取失败时用缓存或安装包内置的列表。每个条目写明 Hugging Face 仓库、固定的 revision、文件名、权重与词表的 SHA-256 和大小，以及首位门槛。仓库必须在 `IzumiThe3rd/` 名下，revision 必须是 40 位提交号，不合格的条目不显示。`min_app` 可选，高于 App 版本号（`versionCode`）的条目不显示。发布新模型时，把条目加到列表最前面。
+
+长按 AI 徽标可查看已加载的模型。列表中的权重显示版本名，其他权重显示 GGUF 模型名和 SHA-256 的前 8 位。
 
 早期 Suzu-1 为约 16.5M 参数的字符级 Transformer（GPT-2 结构），在 Windows 侧蒸馏，用于替代 Qwen3.5-0.8B 做候选排序。当时评测的混合准确率为 92.1%（0.8B 为 92.7%）；手机上 Q8_0、2 线程、6 个候选含进程间通信的打分中位约 11 ms（0.8B 约 60~80 ms，且只打 3 个候选）。这些数据保留为历史记录。
 
-- 启用：把 `suzu.gguf`（建议 Q8_0）和词表 `suzu.vocab.txt` 放进 Trime 的用户目录，然后让守护进程重启（先结束旧进程，再点工具栏的 AI 徽标启动）。徽标长按的详情会显示当前模型。
+- 启用：把 `suzu.gguf`（建议 Q8_0）和词表 `suzu.vocab.txt` 放进 Trime 的用户目录，再点工具栏的 AI 徽标启动服务。徽标长按的详情会显示当前模型。
 - 仅支持 Suzu：缺少模型或词表时，启动提示会引导到“设置 → 模型”重新下载，AI 服务不启动，输入照常。已不再回退 Qwen3.5-0.8B，用户目录无需保留该模型；启动时会删除 `/data/local/tmp/rimellm/model.gguf` 这份旧副本。
 - 实现：见 [core/README.md](../core/README.md) 与 [docs/design/core-design.md](../docs/design/core-design.md)。输入为 `<bos>` + 上文最后 30 个字 + 候选的字，不使用 llama 的分词器；打分为候选各字对数概率之和，与蒸馏评测同口径。上文未预解码时在时限内现场解码，不跳过。
 - 注意：学生的训练上下文上限为 64，上文最多取 30 个字；候选最多打分前 12 个字。

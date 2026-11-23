@@ -256,7 +256,6 @@
     <string name="suzu_setup_optional_step">第 %1$d 步（選用）</string>
     <string name="suzu_setup_model_hint">下載 Suzu 模型（約 %1$d MB），依上文調整候選順序。\n\n模型從 Hugging Face 下載。如果目前的網路無法連線，請啟用代理伺服器後重試。</string>
     <string name="suzu_setup_model_picker">評分模型</string>
-    <string name="suzu_setup_model_recommended">%1$s（推薦）</string>
     <string name="suzu_setup_model_skip">略過後 AI 重排維持關閉，仍可正常輸入。</string>
     <string name="suzu_setup_grammar_hint">下載萬象 LTS 語法模型（約 %1$d MB），改善整句輸入時的同音字選擇。建議連線至 Wi-Fi。</string>
     <string name="suzu_grammar_lts_name">萬象 LTS</string>

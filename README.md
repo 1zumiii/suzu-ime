@@ -74,12 +74,12 @@ Android 真实使用中的打分耗时（同一台 ASUS Zenfone 10，取自守�
 从 [发布页](https://github.com/1zumiii/suzu-ime/releases/latest) 下载 APK，支持 arm64、Android 11 及以上。
 
 1. 安装后按引导启用并选择输入法，这时已经可以正常打字。
-2. 在引导页或“设置 → 模型”下载打分模型，默认选 Suzu-UER6-KD500。
+2. 在引导页或“设置 → 模型”下载打分模型，列表从新到旧排列，默认选最新的模型。
 3. 安装并启动 [Shizuku](https://shizuku.rikka.app/)，再点工具栏的 AI 徽标启动 AI 服务。手机重启后要先启动 Shizuku，再启动 AI 服务。
 
 词库在“设置 → 词库”中切换，详见 [Android 说明](android/README.md)。
 
-从旧版本覆盖安装时，用户词典、设置和已下载的模型都会保留。已下载的 Suzu-2.4 不会自动换成 KD500，要换时在“设置 → 模型”中删除旧模型再下载。之前装的是其他签名的同文输入法时，须先卸载才能安装，卸载会清空用户词典，请先备份手机上的 `Android/data/com.osfans.trime/files/rime` 目录。
+从旧版本覆盖安装时，用户词典、设置和已下载的模型都会保留。已下载的模型不会自动更新，要换时在“设置 → 模型”点按模型，从列表中选择。之前装的是其他签名的同文输入法时，须先卸载才能安装，卸载会清空用户词典，请先备份手机上的 `Android/data/com.osfans.trime/files/rime` 目录。
 
 ### 手动安装推理核心
 
