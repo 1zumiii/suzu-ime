@@ -2,28 +2,28 @@
   "schema": 1,
   "models": [
     {
-      "id": "KD500",
-      "title": "Suzu-UER6-KD500",
-      "repo": "IzumiThe3rd/Suzu-UER6-KD500",
-      "revision": "4a8fd6831e482569fd4503cc19ce3022e75cc027",
-      "file": "suzu-uer6-kd500.q8_0.gguf",
-      "sha256": "953fa76eca9d1b171cf9e819e9f0474f12c309be1bc7c1aad46db2916d0b3859",
+      "id": "PG200",
+      "title": "Suzu-UER6-PG200",
+      "repo": "IzumiThe3rd/Suzu-UER6-PG200",
+      "revision": "92cf37828600d7254b4cf91124edd8a1a5e5c4d8",
+      "file": "suzu-uer6-pg200.q8_0.gguf",
+      "sha256": "28782d8df7edc0b8d2bb6133a941c153a63a5f22d463411fea2aef37c7f2b67a",
       "size": 52811488,
       "vocab_sha256": "16a9b481d23159418c6455d76f36569a9d97d6ce1d5303f5431ce0c621e4fc7c",
       "vocab_size": 20573,
       "top_gate": "1.5"
     },
     {
-      "id": "Suzu24",
-      "title": "Suzu-2.4",
-      "repo": "IzumiThe3rd/Suzu-2.4",
-      "revision": "b166ed00f744a3a8f68f7b1b8980a76c80ac9f25",
-      "file": "suzu-2.4.q8_0.gguf",
-      "sha256": "a2ff2c46110c7ba47746871eaf8ff37cc4fab58105ddbe11e0a768e340cdb996",
-      "size": 43949568,
-      "vocab_sha256": "21f87a1ce1e99597342ed521787a1d7cac308edb6d2eddeb6c2db06c05668e5d",
-      "vocab_size": 30005,
-      "top_gate": "2.5"
+      "id": "PG100",
+      "title": "Suzu-UER12-PG100",
+      "repo": "IzumiThe3rd/Suzu-UER12-PG100",
+      "revision": "774e243813ad93a3d7bb503c6de284d4171db936",
+      "file": "suzu-uer12-pg100.q8_0.gguf",
+      "sha256": "62017d0b8b9693a558de3f1e89fa445ab2917df1c44a5d196959155fe54d2278",
+      "size": 98176640,
+      "vocab_sha256": "16a9b481d23159418c6455d76f36569a9d97d6ce1d5303f5431ce0c621e4fc7c",
+      "vocab_size": 20573,
+      "top_gate": "1.5"
     }
   ]
 }

@@ -60,16 +60,16 @@ object SuzuModels {
 
     val BUILTIN = listOf(
         SuzuModel(
-            "KD500", "Suzu-UER6-KD500", "IzumiThe3rd/Suzu-UER6-KD500", "4a8fd6831e482569fd4503cc19ce3022e75cc027",
-            "suzu-uer6-kd500.q8_0.gguf",
-            "953fa76eca9d1b171cf9e819e9f0474f12c309be1bc7c1aad46db2916d0b3859", 52_811_488,
+            "PG200", "Suzu-UER6-PG200", "IzumiThe3rd/Suzu-UER6-PG200", "92cf37828600d7254b4cf91124edd8a1a5e5c4d8",
+            "suzu-uer6-pg200.q8_0.gguf",
+            "28782d8df7edc0b8d2bb6133a941c153a63a5f22d463411fea2aef37c7f2b67a", 52_811_488,
             "16a9b481d23159418c6455d76f36569a9d97d6ce1d5303f5431ce0c621e4fc7c", 20_573, "1.5",
         ),
         SuzuModel(
-            "Suzu24", "Suzu-2.4", "IzumiThe3rd/Suzu-2.4", "b166ed00f744a3a8f68f7b1b8980a76c80ac9f25",
-            "suzu-2.4.q8_0.gguf",
-            "a2ff2c46110c7ba47746871eaf8ff37cc4fab58105ddbe11e0a768e340cdb996", 43_949_568,
-            "21f87a1ce1e99597342ed521787a1d7cac308edb6d2eddeb6c2db06c05668e5d", 30_005, "2.5",
+            "PG100", "Suzu-UER12-PG100", "IzumiThe3rd/Suzu-UER12-PG100", "774e243813ad93a3d7bb503c6de284d4171db936",
+            "suzu-uer12-pg100.q8_0.gguf",
+            "62017d0b8b9693a558de3f1e89fa445ab2917df1c44a5d196959155fe54d2278", 98_176_640,
+            "16a9b481d23159418c6455d76f36569a9d97d6ce1d5303f5431ce0c621e4fc7c", 20_573, "1.5",
         ),
     )
 
@@ -80,9 +80,21 @@ object SuzuModels {
 
     fun byId(id: String?): SuzuModel? = id?.let { i -> _list.value.firstOrNull { it.id == i } ?: BUILTIN.firstOrNull { it.id == i } }
 
+    /**
+     * 已从名录撤下的模型（有了明显更好的替代）：只用来在徽标上显示名字，不能再下载。
+     * 升级前装好的旧模型照常可用，徽标仍显示它的名字，用户可在“设置 → 模型”换成新模型。
+     */
+    private val RETIRED = mapOf(
+        "953fa76eca9d1b171cf9e819e9f0474f12c309be1bc7c1aad46db2916d0b3859" to "Suzu-UER6-KD500",
+        "a2ff2c46110c7ba47746871eaf8ff37cc4fab58105ddbe11e0a768e340cdb996" to "Suzu-2.4",
+    )
+
     /** 按权重 sha256 前缀找模型名，找不到返回 null */
     fun titleForHash(hashPrefix: String): String? =
-        hashPrefix.takeIf { it.length >= 8 }?.let { h -> (_list.value + BUILTIN).firstOrNull { it.weightsSha.startsWith(h) }?.title }
+        hashPrefix.takeIf { it.length >= 8 }?.let { h ->
+            (_list.value + BUILTIN).firstOrNull { it.weightsSha.startsWith(h) }?.title
+                ?: RETIRED.entries.firstOrNull { it.key.startsWith(h) }?.value
+        }
 
     private val ID = Regex("[A-Za-z0-9._-]{1,40}")
     private val REPO = Regex("IzumiThe3rd/[A-Za-z0-9._-]{1,96}")
