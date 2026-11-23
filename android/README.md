@@ -77,9 +77,9 @@ Trime（改版 APK）                              rimellmd（shell 身份，由
 
 ## 学生模型 Suzu（输入法专用小模型）
 
-引导页和“设置 → 模型”列出可下载的模型，从新到旧排列，默认选第一个。在“设置 → 模型”点按模型即可换用其他模型。下载时一并安装对应的权重和词表，并写入该模型的首位门槛（KD500 为 1.5，Suzu-2.4 为 2.5）。AI 服务正在运行时会自动重启，载入新模型。手动更换时同时替换 Trime 用户目录中的 `suzu.gguf` 和 `suzu.vocab.txt`，再点 AI 徽标启动服务，守护进程发现模型与用户目录中的不同时会重启。模型说明见 [Suzu-UER6-KD500](https://huggingface.co/IzumiThe3rd/Suzu-UER6-KD500)。
+引导页和“设置 → 模型”列出可下载的模型，从新到旧排列，默认选第一个。在“设置 → 模型”点按模型即可换用其他模型。下载时一并安装对应的权重和词表，并写入该模型的首位门槛（当前两个模型都是 1.5）。AI 服务正在运行时会自动重启，载入新模型。手动更换时同时替换 Trime 用户目录中的 `suzu.gguf` 和 `suzu.vocab.txt`，再点 AI 徽标启动服务，守护进程发现模型与用户目录中的不同时会重启。默认模型为 [Suzu-UER6-PG200](https://huggingface.co/IzumiThe3rd/Suzu-UER6-PG200)。[Suzu-UER12-PG100](https://huggingface.co/IzumiThe3rd/Suzu-UER12-PG100) 准确率更高，打分耗时约为两倍，在 Zenfone 10 上连续输入时约 12% 的请求超时并回退到 Rime 原顺序，适合性能更强的手机。
 
-模型列表来自仓库根目录的 [models.json](../models.json)。App 打开模型页时拉取 main 分支上的这个文件并缓存，拉取失败时用缓存或安装包内置的列表。每个条目写明 Hugging Face 仓库、固定的 revision、文件名、权重与词表的 SHA-256 和大小，以及首位门槛。仓库必须在 `IzumiThe3rd/` 名下，revision 必须是 40 位提交号，不合格的条目不显示。`min_app` 可选，高于 App 版本号（`versionCode`）的条目不显示。发布新模型时，把条目加到列表最前面。
+模型列表来自仓库根目录的 [models.json](../models.json)。App 打开模型页时拉取 main 分支上的这个文件并缓存，拉取失败时用缓存或安装包内置的列表。每个条目写明 Hugging Face 仓库、固定的 revision、文件名、权重与词表的 SHA-256 和大小，以及首位门槛。仓库必须在 `IzumiThe3rd/` 名下，revision 必须是 40 位提交号，不合格的条目不显示。`min_app` 可选，高于 App 版本号（`versionCode`）的条目不显示。发布新模型时，把条目加到列表最前面。已有明显更好替代的旧模型从列表中撤下，`SuzuModels.kt` 的 `RETIRED` 只保留它的名字，用于徽标显示。
 
 长按 AI 徽标可查看已加载的模型。列表中的权重显示版本名，其他权重显示 GGUF 模型名和 SHA-256 的前 8 位。
 

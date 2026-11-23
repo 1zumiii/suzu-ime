@@ -4,33 +4,34 @@
 
 Android 版可从 [发布页](https://github.com/1zumiii/suzu-ime/releases/latest) 下载。其他平台的配置和安装包见 [rime-suzu](https://github.com/1zumiii/rime-suzu)。
 
-本项目使用字符级模型 Suzu-UER6-KD500，根据光标前的文字为同音候选打分，并补充 Rime 未给出的简拼候选。模型文件约 52.8 MB，三端均在本机推理，输入内容不出设备。
+本项目默认使用字符级模型 Suzu-UER6-PG200，根据光标前的文字为同音候选打分，并补充 Rime 未给出的简拼候选。模型文件约 52.8 MB，三端均在本机推理，输入内容不出设备。电脑和性能较好的手机可以换用准确率更高的 Suzu-UER12-PG100（约 98.2 MB），每次打分的耗时约为前者的两倍。
 
 ## 效果
 
 同一批固定候选只按模型分排序，首选准确率为正确答案排在第一位的题目占比：
 
-| 评测 | 题数 | Suzu-UER6-KD500 | Suzu-2.4 |
-|---|---:|---:|---:|
-| 两字母简拼，每题 48 个候选 | 2,400 | 59.5% | 41.5% |
-| 全拼同音词，每题最多 5 个候选 | 1,293 | 92.81% | 92.73% |
+| 评测 | 题数 | Suzu-UER6-PG200（默认） | Suzu-UER12-PG100（可选） | Suzu-UER6-KD500（上一版） |
+|---|---:|---:|---:|---:|
+| 两字母简拼，每题 48 个候选 | 2,400 | 61.9% | 63.7% | 59.5% |
+| 全拼同音词，每题最多 5 个候选 | 1,293 | 93.43% | 93.50% | 92.81% |
 
-在鼠须管的 librime 中逐键采集候选，再用记录的候选和分数回算排序。按帖子划分的两字母简拼验证题上，首选准确率如下：
+在鼠须管的 librime 中逐键输入两字母简拼题，首位门槛 1.5。按帖子划分的验证题上，首选准确率如下：
 
 | 设置 | 题数 | 首选 |
 |---|---:|---:|
-| 不用模型分（同一批候选按 Rime 原名次排序） | 1,190 | 28.6% |
-| Suzu-2.4，门槛 2.5（另一轮评测，未逐题配对） | 1,192 | 39.3% |
-| Suzu-UER6-KD500，门槛 1.5（默认） | 1,190 | **54.0%** |
+| 不用模型分（同一批候选按 Rime 原名次排序） | 1,195 | 28.5% |
+| Suzu-UER6-KD500（上一版） | 1,190 | 54.0% |
+| Suzu-UER6-PG200（默认） | 1,195 | **56.4%** |
+| Suzu-UER12-PG100（可选） | 1,190 | **58.2%** |
 
-评测条件见 [KD500 模型卡](https://huggingface.co/IzumiThe3rd/Suzu-UER6-KD500)。
+三个模型的验证题按同一规则划分，题数略有差别，不是逐题配对。评测条件见模型卡：[PG200](https://huggingface.co/IzumiThe3rd/Suzu-UER6-PG200)、[PG100](https://huggingface.co/IzumiThe3rd/Suzu-UER12-PG100)。
 
 延迟与内存：
 
-| 平台 | 条件 | 相对 Suzu-2.4 |
-|---|---|---|
-| Android | ASUS Zenfone 10，守护进程 2 线程，每组 10 个候选 | 每次打分多 1.5～2 ms，打分加生成的 P99 约 20 ms，常驻内存约 151 MB（Suzu-2.4 约 109 MB） |
-| Windows | 桌面 4 线程，每题 10 个候选 | 上文已缓存时 P50 / P99 为 5.3 / 7.3 ms（Suzu-2.4 为 4.9 / 7.1 ms），现场解码上文时为 9.3 / 21.8 ms（Suzu-2.4 为 8.8 / 20.7 ms） |
+| 平台 | 条件 | Suzu-UER6-PG200 | Suzu-UER12-PG100 |
+|---|---|---|---|
+| Android | ASUS Zenfone 10，守护进程 2 线程，每组 10 个候选 | 打分加生成的 P99 约 20 ms，与 KD500 相差 1 ms 以内，常驻内存约 150 MiB | 约慢一倍，连续输入时约 12% 的请求超过 45 ms 时限，常驻内存约 282 MiB |
+| Windows | 桌面 4 线程，每题 10 个候选 | 上文已缓存时 P50 / P99 为 5.6 / 7.7 ms，现场解码上文时为 9.6 / 22.7 ms | 上文已缓存时 10.5 / 14.4 ms，现场解码上文时为 19.0 / 46.2 ms |
 
 推理请求设有等待时限，超时后当次输入继续使用已有候选。各平台的按键仿真见 [技术报告](docs/technical-report.md)。
 
@@ -85,7 +86,7 @@ Android 真实使用中的打分耗时（同一台 ASUS Zenfone 10，取自守�
 
 已有自己的 Rime 配置，或想自己编译时，按以下步骤安装：
 
-1. 下载 [Suzu-UER6-KD500](https://huggingface.co/IzumiThe3rd/Suzu-UER6-KD500) 的 GGUF 权重和配套词表，分别保存为 `suzu.gguf` 和 `suzu.vocab.txt`。两个文件要成对使用，换模型时一起替换。
+1. 下载 [Suzu-UER6-PG200](https://huggingface.co/IzumiThe3rd/Suzu-UER6-PG200) 或 [Suzu-UER12-PG100](https://huggingface.co/IzumiThe3rd/Suzu-UER12-PG100) 的 GGUF 权重和配套词表，分别保存为 `suzu.gguf` 和 `suzu.vocab.txt`。两个文件要成对使用，换模型时一起替换。
 2. 按平台安装推理核心：
    - macOS：`macos/install_llm.sh core/build/rime_llm.so suzu.gguf suzu.vocab.txt`，详见 [macos/README.md](macos/README.md)
    - Windows：见 [windows/README.md](windows/README.md)
@@ -102,7 +103,7 @@ patch:
 
 重新部署后，方案即接入处理器、过滤器、AI 开关和快捷键（Control+Shift+5）。引用须放在 `patch` 下，并使用 `__include`。若使用 `__patch`，会替换方案原有的整个处理器与过滤器列表。若写在文件顶层，则不生效。
 
-Lua 从 2 个字母起重排，每组打分 10 个候选，统一排序的名次先验系数为 0.05。开启候选生成时，把每组放大到 20 或 30 个候选，Suzu-2.4 在 1,600 道两字母简拼题上的首选没有变化（34.7%、34.6%、34.6%），手机上每多一个候选约多 0.5 ms，所以保持 10 个。KD500 的首位门控默认值为 1.5。继续使用 Suzu-2.4 时，可在同一个 `patch` 下将 `llm_rerank/unified/top_gate` 设为 2.5。其他配置键见 `rime/lua/ai_rerank_filter.lua` 和 `rank_unified.lua`。
+Lua 从 2 个字母起重排，每组打分 10 个候选，统一排序的名次先验系数为 0.05。开启候选生成时，把每组放大到 20 或 30 个候选，Suzu-2.4 在 1,600 道两字母简拼题上的首选没有变化（34.7%、34.6%、34.6%），手机上每多一个候选约多 0.5 ms，所以保持 10 个。Suzu-UER 系列的首位门控默认值为 1.5。继续使用 Suzu-2.4 时，可在同一个 `patch` 下将 `llm_rerank/unified/top_gate` 设为 2.5。其他配置键见 `rime/lua/ai_rerank_filter.lua` 和 `rank_unified.lua`。
 
 ## 文档
 
