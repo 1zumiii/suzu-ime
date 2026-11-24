@@ -19,7 +19,10 @@ import androidx.preference.SwitchPreferenceCompat
 import com.osfans.trime.R
 import com.osfans.trime.ui.common.FooterPreference
 import com.osfans.trime.ui.common.PaddingPreferenceFragment
+import com.osfans.trime.ui.common.SheetAction
 import com.osfans.trime.ui.common.SheetOption
+import com.osfans.trime.ui.common.actionSheet
+import com.osfans.trime.ui.common.showDestructive
 import com.osfans.trime.ui.common.choiceSheet
 import com.osfans.trime.ui.common.mdiIcon
 import com.osfans.trime.ui.main.MainViewModel
@@ -72,7 +75,9 @@ class DictPackFragment : PaddingPreferenceFragment() {
                             isIconSpaceReserved = false
                             title = addon.title
                             isChecked = on
-                            if (!on) summary = "开启需下载约 ${mb(addon.remote.size)} MB"
+                            if (!on) {
+                                summary = if (DictAddons.isDownloaded(addon)) "已下载，开启不用重新下载" else "开启需下载约 ${mb(addon.remote.size)} MB"
+                            }
                             // 开关只发起确认，真正改完后整页重建
                             setOnPreferenceChangeListener { _, value ->
                                 confirmAddon(addon, value as Boolean)
@@ -83,6 +88,20 @@ class DictPackFragment : PaddingPreferenceFragment() {
                 }
             }
             for (addon in DictAddon.entries) addPreference(FooterPreference(ctx, "${addon.source}。"))
+            addCategory("存储") {
+                addPreference(
+                    Preference(ctx).apply {
+                        title = "管理已下载的词库"
+                        val n = installed.size + DictAddon.entries.count(DictAddons::isDownloaded)
+                        summary = if (n == 0) "还没有下载词库" else "$n 项"
+                        mdiIcon("harddisk")
+                        setOnPreferenceClickListener {
+                            manageDownloaded()
+                            true
+                        }
+                    },
+                )
+            }
             addCategory("词库信息") {
                 addPreference(
                     Preference(ctx).apply {
@@ -126,6 +145,56 @@ class DictPackFragment : PaddingPreferenceFragment() {
             initial = names.indices.firstOrNull { it != current } ?: 0,
             confirmLabel = { i -> if (names[i] in installed) "切换" else "下载并切换" },
         ) { i -> switch(names[i]) }
+    }
+
+    /** 已下载的词库包和附加词库，正在用的不能删（附加词库要先关掉开关） */
+    private fun manageDownloaded() {
+        val ctx = requireContext()
+        val active = DictPacks.active()
+        val actions = buildList {
+            for (name in DictPacks.installed()) {
+                val inUse = name == active
+                add(
+                    SheetAction(
+                        title = PackInstaller.title(name),
+                        subtitle = if (inUse) "正在使用" else "已下载 · ${mb(DictPacks.sizeOf(name))} MB",
+                        leadingIcon = "bookshelf",
+                        trailingIcon = if (inUse) null else "delete_outline",
+                        trailingOnly = true,
+                    ) { confirmDelete(PackInstaller.title(name)) { DictPacks.delete(name) } },
+                )
+            }
+            for (addon in DictAddon.entries.filter(DictAddons::isDownloaded)) {
+                val on = DictAddons.isEnabled(addon)
+                add(
+                    SheetAction(
+                        title = "${addon.title}（附加词库）",
+                        subtitle = if (on) "已开启，关掉开关后才能删除" else "已关闭 · ${mb(DictAddons.downloadedBytes(addon))} MB",
+                        leadingIcon = "book_open_outline",
+                        trailingIcon = if (on) null else "delete_outline",
+                        trailingOnly = true,
+                    ) { confirmDelete(addon.title) { DictAddons.deleteDownloaded(addon) } },
+                )
+            }
+        }
+        ctx.actionSheet("harddisk", "已下载的词库", actions, "完成", emptyText = "还没有下载词库。")
+    }
+
+    private fun confirmDelete(
+        title: String,
+        delete: () -> Boolean,
+    ) {
+        materialDialog(requireContext())
+            .setTitle("删除$title？")
+            .setMessage("删除后要用时需重新下载。")
+            .setNegativeButton(android.R.string.cancel, null)
+            .setPositiveButton("删除") { _, _ ->
+                lifecycleScope.launch {
+                    val ok = withContext(Dispatchers.IO) { runCatching(delete).getOrDefault(false) }
+                    if (!ok) requireContext().toast("删除失败")
+                    if (isAdded) build()
+                }
+            }.showDestructive()
     }
 
     private fun showPackInfo(

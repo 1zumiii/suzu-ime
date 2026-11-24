@@ -51,7 +51,12 @@ constructor(
     private fun textForValue(): String = getPersistedInt(value).toString()
 
     init {
-        setOnBindEditTextListener {
+        setOnBindEditTextListener(::bindEditText)
+    }
+
+    /** 设好数字输入框的初值和键盘；设置页自己的 Material 对话框也调用它 */
+    fun bindEditText(it: android.widget.EditText) {
+        run {
             it.setText(textForValue())
             it.inputType = InputType.TYPE_CLASS_NUMBER or InputType.TYPE_NUMBER_FLAG_DECIMAL
             it.keyListener =

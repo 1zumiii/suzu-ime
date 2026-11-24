@@ -54,6 +54,11 @@ object DictPacks {
     }
 
     /** 包说明（pack、commit、license 等），读不到时为空 */
+    fun sizeOf(pack: String): Long = dirOf(pack).walkTopDown().filter { it.isFile }.sumOf { it.length() }
+
+    /** 删除一个已下载、但不在使用的词库包 */
+    fun delete(pack: String): Boolean = pack != active() && dirOf(pack).deleteRecursively()
+
     fun info(pack: String): Map<String, String> = readLock(dirOf(pack).resolve(PACK_LOCK))
 
     private fun readLock(file: File): Map<String, String> = runCatching {

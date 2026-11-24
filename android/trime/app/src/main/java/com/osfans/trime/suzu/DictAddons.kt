@@ -77,7 +77,24 @@ object DictAddons {
 
     private fun fileOf(addon: DictAddon) = dir.resolve("${addon.id}.dict.yaml")
 
+    /** 关闭时把词库挪到这里（不以 .dict.yaml 结尾，Rime 不会读），再打开时不用重新下载 */
+    private fun offOf(addon: DictAddon) = dir.resolve("${addon.id}.dict.yaml.off")
+
     fun isEnabled(addon: DictAddon) = fileOf(addon).isFile
+
+    fun isDownloaded(addon: DictAddon) = fileOf(addon).isFile || offOf(addon).isFile
+
+    fun downloadedBytes(addon: DictAddon): Long = listOf(fileOf(addon), offOf(addon)).filter { it.isFile }.sumOf { it.length() }
+
+    /** 删除已关闭的附加词库的本地文件；开着的不删 */
+    fun deleteDownloaded(addon: DictAddon): Boolean = !isEnabled(addon) && offOf(addon).delete()
+
+    private fun moveFile(from: File, to: File) {
+        if (!from.renameTo(to)) {
+            from.copyTo(to, overwrite = true)
+            from.delete()
+        }
+    }
 
     /** 启用的附加词库，按导入顺序 */
     fun enabledIds(): List<String> = DictAddon.entries.filter(::isEnabled).map { it.id }
@@ -86,12 +103,16 @@ object DictAddons {
     suspend fun setEnabled(rime: RimeApi, addon: DictAddon, enabled: Boolean, stage: (String, Int?) -> Unit) {
         val pack = DictPacks.active() ?: error("请先选择一个词库包，再启用附加词库")
         if (enabled) {
-            stage("正在下载${addon.title}词库", 0)
-            install(addon) { done ->
-                stage("正在下载${addon.title}词库", (done * 100 / addon.remote.size).toInt().coerceIn(0, 100))
+            if (offOf(addon).isFile) {
+                withContext(Dispatchers.IO) { moveFile(offOf(addon), fileOf(addon)) }
+            } else {
+                stage("正在下载${addon.title}词库", 0)
+                install(addon) { done ->
+                    stage("正在下载${addon.title}词库", (done * 100 / addon.remote.size).toInt().coerceIn(0, 100))
+                }
             }
         } else {
-            withContext(Dispatchers.IO) { fileOf(addon).delete() }
+            withContext(Dispatchers.IO) { if (fileOf(addon).isFile) moveFile(fileOf(addon), offOf(addon)) }
         }
         withContext(Dispatchers.IO) { DictPacks.activate(pack) }
         stage("正在编译词库，请稍候", null)
@@ -101,7 +122,7 @@ object DictAddons {
             if (enabled) {
                 stage("编译失败，正在恢复", null)
                 withContext(Dispatchers.IO) {
-                    fileOf(addon).delete()
+                    if (fileOf(addon).isFile) moveFile(fileOf(addon), offOf(addon))
                     DictPacks.activate(pack)
                 }
                 runCatching { rime.deploy() }

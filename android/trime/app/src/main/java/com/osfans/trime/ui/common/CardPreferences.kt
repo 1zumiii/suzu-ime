@@ -27,6 +27,7 @@ import com.google.android.material.R as MR
 import com.google.android.material.shape.MaterialShapeDrawable
 import com.google.android.material.shape.ShapeAppearanceModel
 import com.mikepenz.iconics.IconicsDrawable
+import com.mikepenz.iconics.utils.paddingDp
 import com.mikepenz.iconics.utils.sizeDp
 import com.osfans.trime.R
 
@@ -46,6 +47,8 @@ fun Context.mdi(
 ): Drawable =
     IconicsDrawable(this, "cmd_$name").apply {
         sizeDp = size
+        // MDI 图形铺满整个方框，Material 图标四周留约 1/12 空白；补上同样的内边距，大小才一致
+        paddingDp = size / 12
         colorFilter = PorterDuffColorFilter(color, PorterDuff.Mode.SRC_IN)
     }
 
