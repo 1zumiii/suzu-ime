@@ -43,9 +43,15 @@ object ColorManager {
     private var isNightMode = false
 
     private val colorMode = AppPrefs.defaultInstance().keyboard.colorMode
+    private val keyBackground = AppPrefs.defaultInstance().keyboard.keyBackground
 
     @Keep
     private val onColorModeChange = PreferenceDelegate.OnChangeListener<AppPrefs.Keyboard.ColorMode> { _, _ ->
+        activateScheme(notify = true)
+    }
+
+    @Keep
+    private val onKeyBackgroundChange = PreferenceDelegate.OnChangeListener<Boolean> { _, _ ->
         activateScheme(notify = true)
     }
 
@@ -83,6 +89,7 @@ object ColorManager {
 
     fun init(configuration: Configuration) {
         colorMode.registerOnChangeListener(onColorModeChange)
+        keyBackground.registerOnChangeListener(onKeyBackgroundChange)
         isNightMode = configuration.isNightMode()
         activateScheme(notify = false)
 
@@ -124,7 +131,8 @@ object ColorManager {
             AppPrefs.Keyboard.ColorMode.LIGHT -> false
             AppPrefs.Keyboard.ColorMode.DARK -> true
         }
-        return theme.presetColorSchemes.getValue(if (dark) BuiltinTheme.DARK_SCHEME else BuiltinTheme.LIGHT_SCHEME)
+        val base = theme.presetColorSchemes.getValue(if (dark) BuiltinTheme.DARK_SCHEME else BuiltinTheme.LIGHT_SCHEME)
+        return if (keyBackground.getValue()) base + BuiltinTheme.keyBackgroundOverlay(dark) else base
     }
 
     /**

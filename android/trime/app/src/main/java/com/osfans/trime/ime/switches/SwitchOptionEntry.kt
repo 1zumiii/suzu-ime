@@ -14,8 +14,15 @@ sealed class SwitchOptionEntry(
     @param:DrawableRes
     val icon: Int,
 ) {
-    class Static(label: String, icon: Int, val type: Type) : SwitchOptionEntry(label, icon) {
+    /** [glyph] 不为空时代替图标，显示在圆角块中间 */
+    class Static(label: String, icon: Int, val type: Type, val glyph: String? = null) : SwitchOptionEntry(label, icon) {
         enum class Type {
+            AsciiMode,
+            AiRerank,
+            KeyHints,
+            Symbols,
+            Emoji,
+            Kaomoji,
             DictPacks,
             UpdateConfig,
             ModuleStatus,

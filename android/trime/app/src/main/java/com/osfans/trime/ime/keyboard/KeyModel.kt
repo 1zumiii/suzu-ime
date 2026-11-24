@@ -46,18 +46,19 @@ sealed interface KeyCommand {
     /** 符号板上的符号：原样上屏，不经 Rime 的标点映射，与中英文状态无关 */
     data class Commit(val text: String, val after: List<Nav> = emptyList()) : KeyCommand
 
-    /** 清空当前输入后，把 [input] 作为编码打给 Rime（符号反查） */
-    data class Query(val input: String) : KeyCommand
-
     data class Chord(val key: String, val ctrl: Boolean = false, val shift: Boolean = false, val repeats: Boolean = false) : KeyCommand
 
     data class Editor(val op: EditorOp) : KeyCommand
 
     data class ShowPage(val id: String) : KeyCommand
 
-    data class OpenLiquid(val tag: String) : KeyCommand
+    /** 打开符号面板，停在 [group] 上次看的分类 */
+    data class OpenSymbols(val group: SymbolGroup) : KeyCommand
 
-    data object ExitLiquid : KeyCommand
+    /** 从面板回到键盘，并切到 [page] 页 */
+    data class ShowKeyboard(val page: String) : KeyCommand
+
+    data object OpenEditor : KeyCommand
 
     data object OpenMenu : KeyCommand
 
@@ -78,6 +79,13 @@ sealed interface KeyCommand {
     data object ToggleKeyHints : KeyCommand
 
     data object InsertDateTime : KeyCommand
+}
+
+/** 符号面板顶部的三组 */
+enum class SymbolGroup(val label: String) {
+    Symbols("符号"),
+    Emoji("表情"),
+    Kaomoji("颜文字"),
 }
 
 /** 按键配色，值是配色方案里的颜色名；[Plain] 使用默认键色 */
@@ -164,12 +172,12 @@ data class Page(val id: String, val ascii: AsciiPolicy, val rows: List<Row>)
 object Pages {
     const val DEFAULT = "default"
     const val NUMBER = "number"
-    const val LAST = ".last"
+    const val NUMPAD = "numpad"
 
     private val cache = HashMap<String, Page>()
 
     fun get(id: String): Page = cache.getOrPut(id) {
-        if (SymbolBoard.owns(id)) SymbolBoard.page(id) else (MainPages.builders[id] ?: MainPages.builders.getValue(DEFAULT))()
+        (MainPages.builders[id] ?: MainPages.builders.getValue(DEFAULT))()
     }
 }
 
@@ -189,7 +197,6 @@ fun KeyCommand.defaultLabel(state: KeyState): String = when (this) {
     is KeyCommand.Insert -> text
     is KeyCommand.Commit -> text
     is KeyCommand.Editor -> op.label
-    is KeyCommand.Query -> input
     is KeyCommand.Special -> when (nav) {
         Nav.Escape -> "取消"
         Nav.Left -> "←"
@@ -208,7 +215,7 @@ fun KeyCommand.defaultLabel(state: KeyState): String = when (this) {
     KeyCommand.ToggleAscii -> if (state.asciiMode) "西文" else "中文"
     KeyCommand.PasteClipboard -> "粘贴"
     KeyCommand.OpenClipboard -> "剪贴"
-    is KeyCommand.OpenLiquid -> "更多"
+    is KeyCommand.OpenSymbols -> group.label
     else -> ""
 }
 

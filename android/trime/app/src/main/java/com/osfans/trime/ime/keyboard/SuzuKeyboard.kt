@@ -10,8 +10,10 @@ import android.graphics.Rect
 import android.view.KeyEvent
 import android.view.ViewGroup
 import android.widget.FrameLayout
+import androidx.annotation.Keep
 import androidx.lifecycle.lifecycleScope
 import com.osfans.trime.core.KeyModifiers
+import com.osfans.trime.data.prefs.PreferenceDelegate
 import com.osfans.trime.core.RimeKeyEvent
 import com.osfans.trime.daemon.RimeSession
 import com.osfans.trime.daemon.launchOnReady
@@ -32,9 +34,12 @@ import splitties.systemservices.clipboardManager
 interface KeyboardPanels {
     fun openClipboard()
 
-    fun openLiquid(tag: String)
+    fun openSymbols(group: SymbolGroup)
 
-    fun exitLiquid()
+    /** 关掉面板回到键盘 */
+    fun showKeyboard()
+
+    fun openEditor()
 
     fun openMenu()
 }
@@ -53,26 +58,48 @@ class SuzuKeyboard(
     private val container = FrameLayout(context)
     private val pages = HashMap<String, KeyPageView>()
     private var current: KeyPageView? = null
-    private var lastPageId = Pages.DEFAULT
     private var shift = ShiftState.Off
     private var savedAsciiMode: Boolean? = null
 
     override val palette = KeyPalette()
 
-    override val metrics by lazy {
+    override var metrics: KeyMetrics = buildMetrics()
+        private set
+
+    // 间距和键帽提示在设置或菜单里改了以后立即重新排版，不用重开键盘
+    @Keep
+    private val onLayoutPrefChange = PreferenceDelegate.OnChangeListener<Any> { _, _ -> relayout() }
+
+    init {
+        prefs.keyVerticalGap.registerOnChangeListener(onLayoutPrefChange)
+        prefs.hideKeySymbol.registerOnChangeListener(onLayoutPrefChange)
+        prefs.hideKeyHint.registerOnChangeListener(onLayoutPrefChange)
+    }
+
+    private fun buildMetrics(): KeyMetrics {
         val style = theme.style
-        KeyMetrics(
+        return KeyMetrics(
             roundCorner = style.roundCorner,
             textSp = style.keyTextSize,
             longTextSp = style.keyLongTextSize.takeIf { it > 0 } ?: style.keyTextSize,
             cornerSp = style.symbolTextSize.takeIf { it > 0 } ?: style.keyTextSize,
             horizontalGapPx = context.dp(style.horizontalGap),
-            verticalGapPx = context.dp(style.verticalGap),
+            verticalGapPx = context.dp(prefs.keyVerticalGap.getValue()),
             keyTypeface = theme.fonts.key,
             cornerTypeface = theme.fonts.symbol,
             hideCorner = prefs.hideKeySymbol.getValue(),
             hideHint = prefs.hideKeyHint.getValue(),
         )
+    }
+
+    /** 尺寸参数变了：丢掉已排好的页面，按新参数重画当前页 */
+    private fun relayout() {
+        metrics = buildMetrics()
+        val id = current?.page?.id ?: Pages.DEFAULT
+        current?.let { container.removeView(it) }
+        current = null
+        pages.clear()
+        show(id)
     }
 
     fun createView(): ViewGroup {
@@ -88,7 +115,7 @@ class SuzuKeyboard(
     override fun composingLength() = rime.run { compositionCached }.preedit?.count { !it.isWhitespace() } ?: 0
 
     fun show(id: String) {
-        val target = if (id == Pages.LAST) lastPageId else id
+        val target = id
         val previous = current
         if (previous?.page?.id == target) {
             // 页面没变，但部署结束后 Rime 的状态可能变了
@@ -107,10 +134,7 @@ class SuzuKeyboard(
                 setRuntimeOption("ascii_mode", mode)
             }
         }
-        previous?.let {
-            lastPageId = it.page.id
-            container.removeView(it)
-        }
+        previous?.let { container.removeView(it) }
         val view = pages.getOrPut(target) { KeyPageView(context, page, this) }
         (view.parent as? ViewGroup)?.removeView(view)
         container.addView(view, FrameLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.MATCH_PARENT))
@@ -144,6 +168,9 @@ class SuzuKeyboard(
         repaint()
     }
 
+    /** 编辑面板的“选择”键是否亮着 */
+    val isShiftActive: Boolean get() = shift.isActive
+
     fun repaint() {
         current?.repaint()
     }
@@ -174,12 +201,15 @@ class SuzuKeyboard(
             is KeyCommand.Special -> press(command.nav)
             is KeyCommand.Insert -> insert(command.text, command.after)
             is KeyCommand.Commit -> commitLiteral(command.text, command.after)
-            is KeyCommand.Query -> service.postRimeJob { simulateKeySequence("{Escape}" + command.input) }
             is KeyCommand.Chord -> sendChord(command)
             is KeyCommand.Editor -> edit(command.op)
             is KeyCommand.ShowPage -> show(command.id)
-            is KeyCommand.OpenLiquid -> panels.openLiquid(command.tag)
-            KeyCommand.ExitLiquid -> panels.exitLiquid()
+            is KeyCommand.OpenSymbols -> panels.openSymbols(command.group)
+            is KeyCommand.ShowKeyboard -> {
+                panels.showKeyboard()
+                show(command.page)
+            }
+            KeyCommand.OpenEditor -> panels.openEditor()
             KeyCommand.OpenMenu -> panels.openMenu()
             KeyCommand.OpenClipboard -> panels.openClipboard()
             KeyCommand.ToggleAscii -> toggleAscii()

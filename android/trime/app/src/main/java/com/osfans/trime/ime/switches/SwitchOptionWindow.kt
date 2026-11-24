@@ -23,6 +23,9 @@ import com.osfans.trime.data.theme.ThemeScope
 import com.osfans.trime.ime.bar.ui.ToolButton
 import com.osfans.trime.ime.broadcast.InputBroadcastReceiver
 import com.osfans.trime.ime.core.TrimeInputMethodService
+import com.osfans.trime.ime.keyboard.KeyCommand
+import com.osfans.trime.ime.keyboard.KeyboardWindow
+import com.osfans.trime.ime.keyboard.SymbolGroup
 import com.osfans.trime.ime.window.BoardWindow
 import com.osfans.trime.util.AppUtils
 import kotlinx.coroutines.launch
@@ -44,9 +47,27 @@ class SwitchOptionWindow(di: DI) :
     private val rime: RimeSession by instance()
     private val scope: ThemeScope by instance()
     private val theme: Theme get() = scope.theme
+    private val keyboardWindow: KeyboardWindow by instance()
+
+    override val title = "菜单"
+
+    /** 常用开关和符号面板入口，排在原有的设置项前面 */
+    private val quickEntries get(): Array<SwitchOptionEntry.Static> {
+        val ascii = rime.run { statusCached }.isAsciiMode
+        val ai = rime.run { getRuntimeOption("ai_rerank") }
+        val hints = !AppPrefs.defaultInstance().keyboard.hideKeySymbol.getValue()
+        return arrayOf(
+            SwitchOptionEntry.Static(if (ascii) "英文 → 中文" else "中文 → 英文", 0, SwitchOptionEntry.Static.Type.AsciiMode, if (ascii) "En" else "中"),
+            SwitchOptionEntry.Static(if (ai) "AI 重排：开" else "AI 重排：关", 0, SwitchOptionEntry.Static.Type.AiRerank, "AI"),
+            SwitchOptionEntry.Static(if (hints) "键帽提示：开" else "键帽提示：关", 0, SwitchOptionEntry.Static.Type.KeyHints, "¹a"),
+            SwitchOptionEntry.Static("符号", 0, SwitchOptionEntry.Static.Type.Symbols, "#"),
+            SwitchOptionEntry.Static("表情", 0, SwitchOptionEntry.Static.Type.Emoji, "☺"),
+            SwitchOptionEntry.Static("颜文字", 0, SwitchOptionEntry.Static.Type.Kaomoji, "^_^"),
+        )
+    }
 
     private val staticEntries get() =
-        arrayOf(
+        quickEntries + arrayOf(
             SwitchOptionEntry.Static(
                 context.getString(R.string.suzu_current_color, context.getString(AppPrefs.defaultInstance().keyboard.colorMode.getValue().stringRes)),
                 R.drawable.ic_baseline_color_lens_24,
@@ -109,6 +130,26 @@ class SwitchOptionWindow(di: DI) :
             ) {
                 when (entry) {
                     is SwitchOptionEntry.Static -> when (entry.type) {
+                        SwitchOptionEntry.Static.Type.AsciiMode -> keyboardWindow.run(KeyCommand.ToggleAscii)
+
+                        SwitchOptionEntry.Static.Type.AiRerank -> service.postRimeJob {
+                            // 和工具栏徽标的手动切换一样先设 _ai_manual，Lua 侧据此认出是用户操作
+                            val target = !getRuntimeOption("ai_rerank")
+                            setRuntimeOption("_ai_manual", true)
+                            setRuntimeOption("ai_rerank", target)
+                        }
+
+                        SwitchOptionEntry.Static.Type.KeyHints -> {
+                            keyboardWindow.run(KeyCommand.ToggleKeyHints)
+                            updateSchemaOptionEntries()
+                        }
+
+                        SwitchOptionEntry.Static.Type.Symbols -> keyboardWindow.run(KeyCommand.OpenSymbols(SymbolGroup.Symbols))
+
+                        SwitchOptionEntry.Static.Type.Emoji -> keyboardWindow.run(KeyCommand.OpenSymbols(SymbolGroup.Emoji))
+
+                        SwitchOptionEntry.Static.Type.Kaomoji -> keyboardWindow.run(KeyCommand.OpenSymbols(SymbolGroup.Kaomoji))
+
                         SwitchOptionEntry.Static.Type.DictPacks -> AppUtils.launchMainToDictPacks(context)
 
                         SwitchOptionEntry.Static.Type.UpdateConfig -> rime.launchOnReady { r ->
@@ -199,7 +240,7 @@ class SwitchOptionWindow(di: DI) :
 
     override fun refreshColors() {
         if (!viewCreated) return
-        (view.adapter as? SwitchOptionAdapter)?.refreshColors()
+        adapter.refreshColors()
         settingsButton.refreshColors()
     }
 

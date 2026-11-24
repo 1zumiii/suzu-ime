@@ -68,10 +68,10 @@ class KeyModelTest : BehaviorSpec({
         }.filterIsInstance<KeyCommand.ShowPage>().map { it.id }
 
         val seen = linkedSetOf<String>()
-        val queue = ArrayDeque(listOf(Pages.DEFAULT, Pages.NUMBER, "letter", "editor"))
+        val queue = ArrayDeque(listOf(Pages.DEFAULT, Pages.NUMBER))
         while (queue.isNotEmpty()) {
             val id = queue.removeFirst()
-            if (id == Pages.LAST || !seen.add(id)) continue
+            if (!seen.add(id)) continue
             queue += targets(Pages.get(id))
         }
 
@@ -89,37 +89,20 @@ class KeyModelTest : BehaviorSpec({
         Then("页面总高度等于键盘高度") {
             for (id in seen) layoutPage(Pages.get(id), 1080, 618).maxOf { it.y + it.height } shouldBe 618
         }
-        Then("所有分类都能到达") {
-            seen shouldContainAll listOf(SymbolBoard.PUNCT_CN, SymbolBoard.PUNCT_EN, SymbolBoard.EMOJI_FIRST, SymbolBoard.KAO_FIRST, "numpad", "symbols")
-        }
-    }
-
-    Given("符号板分页") {
-        fun symbolsOf(category: String) = (0 until SymbolBoard.pageCount(category)).flatMap { n ->
-            Pages.get("sym/$category/$n").rows.flatMap { it.keys }.mapNotNull { it.command }.filter {
-                it is KeyCommand.Commit
-            }
-        }
-
-        Then("英文标点原样上屏，不经 Rime") {
-            val en = symbolsOf("en").map { (it as KeyCommand.Commit).text }
-            en shouldContainAll listOf(",", "\\", "/", "()")
-        }
-
-        Then("分页不丢符号") {
-            symbolsOf("rw").size shouldBe SymbolData.emoji_rw.size
-            symbolsOf("cn").size shouldBe SymbolData.punct_cn.size
-            symbolsOf("en").size shouldBe SymbolData.punct_en.size
-            symbolsOf("h").size shouldBe SymbolData.kao_h.size
+        Then("所有页面都能到达") {
+            seen shouldContainAll listOf(Pages.DEFAULT, Pages.NUMBER, Pages.NUMPAD)
         }
         Then("每行键宽合计不超过键盘宽度") {
-            for (category in listOf("rw", "fh", "cn", "en", "h", "m")) {
-                for (n in 0 until SymbolBoard.pageCount(category)) {
-                    Pages.get("sym/$category/$n").rows.forEach { row ->
-                        (row.keys.sumOf { it.width.toDouble() } <= 100.5) shouldBe true
-                    }
-                }
+            for (id in seen) {
+                Pages.get(id).rows.forEach { row -> (row.keys.sumOf { it.width.toDouble() } <= 100.5) shouldBe true }
             }
+        }
+        Then("数字页和小键盘都能打开符号面板") {
+            fun opens(id: String) = Pages.get(id).rows.flatMap { it.keys }
+                .flatMap { listOfNotNull(it.command, it.long) }
+                .filterIsInstance<KeyCommand.OpenSymbols>().map { it.group }
+            opens(Pages.NUMBER) shouldContainAll listOf(SymbolGroup.Symbols)
+            opens(Pages.NUMPAD) shouldContainAll listOf(SymbolGroup.Symbols)
         }
     }
 })

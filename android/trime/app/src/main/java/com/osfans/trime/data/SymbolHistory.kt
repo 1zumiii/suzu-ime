@@ -8,13 +8,14 @@ import com.osfans.trime.TrimeApplication
 
 class SymbolHistory(
     val capacity: Int,
+    fileName: String = FILE_NAME,
 ) : LinkedHashMap<String, String>(0, .75f, true) {
     companion object {
         const val FILE_NAME = "symbol_history"
     }
 
     private val file =
-        TrimeApplication.getInstance().directBootAwareContext.filesDir.resolve(FILE_NAME)
+        TrimeApplication.getInstance().directBootAwareContext.filesDir.resolve(fileName)
             .apply { createNewFile() }
 
     fun load() {

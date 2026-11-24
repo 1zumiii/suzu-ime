@@ -7,13 +7,15 @@ package com.osfans.trime.ime.keyboard
 import android.text.InputType
 import android.view.View
 import android.view.inputmethod.EditorInfo
+import androidx.annotation.Keep
 import androidx.transition.Transition
 import com.osfans.trime.core.RimeMessage
 import com.osfans.trime.core.SchemaItem
 import com.osfans.trime.core.StatusProto
 import com.osfans.trime.daemon.RimeSession
+import com.osfans.trime.data.prefs.AppPrefs
+import com.osfans.trime.data.prefs.PreferenceDelegate
 import com.osfans.trime.data.theme.Theme
-import com.osfans.trime.data.theme.model.LiquidKeyboard
 import com.osfans.trime.ime.broadcast.EnterKeyDisplayDelegate
 import com.osfans.trime.ime.broadcast.InputBroadcastReceiver
 import com.osfans.trime.ime.clipboard.ClipboardWindow
@@ -21,7 +23,7 @@ import com.osfans.trime.ime.core.TrimeInputMethodService
 import com.osfans.trime.ime.keyboard.KeyboardPrefs.isLandscapeMode
 import com.osfans.trime.ime.popup.PopupDelegate
 import com.osfans.trime.ime.switches.SwitchOptionWindow
-import com.osfans.trime.ime.symbol.LiquidWindow
+import com.osfans.trime.ime.symbol.SymbolWindow
 import com.osfans.trime.ime.window.BoardWindow
 import com.osfans.trime.ime.window.BoardWindowManager
 import com.osfans.trime.ime.window.ResidentWindow
@@ -42,7 +44,7 @@ class KeyboardWindow(di: DI) :
     private val popup: PopupDelegate by instance()
     private val enterKeyDisplay: EnterKeyDisplayDelegate by instance()
     private val windowManager: BoardWindowManager by instance()
-    private val liquidWindow: LiquidWindow by instance()
+    private val symbolWindow: SymbolWindow by instance()
 
     private val _currentKeyboardHeight =
         MutableSharedFlow<Int>(
@@ -51,6 +53,18 @@ class KeyboardWindow(di: DI) :
         )
 
     val currentKeyboardHeight = _currentKeyboardHeight.asSharedFlow()
+
+    private val heightPref = AppPrefs.defaultInstance().keyboard.keyboardHeight
+
+    // 设置里拖动滑块后立即生效，不用重开键盘
+    @Keep
+    private val onHeightChange = PreferenceDelegate.OnChangeListener<Int> { _, _ -> emitHeight() }
+
+    private fun emitHeight() {
+        val style = theme.style
+        val height = if (context.isLandscapeMode() && style.keyboardHeightLand > 0) style.keyboardHeightLand else heightPref.getValue()
+        _currentKeyboardHeight.tryEmit(context.dp(height))
+    }
 
     companion object : ResidentWindow.Key
 
@@ -68,17 +82,16 @@ class KeyboardWindow(di: DI) :
             object : KeyboardPanels {
                 override fun openClipboard() = windowManager.attachWindow(ClipboardWindow(di))
 
-                override fun openLiquid(tag: String) {
-                    val index = theme.liquidKeyboard.getTagList().indexOfFirst { item ->
-                        item.label == tag || runCatching { LiquidKeyboard.DataType.valueOf(tag.uppercase()) }.getOrNull() == item.type
-                    }
-                    if (index >= 0) {
-                        windowManager.attachWindow(LiquidWindow)
-                        liquidWindow.setDataByIndex(index)
-                    }
+                override fun openSymbols(group: SymbolGroup) {
+                    windowManager.attachWindow(SymbolWindow)
+                    symbolWindow.show(group)
                 }
 
-                override fun exitLiquid() = windowManager.attachWindow(KeyboardWindow)
+                override fun showKeyboard() {
+                    if (!windowManager.isAttached(this@KeyboardWindow)) windowManager.attachWindow(KeyboardWindow)
+                }
+
+                override fun openEditor() = windowManager.attachWindow(EditorWindow(di))
 
                 override fun openMenu() = windowManager.attachWindow(SwitchOptionWindow(di))
             },
@@ -88,10 +101,11 @@ class KeyboardWindow(di: DI) :
     /** 工具栏、液体键盘的按键条也走这里，和键盘共用一套动作 */
     fun run(command: KeyCommand) = keyboard.run(command)
 
+    val isShiftActive: Boolean get() = keyboard.isShiftActive
+
     override fun onCreateView(): View {
-        val style = theme.style
-        val height = if (context.isLandscapeMode() && style.keyboardHeightLand > 0) style.keyboardHeightLand else style.keyboardHeight
-        _currentKeyboardHeight.tryEmit(context.dp(height))
+        heightPref.registerOnChangeListener(onHeightChange)
+        emitHeight()
         return keyboard.createView()
     }
 

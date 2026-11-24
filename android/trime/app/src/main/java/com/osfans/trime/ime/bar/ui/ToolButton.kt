@@ -195,6 +195,22 @@ class ToolButton(context: Context, private val scope: ThemeScope) : GestureFrame
         }
     }
 
+    /**
+     * 文字按钮（如“中”“En”）按字形的实际上下边界居中。AutoScaleTextView 按字体的 ascent 和 descent 居中，
+     * 工具栏字体缺汉字时回退到别的字体，字形会偏上。
+     */
+    private fun centerTextGlyph() {
+        val text = label.text?.toString().orEmpty()
+        if (text.isEmpty()) {
+            label.translationY = 0f
+            return
+        }
+        val bounds = android.graphics.Rect()
+        label.paint.getTextBounds(text, 0, text.length, bounds)
+        val metrics = label.paint.fontMetrics
+        label.translationY = (metrics.ascent + metrics.descent) / 2f - (bounds.top + bounds.bottom) / 2f
+    }
+
     private fun updateContent() {
         val style = if (option != null && optionStyles.size == 2) {
             optionStyles[if (optionEnabled) 1 else 0]
@@ -225,6 +241,7 @@ class ToolButton(context: Context, private val scope: ThemeScope) : GestureFrame
             label.text = style
             image.isVisible = false
             label.isVisible = true
+            label.post(::centerTextGlyph)
         }
     }
 

@@ -6,7 +6,6 @@
 package com.osfans.trime.data.theme
 
 import com.osfans.trime.data.theme.model.GeneralStyle
-import com.osfans.trime.data.theme.model.LiquidKeyboard
 import com.osfans.trime.data.theme.model.Preedit
 import com.osfans.trime.data.theme.model.ToolBar
 import com.osfans.trime.data.theme.model.Window
@@ -17,7 +16,6 @@ data class Theme(
     val style: GeneralStyle = GeneralStyle(),
     val preedit: Preedit = Preedit(),
     val window: Window = Window(),
-    val liquidKeyboard: LiquidKeyboard = LiquidKeyboard(),
     val presetColorSchemes: PresetColorSchemes = emptyMap(),
     val fallbackColors: Map<String, String> = emptyMap(),
     val toolBar: ToolBar = ToolBar(),

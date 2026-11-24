@@ -126,6 +126,7 @@ class BoardWindowManager(override val di: DI) : DIAware {
     fun isAttached(window: BoardWindow) = currentWindow === window
 
     private companion object {
-        const val TRANSITION_MS = 100L
+        // 面板滑入滑出的时长。回到键盘时，键盘等面板滑完才显示，所以切换一次前后约为它的两倍
+        const val TRANSITION_MS = 60L
     }
 }

@@ -33,7 +33,8 @@ import com.osfans.trime.ime.composition.PreeditDelegate
 import com.osfans.trime.ime.keyboard.KeyboardPrefs.isLandscapeMode
 import com.osfans.trime.ime.keyboard.KeyboardWindow
 import com.osfans.trime.ime.popup.PopupDelegate
-import com.osfans.trime.ime.symbol.LiquidWindow
+import com.osfans.trime.ime.keyboard.SymbolGroup
+import com.osfans.trime.ime.symbol.SymbolWindow
 import com.osfans.trime.ime.window.BoardWindowManager
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.launch
@@ -114,7 +115,7 @@ class InputView(
         bindSingleton { InputBarDelegate(di) }
         bindSingleton { CompactCandidateDelegate(di) }
         bindSingleton { KeyboardWindow(di) }
-        bindSingleton { LiquidWindow(di) }
+        bindSingleton { SymbolWindow(di) }
     }
 
     private val broadcaster: InputBroadcaster by instance()
@@ -124,7 +125,7 @@ class InputView(
     private val windowManager: BoardWindowManager by instance()
     private val inputBar: InputBarDelegate by instance()
     private val keyboardWindow: KeyboardWindow by instance()
-    private val liquidWindow: LiquidWindow by instance()
+    private val symbolWindow: SymbolWindow by instance()
 
 
     private val keyboardSidePadding = theme.style.keyboardPadding
@@ -177,7 +178,7 @@ class InputView(
         receivers.forEach { broadcaster.addReceiver(it) }
 
         windowManager.cacheResidentWindow(keyboardWindow, createView = true)
-        windowManager.cacheResidentWindow(liquidWindow)
+        windowManager.cacheResidentWindow(symbolWindow)
         // show KeyboardWindow by default
         windowManager.attachWindow(KeyboardWindow)
 
@@ -338,8 +339,8 @@ class InputView(
 
                 if (it.data.option == "_liquid_keyboard") {
                     ContextCompat.getMainExecutor(service).execute {
-                        windowManager.attachWindow(LiquidWindow)
-                        liquidWindow.setDataByIndex(0)
+                        windowManager.attachWindow(SymbolWindow)
+                        symbolWindow.show(SymbolGroup.Symbols)
                     }
                 }
             }

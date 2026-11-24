@@ -32,7 +32,7 @@ import splitties.views.setPaddingDp
  * - [flat]：不画按键背景，只显示文字（按键条用）；
  * - [textScale]：相对主题按键字号的比例。
  */
-class LiquidItemUi(
+class PanelItemUi(
     override val ctx: Context,
     private val scope: ThemeScope,
     textScale: Float = 1f,

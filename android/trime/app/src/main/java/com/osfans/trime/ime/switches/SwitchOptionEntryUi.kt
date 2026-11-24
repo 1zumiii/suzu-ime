@@ -129,7 +129,13 @@ class SwitchOptionEntryUi(
     }
 
     fun setEntry(entry: SwitchOptionEntry) {
-        if (entry.icon != 0) {
+        val glyph = (entry as? SwitchOptionEntry.Static)?.glyph
+        if (glyph != null) {
+            icon.visibility = View.GONE
+            textIcon.visibility = View.VISIBLE
+            textIcon.text = glyph
+            textIcon.setTextColor(scope.colors.keyTextColor)
+        } else if (entry.icon != 0) {
             icon.visibility = View.VISIBLE
             textIcon.visibility = View.GONE
             icon.imageDrawable = ctx.drawable(entry.icon)!!.apply {

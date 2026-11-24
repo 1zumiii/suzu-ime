@@ -23,14 +23,9 @@ class BuiltinThemeTest : BehaviorSpec({
             light.keys shouldContainAll used
             dark.keys shouldContainAll used
         }
-    }
-
-    Given("液体键盘") {
-        val liquid = BuiltinTheme.theme.liquidKeyboard
-        Then("表情和特殊符号的分类存在，且有内容") {
-            val tags = liquid.getTagList().map { it.label }
-            tags shouldContainAll listOf("特殊", "更多", "常用")
-            (liquid.getDataByIndex(tags.indexOf("特殊")).size > 50) shouldBe true
+        Then("按键背景只覆盖配色里已有的按键底色") {
+            light.keys shouldContainAll BuiltinTheme.keyBackgroundOverlay(false).keys
+            dark.keys shouldContainAll BuiltinTheme.keyBackgroundOverlay(true).keys
         }
     }
 })

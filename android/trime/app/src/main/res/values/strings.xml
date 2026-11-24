@@ -250,6 +250,9 @@
     <string name="dict_packs">Dictionaries</string>
     <string name="emoji_custom">Candidate mapping</string>
     <string name="color_mode">Keyboard colors</string>
+    <string name="key_background">Key backgrounds</string>
+    <string name="keyboard_height">Keyboard height</string>
+    <string name="key_vertical_gap">Vertical key gap</string>
     <string name="color_mode_follow_system">Follow system</string>
     <string name="color_mode_light">Light</string>
     <string name="color_mode_dark">Dark</string>

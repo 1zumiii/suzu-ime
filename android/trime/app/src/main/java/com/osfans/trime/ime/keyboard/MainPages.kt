@@ -1,4 +1,4 @@
-// 有独立布局的页面。符号类页面见 SymbolBoard.kt
+// 键盘页面的布局。符号、表情、颜文字在符号面板里（ime/symbol/SymbolWindow.kt），编辑面板见 EditorWindow.kt
 
 package com.osfans.trime.ime.keyboard
 
@@ -7,11 +7,8 @@ import com.osfans.trime.ime.keyboard.KeyCommand.*
 internal object MainPages {
     val builders: Map<String, () -> Page> = mapOf(
         "default" to ::default,
-        "letter" to ::letter,
         "number" to ::number,
         "numpad" to ::numpad,
-        "symbols" to ::symbols,
-        "editor" to ::editor,
     )
 
     private fun default() = Page("default", AsciiPolicy.Chinese, listOf(
@@ -54,58 +51,9 @@ internal object MainPages {
         Row(48.0f, listOf(
             key(ShowPage("number"), label = "?123", width = 15.0f, tone = Tone.Gn, long = ToggleKeyHints),
             key(Char(','), label = "，", width = 10.0f, tone = Tone.H4, long = Insert("<>", listOf(Nav.Left))),
-            key(ShowPage(SymbolBoard.EMOJI_FIRST), label = "ic@emoticon_happy_outline", width = 10.0f, tone = Tone.H4, long = OpenLiquid("特殊")),
-            key(Special(Nav.Space), label = "拼音", asciiLabel = "English", width = 40.0f, tone = Tone.Kg, long = ToggleAscii, swipeUp = Chord("6", ctrl = true, shift = true), swipeLeft = Special(Nav.Left), swipeRight = Special(Nav.Right), textSp = 16.0f, preview = " ", slideCursor = true),
+            key(Special(Nav.Space), label = "拼音", asciiLabel = "English", width = 50.0f, tone = Tone.Kg, long = ToggleAscii, swipeUp = Chord("6", ctrl = true, shift = true), swipeLeft = Special(Nav.Left), swipeRight = Special(Nav.Right), textSp = 16.0f, preview = " ", slideCursor = true),
             key(Char('.'), label = "。", width = 10.0f, tone = Tone.H4, long = OpenClipboard),
             key(Special(Nav.Return), label = EnterLabel, width = 15.0f, tone = Tone.Enter, swipeUp = Special(Nav.Escape), composing = Special(Nav.Return), long = OpenSettings, preview = "↩"),
-        )),
-    ))
-
-    private fun letter() = Page("letter", AsciiPolicy.Ascii, listOf(
-        Row(48.0f, listOf(
-            key(Char('q'), width = 10.0f, tone = Tone.H1, long = Char('1')),
-            key(Char('w'), width = 10.0f, tone = Tone.H1, long = Char('2')),
-            key(Char('e'), width = 10.0f, tone = Tone.H1, long = Char('3')),
-            key(Char('r'), width = 10.0f, tone = Tone.H1, long = Char('4')),
-            key(Char('t'), width = 10.0f, tone = Tone.H1, long = Char('5')),
-            key(Char('y'), width = 10.0f, tone = Tone.H1, long = Char('6')),
-            key(Char('u'), width = 10.0f, tone = Tone.H1, long = Char('7')),
-            key(Char('i'), width = 10.0f, tone = Tone.H1, long = Char('8')),
-            key(Char('o'), width = 10.0f, tone = Tone.H1, long = Char('9')),
-            key(Char('p'), width = 10.0f, tone = Tone.H1, long = Char('0')),
-        )),
-        Row(48.0f, listOf(
-            gap(5.0f),
-            key(Char('a'), width = 10.0f, tone = Tone.H2, long = Editor(EditorOp.SelectAll)),
-            key(Char('s'), width = 10.0f, tone = Tone.H2, long = Char('@')),
-            key(Char('d'), width = 10.0f, tone = Tone.H2, long = Char('#')),
-            key(Char('f'), width = 10.0f, tone = Tone.H2, long = Char('$')),
-            key(Char('g'), width = 10.0f, tone = Tone.H2, long = Char('%'), swipeDown = InsertDateTime),
-            key(Char('h'), width = 10.0f, tone = Tone.H2, long = Char('!'), swipeDown = Char('+')),
-            key(Char('j'), width = 10.0f, tone = Tone.H2, long = Char('&'), swipeDown = Char('-')),
-            key(Char('k'), width = 10.0f, tone = Tone.H2, long = Char('*'), swipeDown = Char('_')),
-            key(Char('l'), width = 10.0f, tone = Tone.H2, long = Insert("()", listOf(Nav.Left)), swipeDown = Char('=')),
-            gap(5.0f),
-        )),
-        Row(48.0f, listOf(
-            key(Shift, label = "ic@arrow_up_bold_outline", width = 15.0f, tone = Tone.Bs, composing = Insert("'"), preview = "⇪"),
-            key(Char('z'), width = 10.0f, tone = Tone.H3, long = Char('`'), swipeDown = Insert("[]", listOf(Nav.Left))),
-            key(Char('x'), width = 10.0f, tone = Tone.H3, long = Editor(EditorOp.Cut), swipeDown = Insert("{}", listOf(Nav.Left))),
-            key(Char('c'), width = 10.0f, tone = Tone.H3, long = Editor(EditorOp.Copy), swipeDown = Char(' ')),
-            key(Char('v'), width = 10.0f, tone = Tone.H3, long = PasteClipboard, swipeDown = Editor(EditorOp.Paste)),
-            key(Char('b'), width = 10.0f, tone = Tone.H3, long = Char(';'), swipeDown = Char('\\')),
-            key(Char('n'), width = 10.0f, tone = Tone.H3, long = Char(':')),
-            key(Char('m'), width = 10.0f, tone = Tone.H3, long = Char('?'), swipeDown = Char('|')),
-            key(Special(Nav.Backspace), label = "ic@backspace_outline", width = 15.0f, tone = Tone.Bs, preview = "⇦"),
-        )),
-        Row(48.0f, listOf(
-            key(ShowPage("number"), label = "?123", width = 12.5f, tone = Tone.Gn),
-            key(ShowPage(SymbolBoard.PUNCT_CN), label = "⌘", width = 12.5f, tone = Tone.Gn, textSp = 18.0f),
-            key(Char(','), label = "，", width = 10.0f, tone = Tone.H4, long = Insert("<>", listOf(Nav.Left))),
-            key(Special(Nav.Space), label = "______", asciiLabel = "English", width = 30.0f, tone = Tone.Kg, long = Special(Nav.Space), swipeLeft = Special(Nav.Left), swipeRight = Special(Nav.Right), preview = " ", slideCursor = true),
-            key(Char('.'), label = "。", width = 10.0f, tone = Tone.H4, long = ShowPage(SymbolBoard.KAO_FIRST)),
-            key(Special(Nav.Space), label = "中", width = 10.0f, tone = Tone.H4, long = OpenLiquid("特殊"), textSp = 18.0f),
-            key(Special(Nav.Return), label = EnterLabel, width = 15.0f, tone = Tone.Enter, swipeUp = Special(Nav.Escape), composing = Special(Nav.Return), preview = "↩"),
         )),
     ))
 
@@ -135,7 +83,7 @@ internal object MainPages {
             key(Char('/'), width = 10.0f),
         )),
         Row(48.0f, listOf(
-            key(ShowPage(SymbolBoard.PUNCT_CN), label = "=\\<", width = 15.0f, tone = Tone.Gn, functional = true),
+            key(OpenSymbols(SymbolGroup.Symbols), label = "符号", width = 15.0f, tone = Tone.Gn, textSp = 14.0f),
             key(Insert("、"), width = 10.0f),
             key(Insert("“"), width = 10.0f),
             key(Insert("”"), width = 10.0f),
@@ -146,140 +94,47 @@ internal object MainPages {
             key(Special(Nav.Backspace), label = "ic@backspace_outline", width = 15.0f, tone = Tone.Bs, preview = "⇦"),
         )),
         Row(48.0f, listOf(
-            key(ShowPage(Pages.DEFAULT), label = "返回", width = 15.0f, tone = Tone.Gn),
+            key(ShowPage(Pages.DEFAULT), label = "ABC", width = 15.0f, tone = Tone.Gn),
             key(Char(','), label = "，", width = 10.0f, tone = Tone.Gn, long = Char('<')),
-            key(ShowPage("numpad"), label = "1234", width = 10.0f, tone = Tone.Gn),
-            key(Special(Nav.Space), label = "拼音", asciiLabel = "English", width = 40.0f, tone = Tone.Kg, long = ToggleAscii, textSp = 16.0f, preview = " ", slideCursor = true),
+            key(ShowPage(Pages.NUMPAD), label = "123", width = 15.0f, tone = Tone.Gn),
+            key(Special(Nav.Space), label = "拼音", asciiLabel = "English", width = 35.0f, tone = Tone.Kg, long = ToggleAscii, textSp = 16.0f, preview = " ", slideCursor = true),
             key(Char('.'), label = "。", width = 10.0f, tone = Tone.Gn, long = Char('>')),
             key(Special(Nav.Return), label = EnterLabel, width = 15.0f, tone = Tone.Enter, preview = "↩"),
         )),
     ))
 
-    private fun numpad() = Page("numpad", AsciiPolicy.Follow, listOf(
+    private fun numpad() = Page(Pages.NUMPAD, AsciiPolicy.Follow, listOf(
         Row(48.0f, listOf(
-            key(Insert("{}", listOf(Nav.Left)), width = 16.6f, tone = Tone.Gn, long = Insert("【】", listOf(Nav.Left))),
             key(Char('+'), width = 16.6f, tone = Tone.Gn, long = Char('#')),
+            key(Char('-'), width = 16.6f, tone = Tone.Gn, long = Char('_')),
             key(Char('1'), width = 16.6f),
             key(Char('2'), width = 16.6f),
             key(Char('3'), width = 16.6f),
-            key(Special(Nav.Space), label = "空格", width = 16.6f, tone = Tone.Gn),
-        )),
-        Row(48.0f, listOf(
-            key(Char('_'), width = 16.6f, tone = Tone.Gn, long = Insert("[]", listOf(Nav.Left))),
-            key(Char('-'), width = 16.6f, tone = Tone.Gn, long = Char('%')),
-            key(Char('4'), width = 16.6f),
-            key(Char('5'), width = 16.6f),
-            key(Char('6'), width = 16.6f),
-            key(ShowPage("letter"), label = "EN", width = 16.6f, tone = Tone.Gn),
-        )),
-        Row(48.0f, listOf(
-            key(Insert("()", listOf(Nav.Left)), width = 16.6f, tone = Tone.Gn, long = Char('@')),
-            key(Char('*'), width = 16.6f, tone = Tone.Gn, long = Insert("±")),
-            key(Char('7'), width = 16.6f, long = Editor(EditorOp.SelectAll)),
-            key(Char('8'), width = 16.6f, long = Editor(EditorOp.Copy)),
-            key(Char('9'), width = 16.6f, long = PasteClipboard, swipeDown = Editor(EditorOp.Paste)),
             key(Special(Nav.Backspace), label = "ic@backspace_outline", width = 16.6f, tone = Tone.Bs, preview = "⇦"),
         )),
         Row(48.0f, listOf(
-            key(ShowPage(Pages.DEFAULT), label = "返回", width = 16.6f, tone = Tone.Gn, long = Char(':')),
-            key(Char('/'), width = 16.6f, tone = Tone.Gn, long = Char('\\')),
-            key(Char('.'), width = 16.6f, tone = Tone.Gn, long = ShowPage(SymbolBoard.PUNCT_CN)),
+            key(Char('*'), width = 16.6f, tone = Tone.Gn, long = Insert("×")),
+            key(Char('/'), width = 16.6f, tone = Tone.Gn, long = Insert("÷")),
+            key(Char('4'), width = 16.6f),
+            key(Char('5'), width = 16.6f),
+            key(Char('6'), width = 16.6f),
+            key(Special(Nav.Space), label = "空格", width = 16.6f, tone = Tone.Gn),
+        )),
+        Row(48.0f, listOf(
+            key(Insert("()", listOf(Nav.Left)), width = 16.6f, tone = Tone.Gn, long = Insert("[]", listOf(Nav.Left))),
+            key(Char('%'), width = 16.6f, tone = Tone.Gn, long = Char('@')),
+            key(Char('7'), width = 16.6f, long = Editor(EditorOp.SelectAll)),
+            key(Char('8'), width = 16.6f, long = Editor(EditorOp.Copy)),
+            key(Char('9'), width = 16.6f, long = PasteClipboard, swipeDown = Editor(EditorOp.Paste)),
+            key(OpenSymbols(SymbolGroup.Symbols), label = "符号", width = 16.6f, tone = Tone.Gn, textSp = 14.0f),
+        )),
+        Row(48.0f, listOf(
+            key(ShowPage(Pages.DEFAULT), label = "ABC", width = 16.6f, tone = Tone.Gn),
+            key(ShowPage(Pages.NUMBER), label = "123", width = 16.6f, tone = Tone.Gn),
+            key(Char('.'), width = 16.6f, long = Char(':')),
             key(Char('0'), width = 16.6f, long = Editor(EditorOp.Cut)),
-            key(Char('='), width = 16.6f, tone = Tone.Gn, long = Insert("≠")),
+            key(Char('='), width = 16.6f, long = Insert("≠")),
             key(Special(Nav.Return), label = EnterLabel, width = 16.6f, tone = Tone.Enter, preview = "↩"),
-        )),
-    ))
-
-    private fun symbols() = Page("symbols", AsciiPolicy.Chinese, listOf(
-        Row(26.0f, listOf(
-            key(ShowPage(SymbolBoard.EMOJI_FIRST), label = "🙂", width = 10.0f, tone = Tone.Gn),
-            key(ShowPage(SymbolBoard.emoji("hc")), label = "🌼", width = 10.0f, tone = Tone.Gn),
-            key(ShowPage(SymbolBoard.emoji("pt")), label = "🎂", width = 10.0f, tone = Tone.Gn),
-            key(ShowPage(SymbolBoard.emoji("lx")), label = "🚖", width = 10.0f, tone = Tone.Gn),
-            key(ShowPage(SymbolBoard.emoji("hd")), label = "🎉", width = 10.0f, tone = Tone.Gn),
-            key(ShowPage(SymbolBoard.emoji("kj")), label = "🔌", width = 10.0f, tone = Tone.Gn),
-            key(ShowPage(SymbolBoard.emoji("qt")), label = "🔶", width = 10.0f, tone = Tone.Gn),
-            key(ShowPage(SymbolBoard.emoji("qz")), label = "🇨🇳", width = 10.0f, tone = Tone.Gn),
-            key(ShowPage(SymbolBoard.emoji("fh")), label = "#!?", width = 10.0f, tone = Tone.Gn),
-            key(ShowPage("symbols"), label = "更多", width = 10.0f, tone = Tone.Enter, textSp = 14.0f),
-        )),
-        Row(39.5f, listOf(
-            key(Query("/fh"), width = 12.0f, long = Query("/1"), textSp = 16.0f),
-            key(Query("/dn"), width = 12.0f, long = Query("/2"), textSp = 16.0f),
-            key(Query("/tq"), width = 12.0f, long = Query("/3"), textSp = 16.0f),
-            key(Query("/yy"), width = 12.0f, long = Query("/4"), textSp = 16.0f),
-            key(Query("/dw"), width = 12.0f, long = Query("/5"), textSp = 16.0f),
-            key(Query("/sx"), width = 12.0f, long = Query("/fs"), textSp = 18.0f, cornerSp = 8.0f),
-            key(Query("/bg"), width = 12.0f, long = Query("/lssg"), textSp = 18.0f, cornerSp = 8.0f),
-            key(Special(Nav.Space), label = "空格", width = 16.0f, tone = Tone.Gn),
-        )),
-        Row(39.5f, listOf(
-            key(Query("/xh"), width = 12.0f, long = Query("/6"), textSp = 16.0f),
-            key(Query("/fk"), width = 12.0f, long = Query("/7"), textSp = 16.0f),
-            key(Query("/jh"), width = 12.0f, long = Query("/8"), textSp = 16.0f),
-            key(Query("/jt"), width = 12.0f, long = Query("/9"), textSp = 16.0f),
-            key(Query("/hb"), width = 12.0f, long = Query("/10"), textSp = 16.0f),
-            key(Query("/xb"), width = 12.0f, long = Query("/sb"), textSp = 16.0f, cornerSp = 8.0f),
-            key(Query("/tt"), width = 12.0f, long = Query("/xz"), textSp = 16.0f, cornerSp = 8.0f),
-            key(ShowPage("number"), label = "123", width = 16.0f, tone = Tone.Gn, long = Chord("5", ctrl = true, shift = true), composing = Special(Nav.PageUp)),
-        )),
-        Row(39.5f, listOf(
-            key(Query("/bd"), width = 12.0f, long = Query("/0"), textSp = 16.0f),
-            key(Query("/py"), width = 12.0f, long = Query("/bdz"), textSp = 16.0f, cornerSp = 8.0f),
-            key(Query("/zy"), width = 12.0f, long = Query("/pp"), textSp = 16.0f, cornerSp = 8.0f),
-            key(Query("/hw"), width = 12.0f, long = Query("/bq"), textSp = 16.0f, cornerSp = 8.0f),
-            key(Query("/jm"), width = 12.0f, long = Query("/pjm"), textSp = 16.0f, cornerSp = 8.0f),
-            key(Query("/mj"), width = 12.0f, long = Query("/sz"), textSp = 16.0f, cornerSp = 8.0f),
-            key(Query("/xq"), width = 12.0f, long = Query("/pk"), textSp = 16.0f, cornerSp = 8.0f),
-            key(Special(Nav.Backspace), label = "ic@backspace_outline", width = 16.0f, tone = Tone.Bs, composing = Special(Nav.Escape), preview = "⇦"),
-        )),
-        Row(39.5f, listOf(
-            key(ShowPage(Pages.DEFAULT), label = "返回", width = 16.0f, tone = Tone.Gn, composing = Special(Nav.PageDown)),
-            key(Insert("备用"), width = 16.0f, tone = Tone.Gn, composing = Special(Nav.Left)),
-            key(Query("/xl"), width = 12.0f, long = Query("/xld"), textSp = 16.0f, cornerSp = 8.0f),
-            key(Query("/lm"), width = 12.0f, long = Query("/lmd"), textSp = 16.0f, cornerSp = 8.0f),
-            key(Query("/ey"), width = 12.0f, long = Query("/eyd"), textSp = 16.0f, cornerSp = 8.0f),
-            key(Insert("备用"), width = 16.0f, tone = Tone.Gn, composing = Special(Nav.Right)),
-            key(Special(Nav.Return), label = EnterLabel, width = 16.0f, tone = Tone.Enter, preview = "↩"),
-        )),
-    ))
-
-    private fun editor() = Page("editor", AsciiPolicy.Ascii, listOf(
-        Row(39.5f, listOf(
-            key(Editor(EditorOp.SelectAll), width = 20.25f),
-            key(Chord("Left", ctrl = true, repeats = true), label = "⇦", width = 20.25f),
-            key(Special(Nav.Up), width = 20.25f),
-            key(Chord("Right", ctrl = true, repeats = true), label = "⇨", width = 20.25f),
-            key(Special(Nav.Space), label = "空格", width = 19.0f),
-        )),
-        Row(39.5f, listOf(
-            key(Editor(EditorOp.Cut), width = 20.25f),
-            key(Special(Nav.Left), width = 20.25f),
-            key(Shift, label = "选择", width = 20.25f, preview = "⇪"),
-            key(Special(Nav.Right), width = 20.25f),
-            key(ShowPage("number"), label = "?123", width = 19.0f),
-        )),
-        Row(39.5f, listOf(
-            key(Editor(EditorOp.Copy), width = 20.25f),
-            key(Special(Nav.Home), width = 20.25f),
-            key(Special(Nav.Down), width = 20.25f),
-            key(Special(Nav.End), width = 20.25f),
-            key(Special(Nav.Backspace), label = "ic@backspace_outline", width = 19.0f, preview = "⇦"),
-        )),
-        Row(39.5f, listOf(
-            key(Editor(EditorOp.Paste), width = 20.25f),
-            key(Editor(EditorOp.Undo), width = 20.25f),
-            key(Special(Nav.Tab), width = 20.25f),
-            key(Chord("z", ctrl = true, shift = true), label = "重做", width = 20.25f),
-            key(Special(Nav.Return), label = EnterLabel, width = 19.0f, preview = "↩"),
-        )),
-        Row(26.5f, listOf(
-            key(ShowPage(Pages.DEFAULT), label = "返回", width = 17.0f, textSp = 14.0f),
-            key(ShowPage(SymbolBoard.PUNCT_CN), label = "中文", width = 16.5f, textSp = 14.0f),
-            key(ShowPage(SymbolBoard.PUNCT_EN), label = "英文", width = 16.5f, textSp = 14.0f),
-            key(ShowPage(SymbolBoard.EMOJI_FIRST), label = "表情", width = 16.5f, textSp = 14.0f),
-            key(ShowPage(SymbolBoard.KAO_FIRST), label = "颜文", width = 16.5f, textSp = 14.0f),
-            key(ShowPage(Pages.LAST), label = "后退", width = 17.0f, textSp = 14.0f),
         )),
     ))
 

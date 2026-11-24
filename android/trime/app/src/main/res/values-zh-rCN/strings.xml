@@ -249,6 +249,9 @@
     <string name="dict_packs">词库</string>
     <string name="emoji_custom">候选映射</string>
     <string name="color_mode">键盘配色</string>
+    <string name="key_background">按键背景</string>
+    <string name="keyboard_height">键盘高度</string>
+    <string name="key_vertical_gap">按键垂直间距</string>
     <string name="color_mode_follow_system">跟随系统</string>
     <string name="color_mode_light">浅色</string>
     <string name="color_mode_dark">深色</string>

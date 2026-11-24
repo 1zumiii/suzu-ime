@@ -114,6 +114,9 @@ class AppPrefs(
             const val HIDE_KEY_SYMBOL = "hide_key_symbol"
             const val HIDE_KEY_HINT = "hide_key_hint"
             const val COLOR_MODE = "color_mode"
+            const val KEY_BACKGROUND = "key_background"
+            const val KEYBOARD_HEIGHT = "keyboard_height"
+            const val KEY_VERTICAL_GAP = "key_vertical_gap"
 
             const val SOUND_ON_KEYPRESS = "sound_on_keypress"
             const val KEY_SOUND_VOLUME = "sound_volume"
@@ -165,6 +168,15 @@ class AppPrefs(
         }
 
         val colorMode = enum(R.string.color_mode, COLOR_MODE, ColorMode.FOLLOW_SYSTEM)
+
+        /** 按键画圆角背景。默认不画，键盘是无键帽的样式 */
+        val keyBackground = switch(R.string.key_background, KEY_BACKGROUND, false)
+
+        /** 竖屏时键盘区的高度，单位 dp。横屏用主题里的固定高度 */
+        val keyboardHeight = int(R.string.keyboard_height, KEYBOARD_HEIGHT, 245, 180, 320, "dp", step = 5)
+
+        /** 上下相邻两行按键之间的空隙，单位 dp。键盘总高度不变，空隙越小键帽越高 */
+        val keyVerticalGap = int(R.string.key_vertical_gap, KEY_VERTICAL_GAP, 12, 0, 24, "dp")
 
         val hideKeySymbol = switch(R.string.hide_key_symbol, HIDE_KEY_SYMBOL, false)
         val hideKeyHint = switch(R.string.hide_key_hint, HIDE_KEY_HINT, false)
