@@ -4,41 +4,41 @@
   ~ SPDX-License-Identifier: GPL-3.0-or-later
   -->
 <!-- Material 3 配色，种子色 #009BD1（原强调色）；不跟随系统壁纸取色，免得壁纸颜色带偏界面 -->
-<!-- 深色：背景与卡片用中性近黑（参照原型的暗色），强调色仍是蓝色 -->
+<!-- 深色：按用户给的示意图取色，近黑偏紫的背景、略亮的卡片、淡紫强调色 -->
 <resources>
-    <color name="m3_primary">#7DD0FF</color>
-    <color name="m3_onPrimary">#00344A</color>
-    <color name="m3_primaryContainer">#004C69</color>
-    <color name="m3_onPrimaryContainer">#C4E7FF</color>
-    <color name="m3_secondary">#B5C9D7</color>
-    <color name="m3_onSecondary">#20333E</color>
-    <color name="m3_secondaryContainer">#374955</color>
-    <color name="m3_onSecondaryContainer">#D1E5F4</color>
-    <color name="m3_tertiary">#CAC1E9</color>
-    <color name="m3_onTertiary">#322C4C</color>
-    <color name="m3_tertiaryContainer">#484264</color>
-    <color name="m3_onTertiaryContainer">#E6DEFF</color>
+    <color name="m3_primary">#CDBDF2</color>
+    <color name="m3_onPrimary">#34295A</color>
+    <color name="m3_primaryContainer">#4B4072</color>
+    <color name="m3_onPrimaryContainer">#E9DDFF</color>
+    <color name="m3_secondary">#CBC2DB</color>
+    <color name="m3_onSecondary">#332D41</color>
+    <color name="m3_secondaryContainer">#4A4458</color>
+    <color name="m3_onSecondaryContainer">#E8DEF8</color>
+    <color name="m3_tertiary">#EFB8C8</color>
+    <color name="m3_onTertiary">#492532</color>
+    <color name="m3_tertiaryContainer">#633B48</color>
+    <color name="m3_onTertiaryContainer">#FFD8E4</color>
     <color name="m3_error">#FFB4AB</color>
     <color name="m3_onError">#690005</color>
     <color name="m3_errorContainer">#93000A</color>
     <color name="m3_onErrorContainer">#FFDAD6</color>
-    <color name="m3_surface">#1B1C19</color>
-    <color name="m3_onSurface">#E4E3DB</color>
-    <color name="m3_surfaceVariant">#45483F</color>
-    <color name="m3_onSurfaceVariant">#C5C7BC</color>
-    <color name="m3_outline">#8F9287</color>
-    <color name="m3_outlineVariant">#3A3D36</color>
-    <color name="m3_surfaceContainerLowest">#151613</color>
-    <color name="m3_surfaceContainerLow">#1F201D</color>
-    <color name="m3_surfaceContainer">#232521</color>
-    <color name="m3_surfaceContainerHigh">#2E312C</color>
-    <color name="m3_surfaceContainerHighest">#393B36</color>
-    <color name="m3_surfaceDim">#1B1C19</color>
-    <color name="m3_surfaceBright">#393B36</color>
-    <color name="m3_inverseSurface">#E4E3DB</color>
-    <color name="m3_inverseOnSurface">#2F312C</color>
-    <color name="m3_inversePrimary">#00668A</color>
+    <color name="m3_surface">#141318</color>
+    <color name="m3_onSurface">#E8E5EE</color>
+    <color name="m3_surfaceVariant">#49454F</color>
+    <color name="m3_onSurfaceVariant">#C3BFCD</color>
+    <color name="m3_outline">#948F99</color>
+    <color name="m3_outlineVariant">#3A3740</color>
+    <color name="m3_surfaceContainerLowest">#0F0D13</color>
+    <color name="m3_surfaceContainerLow">#1D1B20</color>
+    <color name="m3_surfaceContainer">#211F26</color>
+    <color name="m3_surfaceContainerHigh">#2B2930</color>
+    <color name="m3_surfaceContainerHighest">#36343B</color>
+    <color name="m3_surfaceDim">#141318</color>
+    <color name="m3_surfaceBright">#3B383E</color>
+    <color name="m3_inverseSurface">#E6E0E9</color>
+    <color name="m3_inverseOnSurface">#322F35</color>
+    <color name="m3_inversePrimary">#65558F</color>
     <!-- 设置页：页面底色与卡片色 -->
-    <color name="m3_page">#1B1C19</color>
-    <color name="m3_card">#272925</color>
+    <color name="m3_page">#141318</color>
+    <color name="m3_card">#25232A</color>
 </resources>
