@@ -17,7 +17,7 @@ import com.osfans.trime.R
 import com.osfans.trime.util.Logcat
 import kotlinx.coroutines.flow.launchIn
 import kotlinx.coroutines.flow.onEach
-import splitties.resources.styledColor
+import com.osfans.trime.ui.common.themeColor
 import splitties.views.dsl.core.add
 import splitties.views.dsl.core.lParams
 import splitties.views.dsl.core.matchParent
@@ -63,7 +63,7 @@ constructor(
     fun append(content: String) {
         logAdapter.append(
             buildSpannedString {
-                color(styledColor(android.R.attr.colorForeground)) { append(content) }
+                color(themeColor(android.R.attr.colorForeground)) { append(content) }
             },
         )
     }

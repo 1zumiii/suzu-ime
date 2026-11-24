@@ -6,17 +6,16 @@
 package com.osfans.trime.ui.main
 
 import android.content.Intent
+import android.content.res.Configuration
 import android.os.Bundle
 import android.view.Menu
 import android.view.ViewGroup
 import androidx.activity.addCallback
 import androidx.activity.enableEdgeToEdge
 import androidx.activity.viewModels
-import androidx.appcompat.app.AlertDialog
 import androidx.appcompat.app.AppCompatActivity
 import androidx.appcompat.app.AppCompatDelegate
 import androidx.appcompat.graphics.drawable.DrawerArrowDrawable
-import androidx.core.content.ContextCompat
 import androidx.core.view.ViewCompat
 import androidx.core.view.WindowCompat
 import androidx.core.view.WindowInsetsAnimationCompat
@@ -24,9 +23,12 @@ import androidx.core.view.WindowInsetsCompat
 import androidx.core.view.forEach
 import androidx.core.view.isVisible
 import androidx.core.view.updateLayoutParams
+import androidx.lifecycle.lifecycleScope
 import androidx.navigation.NavController
 import androidx.navigation.NavDestination.Companion.hasRoute
 import androidx.navigation.fragment.NavHostFragment
+import com.google.android.material.color.MaterialColors
+import com.google.android.material.dialog.MaterialAlertDialogBuilder
 import com.hjq.permissions.Permission
 import com.hjq.permissions.XXPermissions
 import com.osfans.trime.BuildConfig
@@ -35,6 +37,7 @@ import com.osfans.trime.daemon.launchOnReady
 import com.osfans.trime.data.prefs.AppPrefs
 import com.osfans.trime.data.soundeffect.SoundEffectManager
 import com.osfans.trime.databinding.ActivityMainBinding
+import com.osfans.trime.suzu.AppUpdater
 import com.osfans.trime.ui.setup.SetupActivity
 import com.osfans.trime.util.item
 import com.osfans.trime.util.parcelable
@@ -92,16 +95,19 @@ class MainActivity : AppCompatActivity() {
                 }
             },
         )
-        WindowCompat
-            .getInsetsController(window, window.decorView)
-            .isAppearanceLightStatusBars = false
+        // Material 3 的顶栏与页面同色，状态栏图标跟随深浅色
+        val night = (resources.configuration.uiMode and Configuration.UI_MODE_NIGHT_MASK) == Configuration.UI_MODE_NIGHT_YES
+        WindowCompat.getInsetsController(window, window.decorView).apply {
+            isAppearanceLightStatusBars = !night
+            isAppearanceLightNavigationBars = !night
+        }
 
         setContentView(binding.root)
         // always show toolbar back arrow icon
         binding.mainToolbar.toolbar.navigationIcon =
             DrawerArrowDrawable(this).apply {
                 progress = 1f
-                color = ContextCompat.getColor(this@MainActivity, R.color.toolbarForegroundColor)
+                color = MaterialColors.getColor(binding.mainToolbar.toolbar, com.google.android.material.R.attr.colorOnSurface)
             }
         // show menu icon and other action icons on toolbar
         // don't use `setSupportActionBar(binding.toolbar)` here,
@@ -143,6 +149,7 @@ class MainActivity : AppCompatActivity() {
         supportActionBar?.setDisplayHomeAsUpEnabled(true)
         processIntent(intent)
         checkNotificationPermission()
+        AppUpdater.autoCheck(this, lifecycleScope)
     }
 
     override fun onNewIntent(intent: Intent) {
@@ -224,8 +231,7 @@ class MainActivity : AppCompatActivity() {
         if (XXPermissions.isGranted(this, Permission.POST_NOTIFICATIONS)) {
             return
         } else {
-            AlertDialog
-                .Builder(this)
+            MaterialAlertDialogBuilder(this)
                 .setIconAttribute(android.R.attr.alertDialogIcon)
                 .setTitle(R.string.notification_permission_title)
                 .setMessage(R.string.notification_permission_message)

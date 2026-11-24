@@ -6,6 +6,7 @@
 package com.osfans.trime.ui.main.settings
 
 import android.os.Bundle
+import com.osfans.trime.ui.common.materialDialog
 import androidx.appcompat.app.AlertDialog
 import androidx.fragment.app.activityViewModels
 import androidx.lifecycle.lifecycleScope
@@ -52,8 +53,7 @@ class ProfileSettingsFragment : PaddingPreferenceFragment() {
                 addPreference(R.string.reset, R.string.reset_hint) {
                     val items = ctx.assets.list("shared") ?: return@addPreference
                     val checked = BooleanArray(items.size) { false }
-                    AlertDialog
-                        .Builder(ctx)
+                    materialDialog(ctx)
                         .setTitle(R.string.reset)
                         .setMultiChoiceItems(items, checked) { _, id, isChecked ->
                             checked[id] = isChecked

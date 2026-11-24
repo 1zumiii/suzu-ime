@@ -6,6 +6,7 @@
 package com.osfans.trime.suzu
 
 import android.os.Bundle
+import com.osfans.trime.ui.common.materialDialog
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.appcompat.app.AlertDialog
 import androidx.fragment.app.activityViewModels
@@ -84,7 +85,7 @@ class ModelFragment : PaddingPreferenceFragment() {
             asset == SuzuAsset.Model -> chooseModel()
             SuzuAssets.isInstalled(asset) -> confirmDelete(asset)
             asset == SuzuAsset.Grammar ->
-                AlertDialog.Builder(requireContext())
+                materialDialog(requireContext())
                     .setTitle(asset.title)
                     .setItems(arrayOf(getString(R.string.suzu_grammar_download_lts, asset.sizeMb), getString(R.string.suzu_choose_downloaded_file))) { _, which ->
                         if (which == 0) SuzuAssets.start(asset) else pickGrammar.launch(arrayOf("*/*"))
@@ -102,7 +103,7 @@ class ModelFragment : PaddingPreferenceFragment() {
         val items = models.map { m ->
             if (installed && m.title == current) "${m.title}（当前）" else "${m.title}（约 ${m.sizeMb} MB）"
         } + if (installed) listOf("删除模型") else emptyList()
-        AlertDialog.Builder(requireContext())
+        materialDialog(requireContext())
             .setTitle(if (installed) "换用模型" else "下载模型")
             .setItems(items.toTypedArray()) { _, which ->
                 val m = models.getOrNull(which)
@@ -118,7 +119,7 @@ class ModelFragment : PaddingPreferenceFragment() {
     }
 
     private fun confirmDelete(asset: SuzuAsset) {
-        AlertDialog.Builder(requireContext())
+        materialDialog(requireContext())
             .setTitle("删除${asset.title}？")
             .setMessage(
                 if (asset == SuzuAsset.Model) {

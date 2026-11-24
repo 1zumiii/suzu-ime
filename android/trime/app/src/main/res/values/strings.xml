@@ -7,8 +7,8 @@
 
 <resources xmlns:xliff="urn:oasis:names:en:xliff:document:1.2">
     <!-- Input Method Platform Tittle  -->
-    <string name="app_name_release">Suzu IME</string>
-    <string name="app_name_debug">Suzu IME (Debug)</string>
+    <string name="app_name_release">Trime-Suzu</string>
+    <string name="app_name_debug">Trime-Suzu (Debug)</string>
     <!-- Preference settings -->
     <string name="librime_version">RIME version</string>
     <string name="opencc_version">OpenCC version</string>
@@ -65,8 +65,8 @@
     <string name="custom_sound_effect_name">Custom key Sound Effect</string>
     <string name="setup__next">Next</string>
     <string name="done">Done</string>
-    <string name="setup__enable_ime_hint">Enable <b>Suzu IME</b> in Language and input settings</string>
-    <string name="setup__select_ime_hint">Select <b>Suzu IME</b> as your default input method</string>
+    <string name="setup__enable_ime_hint">Enable <b>Trime-Suzu</b> in Language and input settings</string>
+    <string name="setup__select_ime_hint">Select <b>Trime-Suzu</b> as your default input method</string>
     <string name="setup__enable_ime">Enable Input Method</string>
     <string name="setup__select_ime">Select Input Method</string>
     <string name="setup__prev">Previous</string>
@@ -291,4 +291,27 @@
     <string name="suzu_file_checksum_failed">File verification failed. Download it again; if the problem persists, the source file may have changed.</string>
     <string name="models">Models</string>
     <string name="based_on_trime">Based on Trime</string>
+    <string name="suzu_update_check">Check for updates</string>
+    <string name="suzu_update_check_summary">Current version %1$s. Downloads come from the project\'s GitHub Releases.</string>
+    <string name="suzu_update_auto_check">Check automatically</string>
+    <string name="suzu_update_auto_check_summary">Check at most once a day when you open settings. The keyboard itself never goes online.</string>
+    <string name="suzu_update_checking">Checking for updates…</string>
+    <string name="suzu_update_up_to_date">You have the latest version</string>
+    <string name="suzu_update_current_version">Current version: %1$s</string>
+    <string name="suzu_update_check_failed">Update check failed</string>
+    <string name="suzu_update_check_failed_message">Could not reach GitHub (%1$s). Check your network, or open the Releases page in a browser.</string>
+    <string name="suzu_update_open_page">Open Releases page</string>
+    <string name="suzu_update_available">Version %1$s is available</string>
+    <string name="suzu_update_available_message">Installed: %1$s
+New: %2$s
+Package: %3$s (%4$s MB)</string>
+    <string name="suzu_update_install">Download and install</string>
+    <string name="suzu_update_later">Later</string>
+    <string name="suzu_update_skip">Skip this version</string>
+    <string name="suzu_update_need_permission">Allow installing updates</string>
+    <string name="suzu_update_need_permission_message">To install the update, allow Trime-Suzu to install unknown apps on the next screen, then come back and tap Download and install again.</string>
+    <string name="suzu_update_downloading">Downloading %1$s</string>
+    <string name="suzu_update_downloading_progress">Downloading</string>
+    <string name="suzu_update_download_failed">Update download failed</string>
+    <string name="suzu_update_signature_mismatch">The downloaded package is signed with a different key from the installed app and cannot replace it. Install it manually from the Releases page.</string>
 </resources>

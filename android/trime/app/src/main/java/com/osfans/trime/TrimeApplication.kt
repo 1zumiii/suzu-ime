@@ -17,6 +17,7 @@ import android.util.Log
 import androidx.core.content.ContextCompat
 import androidx.core.content.edit
 import androidx.preference.PreferenceManager
+import com.google.android.material.color.DynamicColors
 import com.osfans.trime.daemon.RimeDaemon
 import com.osfans.trime.data.db.ClipboardHelper
 import com.osfans.trime.data.db.CollectionHelper
@@ -92,6 +93,8 @@ class TrimeApplication : Application() {
 
     override fun onCreate() {
         super.onCreate()
+        // Android 12 以上设置 App 跟随系统壁纸取色（Material You），更低的版本用 colors_m3.xml 的配色
+        DynamicColors.applyToActivitiesIfAvailable(this)
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.N && !userManager.isUserUnlocked) {
             isDirectBootMode = true
             registerReceiver(unlockReceiver, IntentFilter(Intent.ACTION_USER_UNLOCKED))

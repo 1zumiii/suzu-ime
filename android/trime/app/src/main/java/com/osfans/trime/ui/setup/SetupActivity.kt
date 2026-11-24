@@ -6,6 +6,7 @@
 package com.osfans.trime.ui.setup
 
 import android.app.PendingIntent
+import com.osfans.trime.ui.common.materialDialog
 import android.content.Intent
 import android.os.Bundle
 import android.view.View
@@ -18,7 +19,7 @@ import androidx.core.view.ViewCompat
 import androidx.core.view.WindowInsetsCompat
 import androidx.core.view.isGone
 import androidx.fragment.app.Fragment
-import androidx.fragment.app.FragmentActivity
+import androidx.appcompat.app.AppCompatActivity
 import androidx.lifecycle.lifecycleScope
 import androidx.viewpager2.adapter.FragmentStateAdapter
 import androidx.viewpager2.widget.ViewPager2
@@ -36,7 +37,7 @@ import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import splitties.systemservices.notificationManager
 
-class SetupActivity : FragmentActivity() {
+class SetupActivity : AppCompatActivity() {
     private lateinit var viewPager: ViewPager2
 
     private lateinit var skipButton: Button
@@ -81,8 +82,7 @@ class SetupActivity : FragmentActivity() {
         skipButton = binding.skipButton.apply {
             text = getString(R.string.setup__skip)
             setOnClickListener {
-                AlertDialog
-                    .Builder(this@SetupActivity)
+                materialDialog(this@SetupActivity)
                     .setMessage(R.string.setup__skip_hint)
                     .setPositiveButton(R.string.setup__skip_hint_yes) { _, _ ->
                         completeSetup()

@@ -10,9 +10,12 @@ import android.content.Intent
 import android.net.Uri
 import android.os.Bundle
 import androidx.navigation.fragment.findNavController
+import androidx.lifecycle.lifecycleScope
 import androidx.preference.Preference
+import androidx.preference.SwitchPreferenceCompat
 import com.osfans.trime.BuildConfig
 import com.osfans.trime.R
+import com.osfans.trime.suzu.AppUpdater
 import com.osfans.trime.ui.common.PaddingPreferenceFragment
 import com.osfans.trime.util.Const
 import com.osfans.trime.util.addCategory
@@ -27,6 +30,26 @@ class AboutFragment : PaddingPreferenceFragment() {
         rootKey: String?,
     ) {
         preferenceScreen = preferenceManager.createPreferenceScreen(requireContext()).apply {
+            addPreference(
+                Preference(requireContext()).apply {
+                    isIconSpaceReserved = false
+                    setTitle(R.string.suzu_update_check)
+                    summary = getString(R.string.suzu_update_check_summary, AppUpdater.currentVersion)
+                    setOnPreferenceClickListener {
+                        AppUpdater.manualCheck(requireActivity(), viewLifecycleOwner.lifecycleScope)
+                        true
+                    }
+                },
+            )
+            addPreference(
+                SwitchPreferenceCompat(requireContext()).apply {
+                    isIconSpaceReserved = false
+                    key = AppUpdater.PREF_AUTO_CHECK
+                    setDefaultValue(true)
+                    setTitle(R.string.suzu_update_auto_check)
+                    setSummary(R.string.suzu_update_auto_check_summary)
+                },
+            )
             addPreference(R.string.current_version, Const.VERSION_NAME) {
                 startActivity(
                     Intent(

@@ -7,8 +7,8 @@
 
 <resources xmlns:xliff="urn:oasis:names:tc:xliff:document:1.2">
     <!-- 输入法平台名称  -->
-    <string name="app_name_release">Suzu 输入法</string>
-    <string name="app_name_debug">Suzu 输入法（调试）</string>
+    <string name="app_name_release">Trime-Suzu</string>
+    <string name="app_name_debug">Trime-Suzu（调试）</string>
     <string name="librime_version">RIME 版本</string>
     <string name="opencc_version">OpenCC 版本</string>
     <string name="current_version">当前版本</string>
@@ -61,8 +61,8 @@
     <string name="custom_sound_effect_name">自定义按键音效</string>
     <string name="setup__next">下一步</string>
     <string name="done">完成</string>
-    <string name="setup__enable_ime_hint">在语言和输入设置中启用<b>Suzu 输入法</b></string>
-    <string name="setup__select_ime_hint">选择<b>Suzu 输入法</b>作为默认输入法</string>
+    <string name="setup__enable_ime_hint">在语言和输入设置中启用<b>Trime-Suzu</b></string>
+    <string name="setup__select_ime_hint">选择<b>Trime-Suzu</b>作为默认输入法</string>
     <string name="setup__enable_ime">启用输入法</string>
     <string name="setup__select_ime">选择输入法</string>
     <string name="setup__prev">上一步</string>
@@ -290,4 +290,27 @@
     <string name="suzu_file_checksum_failed">文件校验失败，请重新下载。若仍失败，可能是来源文件已更新。</string>
     <string name="models">模型</string>
     <string name="based_on_trime">基于同文输入法（Trime）</string>
+    <string name="suzu_update_check">检查更新</string>
+    <string name="suzu_update_check_summary">当前版本 %1$s，安装包来自项目的 GitHub Release</string>
+    <string name="suzu_update_auto_check">自动检查更新</string>
+    <string name="suzu_update_auto_check_summary">打开设置时检查，每天最多一次。键盘本身不联网。</string>
+    <string name="suzu_update_checking">正在检查更新…</string>
+    <string name="suzu_update_up_to_date">已是最新版本</string>
+    <string name="suzu_update_current_version">当前版本：%1$s</string>
+    <string name="suzu_update_check_failed">检查更新失败</string>
+    <string name="suzu_update_check_failed_message">连不上 GitHub（%1$s）。请检查网络，或在浏览器里打开 Release 页面。</string>
+    <string name="suzu_update_open_page">打开 Release 页面</string>
+    <string name="suzu_update_available">发现新版本 %1$s</string>
+    <string name="suzu_update_available_message">已安装：%1$s
+新版本：%2$s
+安装包：%3$s（%4$s MB）</string>
+    <string name="suzu_update_install">下载并安装</string>
+    <string name="suzu_update_later">以后再说</string>
+    <string name="suzu_update_skip">跳过此版本</string>
+    <string name="suzu_update_need_permission">允许安装更新</string>
+    <string name="suzu_update_need_permission_message">安装更新需要在下一页允许 Trime-Suzu 安装未知应用。开启后返回，再点一次“下载并安装”。</string>
+    <string name="suzu_update_downloading">正在下载 %1$s</string>
+    <string name="suzu_update_downloading_progress">下载中</string>
+    <string name="suzu_update_download_failed">下载更新失败</string>
+    <string name="suzu_update_signature_mismatch">下载的安装包与已装版本的签名不同，无法覆盖安装。请到 Release 页面手动安装。</string>
 </resources>

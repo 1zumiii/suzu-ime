@@ -30,8 +30,7 @@ fun Context.ProgressBarDialogIndeterminate(
     @StringRes title: Int,
 ): AlertDialog.Builder {
     val androidStyles = AndroidStyles(this)
-    return AlertDialog
-        .Builder(this)
+    return materialDialog(this)
         .setTitle(title)
         .setView(
             verticalLayout {

@@ -1,0 +1,40 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+  ~ SPDX-FileCopyrightText: 2026 Rime community
+  ~ SPDX-License-Identifier: GPL-3.0-or-later
+  -->
+<!-- Material 3 配色，种子色 #009BD1（原强调色）；Android 12 以上默认改用系统壁纸取色 -->
+<resources>
+    <color name="m3_primary">#7DD0FF</color>
+    <color name="m3_onPrimary">#00344A</color>
+    <color name="m3_primaryContainer">#004C69</color>
+    <color name="m3_onPrimaryContainer">#C4E7FF</color>
+    <color name="m3_secondary">#B5C9D7</color>
+    <color name="m3_onSecondary">#20333E</color>
+    <color name="m3_secondaryContainer">#374955</color>
+    <color name="m3_onSecondaryContainer">#D1E5F4</color>
+    <color name="m3_tertiary">#CAC1E9</color>
+    <color name="m3_onTertiary">#322C4C</color>
+    <color name="m3_tertiaryContainer">#484264</color>
+    <color name="m3_onTertiaryContainer">#E6DEFF</color>
+    <color name="m3_error">#FFB4AB</color>
+    <color name="m3_onError">#690005</color>
+    <color name="m3_errorContainer">#93000A</color>
+    <color name="m3_onErrorContainer">#FFDAD6</color>
+    <color name="m3_surface">#0F1417</color>
+    <color name="m3_onSurface">#DFE3E7</color>
+    <color name="m3_surfaceVariant">#41484D</color>
+    <color name="m3_onSurfaceVariant">#C0C7CD</color>
+    <color name="m3_outline">#8A9297</color>
+    <color name="m3_outlineVariant">#41484D</color>
+    <color name="m3_surfaceContainerLowest">#0A0F12</color>
+    <color name="m3_surfaceContainerLow">#171C1F</color>
+    <color name="m3_surfaceContainer">#1B2023</color>
+    <color name="m3_surfaceContainerHigh">#252B2E</color>
+    <color name="m3_surfaceContainerHighest">#303539</color>
+    <color name="m3_surfaceDim">#0F1417</color>
+    <color name="m3_surfaceBright">#353A3D</color>
+    <color name="m3_inverseSurface">#DFE3E7</color>
+    <color name="m3_inverseOnSurface">#2C3134</color>
+    <color name="m3_inversePrimary">#00668A</color>
+</resources>

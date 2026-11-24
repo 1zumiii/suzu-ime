@@ -6,6 +6,7 @@
 package com.osfans.trime.suzu
 
 import android.os.Bundle
+import com.osfans.trime.ui.common.materialDialog
 import android.text.InputType
 import android.widget.EditText
 import android.widget.LinearLayout
@@ -115,7 +116,7 @@ class EmojiCustomFragment : PaddingPreferenceFragment() {
             addView(key)
             addView(emoji)
         }
-        AlertDialog.Builder(ctx)
+        materialDialog(ctx)
             .setTitle(if (old == null) "添加映射" else "编辑映射")
             .setView(box)
             .setPositiveButton("保存") { _, _ ->

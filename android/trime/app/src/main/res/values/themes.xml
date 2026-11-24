@@ -1,17 +1,59 @@
 <?xml version="1.0" encoding="utf-8"?>
 
 <!--
-SPDX-FileCopyrightText: 2015 - 2024 Rime community
+SPDX-FileCopyrightText: 2015 - 2026 Rime community
 
 SPDX-License-Identifier: GPL-3.0-or-later
 -->
 
 <resources>
-    <style name="Theme.TrimeAppTheme" parent="Theme.AppCompat.Light.NoActionBar">
-        <item name="colorPrimary">@color/colorPrimary</item>
-        <item name="colorPrimaryDark">@color/colorPrimaryDark</item>
-        <item name="colorAccent">@color/colorAccent</item>
-        <item name="android:colorAccent" >@color/colorAccent</item>
+    <style name="Theme.TrimeAppTheme" parent="Theme.Material3.DayNight.NoActionBar">
+        <item name="colorPrimary">@color/m3_primary</item>
+        <item name="colorOnPrimary">@color/m3_onPrimary</item>
+        <item name="colorPrimaryContainer">@color/m3_primaryContainer</item>
+        <item name="colorOnPrimaryContainer">@color/m3_onPrimaryContainer</item>
+        <item name="colorSecondary">@color/m3_secondary</item>
+        <item name="colorOnSecondary">@color/m3_onSecondary</item>
+        <item name="colorSecondaryContainer">@color/m3_secondaryContainer</item>
+        <item name="colorOnSecondaryContainer">@color/m3_onSecondaryContainer</item>
+        <item name="colorTertiary">@color/m3_tertiary</item>
+        <item name="colorOnTertiary">@color/m3_onTertiary</item>
+        <item name="colorTertiaryContainer">@color/m3_tertiaryContainer</item>
+        <item name="colorOnTertiaryContainer">@color/m3_onTertiaryContainer</item>
+        <item name="colorError">@color/m3_error</item>
+        <item name="colorOnError">@color/m3_onError</item>
+        <item name="colorErrorContainer">@color/m3_errorContainer</item>
+        <item name="colorOnErrorContainer">@color/m3_onErrorContainer</item>
+        <item name="colorSurface">@color/m3_surface</item>
+        <item name="colorOnSurface">@color/m3_onSurface</item>
+        <item name="colorSurfaceVariant">@color/m3_surfaceVariant</item>
+        <item name="colorOnSurfaceVariant">@color/m3_onSurfaceVariant</item>
+        <item name="colorOutline">@color/m3_outline</item>
+        <item name="colorOutlineVariant">@color/m3_outlineVariant</item>
+        <item name="colorSurfaceContainerLowest">@color/m3_surfaceContainerLowest</item>
+        <item name="colorSurfaceContainerLow">@color/m3_surfaceContainerLow</item>
+        <item name="colorSurfaceContainer">@color/m3_surfaceContainer</item>
+        <item name="colorSurfaceContainerHigh">@color/m3_surfaceContainerHigh</item>
+        <item name="colorSurfaceContainerHighest">@color/m3_surfaceContainerHighest</item>
+        <item name="colorSurfaceDim">@color/m3_surfaceDim</item>
+        <item name="colorSurfaceBright">@color/m3_surfaceBright</item>
+        <item name="colorSurfaceInverse">@color/m3_inverseSurface</item>
+        <item name="colorOnSurfaceInverse">@color/m3_inverseOnSurface</item>
+        <item name="colorPrimaryInverse">@color/m3_inversePrimary</item>
+        <item name="android:colorBackground">@color/m3_surface</item>
+        <item name="colorOnBackground">@color/m3_onSurface</item>
+        <item name="android:statusBarColor">@android:color/transparent</item>
+        <item name="android:navigationBarColor">@android:color/transparent</item>
+        <item name="preferenceTheme">@style/PreferenceThemeOverlay.Trime</item>
+    </style>
+
+    <!-- 设置页的开关换成 Material 3 的 MaterialSwitch -->
+    <style name="PreferenceThemeOverlay.Trime" parent="@style/PreferenceThemeOverlay">
+        <item name="switchPreferenceCompatStyle">@style/Preference.SwitchPreferenceCompat.Trime</item>
+    </style>
+
+    <style name="Preference.SwitchPreferenceCompat.Trime" parent="@style/Preference.SwitchPreferenceCompat.Material">
+        <item name="widgetLayout">@layout/preference_material_switch</item>
     </style>
 
     <style name="Theme.DialogTheme" parent="@android:style/Theme.DeviceDefault.Light.Dialog" />

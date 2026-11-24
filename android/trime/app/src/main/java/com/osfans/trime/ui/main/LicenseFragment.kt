@@ -6,6 +6,7 @@
 package com.osfans.trime.ui.main
 
 import android.content.Intent
+import com.osfans.trime.ui.common.materialDialog
 import android.net.Uri
 import android.os.Bundle
 import androidx.appcompat.app.AlertDialog
@@ -71,8 +72,7 @@ class LicenseFragment : PaddingPreferenceFragment() {
             else -> {
                 val licenseArray = licenses.toTypedArray()
                 val licenseNames = licenseArray.map { it.spdxId ?: it.name }.toTypedArray()
-                AlertDialog
-                    .Builder(requireContext())
+                materialDialog(requireContext())
                     .setTitle(uniqueId)
                     .setItems(licenseNames) { _, idx ->
                         showLicenseContent(licenseArray[idx])

@@ -24,7 +24,7 @@ import com.google.android.material.snackbar.Snackbar
 import com.osfans.trime.R
 import splitties.dimensions.dp
 import splitties.resources.drawable
-import splitties.resources.styledColor
+import com.osfans.trime.ui.common.themeColor
 import splitties.views.backgroundColor
 import splitties.views.bottomPadding
 import splitties.views.dsl.coordinatorlayout.coordinatorLayout
@@ -49,7 +49,7 @@ class UserDictListUi(
         view(::FloatingActionButton) {
             imageDrawable =
                 drawable(R.drawable.ic_baseline_add_24)!!.apply {
-                    setTint(styledColor(android.R.attr.colorForegroundInverse))
+                    setTint(themeColor(android.R.attr.colorForegroundInverse))
                 }
         }
 
@@ -87,7 +87,7 @@ class UserDictListUi(
     }
 
     override val root = coordinatorLayout {
-        backgroundColor = styledColor(android.R.attr.colorBackground)
+        backgroundColor = themeColor(android.R.attr.colorBackground)
         add(
             list,
             defaultLParams {

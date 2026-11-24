@@ -1,7 +1,7 @@
 <?xml version="1.0" encoding="utf-8"?>
 
 <!--
-SPDX-FileCopyrightText: 2015 - 2024 Rime community
+SPDX-FileCopyrightText: 2015 - 2026 Rime community
 
 SPDX-License-Identifier: GPL-3.0-or-later
 -->
@@ -11,12 +11,13 @@ SPDX-License-Identifier: GPL-3.0-or-later
     xmlns:app="http://schemas.android.com/apk/res-auto"
     android:id="@+id/appBar"
     android:layout_width="match_parent"
-    android:layout_height="wrap_content">
-    <androidx.appcompat.widget.Toolbar
+    android:layout_height="wrap_content"
+    android:fitsSystemWindows="false"
+    app:liftOnScroll="true"
+    app:liftOnScrollTargetViewId="@id/recycler_view">
+    <com.google.android.material.appbar.MaterialToolbar
         android:id="@+id/toolbar"
         android:layout_width="match_parent"
         android:layout_height="wrap_content"
-        android:background="@color/colorPrimary"
-        android:theme="@style/ThemeOverlay.AppCompat.Dark.ActionBar"
-        app:popupTheme="@style/ThemeOverlay.AppCompat.DayNight" />
+        android:minHeight="?attr/actionBarSize" />
 </com.google.android.material.appbar.AppBarLayout>

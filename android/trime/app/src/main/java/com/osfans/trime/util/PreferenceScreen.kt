@@ -14,7 +14,7 @@ import androidx.preference.PreferenceGroup
 import androidx.preference.PreferenceScreen
 import androidx.preference.PreferenceViewHolder
 import splitties.resources.drawable
-import splitties.resources.styledColor
+import com.osfans.trime.ui.common.themeColor
 
 fun PreferenceScreen.addCategory(title: String, block: PreferenceCategory.() -> Unit) {
     val category = PreferenceCategory(context).apply {
@@ -43,7 +43,7 @@ fun Preference.setup(
         setIcon(
             context.drawable(icon)?.apply {
                 mutate()
-                setTint(context.styledColor(android.R.attr.colorControlNormal))
+                setTint(context.themeColor(android.R.attr.colorControlNormal))
             },
         )
     }

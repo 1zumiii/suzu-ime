@@ -6,6 +6,7 @@
 package com.osfans.trime.ui.main
 
 import android.app.AlertDialog
+import com.osfans.trime.ui.common.materialDialog
 import android.os.Bundle
 import androidx.fragment.app.activityViewModels
 import androidx.preference.Preference
@@ -38,8 +39,7 @@ class DeveloperFragment : PaddingPreferenceFragment() {
                 setTitle(R.string.real_time_logs_clear)
                 isIconSpaceReserved = false
                 setOnPreferenceClickListener {
-                    AlertDialog
-                        .Builder(context)
+                    materialDialog(context)
                         .setMessage(R.string.real_time_logs_confirm)
                         .setPositiveButton(R.string.ok) { _, _ ->
                             Logcat.Companion.default.clearLog()

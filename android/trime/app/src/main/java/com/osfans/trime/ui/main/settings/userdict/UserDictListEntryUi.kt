@@ -12,7 +12,7 @@ import com.osfans.trime.R
 import splitties.dimensions.dp
 import splitties.resources.drawable
 import splitties.resources.resolveThemeAttribute
-import splitties.resources.styledColor
+import com.osfans.trime.ui.common.themeColor
 import splitties.resources.styledDimenPxSize
 import splitties.resources.styledDrawable
 import splitties.views.backgroundColor
@@ -44,12 +44,12 @@ class UserDictListEntryUi(
     val moreButton = imageButton {
         background = styledDrawable(android.R.attr.selectableItemBackground)
         imageDrawable = drawable(R.drawable.ic_baseline_more_horiz_24)
-        imageTintList = ColorStateList.valueOf(styledColor(android.R.attr.colorControlNormal))
+        imageTintList = ColorStateList.valueOf(themeColor(android.R.attr.colorControlNormal))
     }
 
     override val root = constraintLayout {
         layoutParams = ViewGroup.LayoutParams(matchParent, wrapContent)
-        backgroundColor = styledColor(android.R.attr.colorBackground)
+        backgroundColor = themeColor(android.R.attr.colorBackground)
         minHeight = styledDimenPxSize(android.R.attr.listPreferredItemHeightSmall)
 
         val paddingStart = styledDimenPxSize(android.R.attr.listPreferredItemPaddingStart)

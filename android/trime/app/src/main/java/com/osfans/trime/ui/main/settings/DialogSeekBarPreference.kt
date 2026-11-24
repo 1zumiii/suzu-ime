@@ -6,6 +6,7 @@
 package com.osfans.trime.ui.main.settings
 
 import android.content.Context
+import com.osfans.trime.ui.common.materialDialog
 import android.content.res.TypedArray
 import android.util.AttributeSet
 import android.widget.SeekBar
@@ -158,8 +159,7 @@ class DialogSeekBarPreference : DialogPreference {
                 },
             )
         }
-        AlertDialog
-            .Builder(this)
+        materialDialog(this)
             .setTitle(this@DialogSeekBarPreference.title)
             .setView(dialogView)
             .setPositiveButton(android.R.string.ok) { _, _ ->

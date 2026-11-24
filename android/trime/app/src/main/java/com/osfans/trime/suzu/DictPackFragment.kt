@@ -6,6 +6,7 @@
 package com.osfans.trime.suzu
 
 import android.content.Context
+import com.osfans.trime.ui.common.materialDialog
 import android.os.Bundle
 import android.widget.LinearLayout
 import android.widget.ProgressBar
@@ -78,7 +79,7 @@ class DictPackFragment : PaddingPreferenceFragment() {
 
     private fun confirmAddon(addon: DictAddon, enable: Boolean) {
         val ctx = requireContext()
-        AlertDialog.Builder(ctx)
+        materialDialog(ctx)
             .setTitle(if (enable) "启用${addon.title}词库？" else "关闭${addon.title}词库？")
             .setMessage("需要重新编译词库，期间暂时无法打字。耗时取决于词库大小和设备性能。AI 简拼补全将在下次启动 AI 服务后更新。")
             .setNegativeButton(android.R.string.cancel, null)
@@ -95,7 +96,7 @@ class DictPackFragment : PaddingPreferenceFragment() {
                     withContext(Dispatchers.Main) {
                         dialog.dismiss()
                         result.onFailure {
-                            AlertDialog.Builder(ctx)
+                            materialDialog(ctx)
                                 .setTitle("词库更新失败")
                                 .setMessage(it.message ?: it.toString())
                                 .setPositiveButton(android.R.string.ok, null)
@@ -110,7 +111,7 @@ class DictPackFragment : PaddingPreferenceFragment() {
     private fun confirm(name: String, entry: PackInstaller.Entry?, installed: Boolean) {
         val title = PackInstaller.title(name)
         val download = if (installed || entry == null) "" else "需先下载约 ${(entry.size + 524288) / 1048576} MB。"
-        AlertDialog.Builder(requireContext())
+        materialDialog(requireContext())
             .setTitle("切换到$title？")
             .setMessage("${download}切换时需重新编译词库，期间暂时无法打字。耗时取决于词库大小和设备性能。")
             .setNegativeButton(android.R.string.cancel, null)
@@ -134,7 +135,7 @@ class DictPackFragment : PaddingPreferenceFragment() {
                 result
                     .onSuccess { ctx.toast("已切换到${PackInstaller.title(name)}") }
                     .onFailure {
-                        AlertDialog.Builder(ctx)
+                        materialDialog(ctx)
                             .setTitle("词库切换失败")
                             .setMessage(it.message ?: it.toString())
                             .setPositiveButton(android.R.string.ok, null)
@@ -147,13 +148,13 @@ class DictPackFragment : PaddingPreferenceFragment() {
 }
 
 /** 词库下载和编译时的弹窗：知道进度时显示百分比，不知道时显示滚动的进度条 */
-private class ProgressDialog(context: Context, title: String) {
+internal class ProgressDialog(context: Context, title: String) {
     private val text = TextView(context)
     private val bar = ProgressBar(context, null, android.R.attr.progressBarStyleHorizontal).apply {
         max = 100
         isIndeterminate = true
     }
-    private val dialog = AlertDialog.Builder(context)
+    private val dialog = materialDialog(context)
         .setTitle(title)
         .setView(
             LinearLayout(context).apply {

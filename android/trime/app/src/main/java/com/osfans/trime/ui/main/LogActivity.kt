@@ -6,6 +6,7 @@
 package com.osfans.trime.ui.main
 
 import android.content.ClipData
+import com.osfans.trime.ui.common.materialDialog
 import android.os.Bundle
 import android.view.View
 import android.view.ViewGroup
@@ -75,8 +76,7 @@ class LogActivity : AppCompatActivity() {
                 supportActionBar!!.setTitle(R.string.crash_logs)
                 clearButton.visibility = View.GONE
                 copyButton.visibility = View.GONE
-                AlertDialog
-                    .Builder(this@LogActivity)
+                materialDialog(this@LogActivity)
                     .setTitle(R.string.app_crash)
                     .setMessage(R.string.app_crash_message)
                     .setPositiveButton(android.R.string.ok, null)
