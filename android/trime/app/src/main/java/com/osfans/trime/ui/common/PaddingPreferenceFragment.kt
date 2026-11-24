@@ -19,7 +19,8 @@ import com.google.android.material.textfield.TextInputEditText
 import com.google.android.material.textfield.TextInputLayout
 import androidx.preference.PreferenceScreen
 import androidx.recyclerview.widget.RecyclerView
-import com.osfans.trime.util.applyNavBarInsetsBottomPadding
+import androidx.core.view.ViewCompat
+import androidx.core.view.WindowInsetsCompat
 
 /**
  * A fragment template that apply navigation bar window insets bottom padding
@@ -33,7 +34,14 @@ abstract class PaddingPreferenceFragment : PreferenceFragmentCompat() {
         container: ViewGroup?,
         savedInstanceState: Bundle?,
     ) = super.onCreateView(inflater, container, savedInstanceState).apply {
-        listView.applyNavBarInsetsBottomPadding()
+        // 底部留出导航栏高度再加 24dp，长页面滚到底时最后一张卡片不贴边
+        val extra = (24 * resources.displayMetrics.density).toInt()
+        listView.clipToPadding = false
+        ViewCompat.setOnApplyWindowInsetsListener(listView) { v, insets ->
+            v.setPadding(v.paddingLeft, v.paddingTop, v.paddingRight, insets.getInsets(WindowInsetsCompat.Type.navigationBars()).bottom + extra)
+            insets
+        }
+        listView.setPadding(listView.paddingLeft, listView.paddingTop, listView.paddingRight, extra)
         // 卡片样式：去掉默认分隔线，改画卡片内的分隔线，上下留白
         setDivider(null)
         listView.addItemDecoration(CardDividerDecoration(context))
