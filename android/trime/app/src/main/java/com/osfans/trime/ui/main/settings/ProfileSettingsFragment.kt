@@ -13,6 +13,7 @@ import androidx.lifecycle.lifecycleScope
 import com.osfans.trime.R
 import com.osfans.trime.data.base.DataManager
 import com.osfans.trime.ui.common.PaddingPreferenceFragment
+import com.osfans.trime.ui.common.mdiIcon
 import com.osfans.trime.ui.common.withLoadingDialog
 import com.osfans.trime.ui.main.MainViewModel
 import com.osfans.trime.util.ResourceUtils
@@ -47,6 +48,7 @@ class ProfileSettingsFragment : PaddingPreferenceFragment() {
                         }
                     }
                 }
+                getPreference(preferenceCount - 1).mdiIcon("sync")
             }
             addCategory(R.string.maintenance) {
                 isIconSpaceReserved = false
@@ -79,6 +81,7 @@ class ProfileSettingsFragment : PaddingPreferenceFragment() {
                             }
                         }.show()
                 }
+                getPreference(preferenceCount - 1).mdiIcon("restore")
             }
         }
     }

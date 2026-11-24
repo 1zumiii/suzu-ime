@@ -3,7 +3,7 @@
   ~ SPDX-FileCopyrightText: 2026 Rime community
   ~ SPDX-License-Identifier: GPL-3.0-or-later
   -->
-<!-- Material 3 配色，种子色 #009BD1（原强调色）；Android 12 以上默认改用系统壁纸取色 -->
+<!-- Material 3 配色，种子色 #009BD1（原强调色）；不跟随系统壁纸取色，免得壁纸颜色带偏界面 -->
 <resources>
     <color name="m3_primary">#00668A</color>
     <color name="m3_onPrimary">#FFFFFF</color>
@@ -37,4 +37,7 @@
     <color name="m3_inverseSurface">#2C3134</color>
     <color name="m3_inverseOnSurface">#EDF1F5</color>
     <color name="m3_inversePrimary">#7DD0FF</color>
+    <!-- 设置页：页面底色与卡片色 -->
+    <color name="m3_page">#EAEEF2</color>
+    <color name="m3_card">#FFFFFF</color>
 </resources>

@@ -7,12 +7,15 @@ package com.osfans.trime.suzu
 
 import android.os.Bundle
 import com.osfans.trime.ui.common.materialDialog
-import android.text.InputType
-import android.widget.EditText
 import android.widget.LinearLayout
 import androidx.appcompat.app.AlertDialog
 import com.osfans.trime.data.base.DataManager
+import com.osfans.trime.ui.common.FooterPreference
+import com.osfans.trime.ui.common.LabeledField
 import com.osfans.trime.ui.common.PaddingPreferenceFragment
+import com.osfans.trime.ui.common.dialogActionRow
+import com.osfans.trime.ui.common.mdiIcon
+import com.osfans.trime.ui.common.onTextChanged
 import com.osfans.trime.util.addCategory
 import com.osfans.trime.util.addPreference
 import com.osfans.trime.util.toast
@@ -76,52 +79,57 @@ class EmojiCustomFragment : PaddingPreferenceFragment() {
         val ctx = requireContext()
         val list = EmojiCustom.load()
         preferenceScreen = preferenceManager.createPreferenceScreen(ctx).apply {
-            addCategory("映射") {
-                isIconSpaceReserved = false
-                addPreference("添加映射", "键是拼音（如 shang）或词（如 尴尬），候选是表情或任意文字") { edit(list, null) }
+            addCategory("自定义候选") {
                 for ((i, e) in list.withIndex()) {
-                    addPreference(
-                        "${e.emoji}　${e.key}",
-                        if (e.isCode) "输入这串拼音时，排在首位候选后面" else "候选里出现这个词时，紧跟在它后面",
-                    ) { edit(list, i) }
+                    addPreference("${e.key} → ${e.emoji}") { edit(list, i) }
                 }
+                addPreference("添加映射") { edit(list, null) }
+                getPreference(preferenceCount - 1).mdiIcon("plus")
             }
-            addCategory("说明") {
-                isIconSpaceReserved = false
-                addPreference(
-                    "保存后几秒内生效",
-                    "映射的候选不推迟到第二页，词库里相同的表情不再重复出现。一个键可以映射多个候选，用空格隔开，所以单个候选里不能有空格。",
-                )
-            }
+            addPreference(
+                FooterPreference(
+                    ctx,
+                    "键全是字母时按拼音匹配：输入恰好是这串拼音，候选排在首位之后。键是词时按候选匹配：候选里出现这个词，就紧跟在它后面。一个键可映射多个候选，用空格隔开，保存后几秒内生效。",
+                ),
+            )
         }
     }
 
     private fun edit(list: List<EmojiCustom.Entry>, index: Int?) {
         val ctx = requireContext()
         val old = index?.let { list[it] }
-        val key = EditText(ctx).apply {
-            hint = "拼音或词，如 shang"
-            inputType = InputType.TYPE_CLASS_TEXT
-            setText(old?.key.orEmpty())
-        }
-        val emoji = EditText(ctx).apply {
-            hint = "候选，如 ☝️ 或 张三，多个用空格隔开"
-            inputType = InputType.TYPE_CLASS_TEXT
-            setText(old?.emoji.orEmpty())
-        }
-        val pad = (20 * ctx.resources.displayMetrics.density).toInt()
+        val key = LabeledField(ctx, "输入的拼音或词", old?.key.orEmpty(), "如 shang 或 尴尬")
+        val emoji = LabeledField(ctx, "候选内容（多个候选用空格分隔）", old?.emoji.orEmpty(), "如 ☝️ 或 张三")
+        val pad = (24 * ctx.resources.displayMetrics.density).toInt()
+        lateinit var dialog: AlertDialog
         val box = LinearLayout(ctx).apply {
             orientation = LinearLayout.VERTICAL
             setPadding(pad, pad / 2, pad, 0)
-            addView(key)
-            addView(emoji)
+            addView(key.view)
+            addView(
+                emoji.view,
+                LinearLayout.LayoutParams(LinearLayout.LayoutParams.MATCH_PARENT, LinearLayout.LayoutParams.WRAP_CONTENT).apply {
+                    topMargin = pad * 2 / 3
+                },
+            )
+            if (index != null) {
+                addView(
+                    ctx.dialogActionRow("delete_outline", "删除这条映射") {
+                        dialog.dismiss()
+                        save(list.filterIndexed { i, _ -> i != index })
+                    },
+                    LinearLayout.LayoutParams(LinearLayout.LayoutParams.MATCH_PARENT, LinearLayout.LayoutParams.WRAP_CONTENT).apply {
+                        topMargin = pad / 2
+                    },
+                )
+            }
         }
-        materialDialog(ctx)
+        dialog = materialDialog(ctx)
             .setTitle(if (old == null) "添加映射" else "编辑映射")
             .setView(box)
             .setPositiveButton("保存") { _, _ ->
-                val k = EmojiCustom.normalizeKey(key.text.toString())
-                val e = EmojiCustom.normalizeEmoji(emoji.text.toString())
+                val k = EmojiCustom.normalizeKey(key.input.text.toString())
+                val e = EmojiCustom.normalizeEmoji(emoji.input.text.toString())
                 if (k == null || e == null) {
                     ctx.toast("键和候选都不能为空")
                     return@setPositiveButton
@@ -131,13 +139,16 @@ class EmojiCustomFragment : PaddingPreferenceFragment() {
                 if (index == null) next += entry else next[index] = entry
                 save(next)
             }
-            .apply {
-                if (index != null) {
-                    setNeutralButton("删除") { _, _ -> save(list.filterIndexed { i, _ -> i != index }) }
-                }
-            }
             .setNegativeButton(android.R.string.cancel, null)
             .show()
+        // 两项都填了才能保存
+        val positive = dialog.getButton(AlertDialog.BUTTON_POSITIVE)
+        fun refresh() {
+            positive.isEnabled = key.input.text?.isNotBlank() == true && emoji.input.text?.isNotBlank() == true
+        }
+        key.input.onTextChanged(::refresh)
+        emoji.input.onTextChanged(::refresh)
+        refresh()
     }
 
     private fun save(list: List<EmojiCustom.Entry>) {

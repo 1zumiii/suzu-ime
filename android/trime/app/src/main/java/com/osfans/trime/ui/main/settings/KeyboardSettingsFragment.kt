@@ -14,6 +14,8 @@ import kotlinx.coroutines.launch
 
 class KeyboardSettingsFragment : PreferenceDelegateFragment(AppPrefs.defaultInstance().keyboard) {
 
+    override fun headerPreference(screen: PreferenceScreen): Preference = KeyboardPreviewPreference(screen.context)
+
     override fun onPreferenceUiCreated(screen: PreferenceScreen) {
         screen.findPreference<Preference>("custom_sound_effect_name")?.apply {
             setOnPreferenceClickListener {

@@ -5,12 +5,15 @@
 
 package com.osfans.trime.ui.setup
 
+import com.osfans.trime.ui.common.themeColor
+import com.osfans.trime.ui.common.mdi
+import com.osfans.trime.ui.common.fillRadioCards
+import com.osfans.trime.ui.common.SheetOption
+import android.graphics.drawable.GradientDrawable
 import android.os.Bundle
 import android.view.LayoutInflater
 import android.view.View
 import android.view.ViewGroup
-import android.widget.AdapterView
-import android.widget.ArrayAdapter
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.fragment.app.Fragment
 import androidx.lifecycle.lifecycleScope
@@ -44,15 +47,7 @@ class SetupFragment : Fragment() {
         if (page == SetupPage.Model) {
             val downloading = SuzuAssets.state(SuzuAsset.Model) as? SuzuAssets.State.Downloading
             selectedModel = downloading?.model ?: SuzuModels.byId(savedInstanceState?.getString("selected_model")) ?: SuzuModels.default
-            binding.modelPicker.onItemSelectedListener = object : AdapterView.OnItemSelectedListener {
-                override fun onItemSelected(parent: AdapterView<*>?, view: View?, position: Int, id: Long) {
-                    models.getOrNull(position)?.let { selectedModel = it }
-                    sync()
-                }
-
-                override fun onNothingSelected(parent: AdapterView<*>?) = Unit
-            }
-            // 名录从新到旧排列，第一项是默认模型
+            // 列表从新到旧排列，第一项是默认模型
             viewLifecycleOwner.lifecycleScope.launch { SuzuModels.list.collect(::showModels) }
             viewLifecycleOwner.lifecycleScope.launch(Dispatchers.IO) { SuzuModels.refresh() }
         }
@@ -73,28 +68,39 @@ class SetupFragment : Fragment() {
 
     private fun showModels(list: List<SuzuModel>) {
         models = list
-        binding.modelPicker.adapter = ArrayAdapter(
-            requireContext(),
-            android.R.layout.simple_spinner_item,
-            list.map { it.title },
-        ).apply { setDropDownViewResource(android.R.layout.simple_spinner_dropdown_item) }
-        val index = list.indexOfFirst { it.id == selectedModel.id }
-        if (index < 0) selectedModel = list.first()
-        binding.modelPicker.setSelection(index.coerceAtLeast(0))
+        if (list.none { it.id == selectedModel.id }) list.firstOrNull()?.let { selectedModel = it }
         sync()
     }
 
     // Called on window focus changed
     fun sync() {
+        val ctx = context ?: return
         val done = page.isDone()
         with(binding) {
-            stepText.text = page.getStepText(requireContext())
-            hintText.text = page.getHintText(requireContext(), selectedModel)
-            modelPicker.visibility = if (page == SetupPage.Model && !done) View.VISIBLE else View.GONE
-            modelPicker.isEnabled = SuzuAssets.state(SuzuAsset.Model) !is SuzuAssets.State.Downloading
+            iconTile.background = GradientDrawable().apply {
+                setColor(ctx.themeColor(com.google.android.material.R.attr.colorPrimaryContainer))
+                cornerRadius = 20 * ctx.resources.displayMetrics.density
+            }
+            stepIcon.setImageDrawable(ctx.mdi(page.icon, ctx.themeColor(com.google.android.material.R.attr.colorOnPrimaryContainer), 32))
+            stepText.text = page.getStepText(ctx)
+            titleText.text = page.getTitle(ctx)
+            hintText.text = page.getHintText(ctx, selectedModel)
+            val showModels = page == SetupPage.Model && !done && models.isNotEmpty()
+            modelOptions.visibility = if (showModels) View.VISIBLE else View.GONE
+            if (showModels) {
+                ctx.fillRadioCards(
+                    modelOptions,
+                    models.map { SheetOption(it.title, "${it.sizeMb} MB") },
+                    models.indexOfFirst { it.id == selectedModel.id },
+                    enabled = SuzuAssets.state(SuzuAsset.Model) !is SuzuAssets.State.Downloading,
+                ) { i ->
+                    selectedModel = models[i]
+                    sync()
+                }
+            }
             val showActionButton = !done && page.isActionAvailable()
             actionButton.visibility = if (showActionButton) View.VISIBLE else View.GONE
-            actionButton.text = page.getButtonText(requireContext())
+            actionButton.text = page.getButtonText(ctx)
             actionButton.setOnClickListener { page.getButtonAction(requireActivity(), selectedModel) }
             val percent = page.downloadPercent()
             progressBar.visibility = if (percent != null) View.VISIBLE else View.GONE
@@ -102,8 +108,8 @@ class SetupFragment : Fragment() {
             secondaryButton.visibility = if (page.canImportFile && !done && SuzuAssets.state(SuzuAsset.Grammar) !is SuzuAssets.State.Downloading) View.VISIBLE else View.GONE
             secondaryButton.text = getString(R.string.suzu_choose_downloaded_file)
             secondaryButton.setOnClickListener { pickGrammar.launch(arrayOf("*/*")) }
-            doneText.visibility = if (done) View.VISIBLE else View.GONE
-            doneIcon.visibility = if (done) View.VISIBLE else View.GONE
+            doneRow.visibility = if (done) View.VISIBLE else View.GONE
+            doneIcon.setImageDrawable(ctx.mdi("check_circle", ctx.themeColor(androidx.appcompat.R.attr.colorPrimary)))
         }
     }
 }

@@ -313,4 +313,25 @@
     <string name="suzu_update_downloading_progress">下载中</string>
     <string name="suzu_update_download_failed">下载更新失败</string>
     <string name="suzu_update_signature_mismatch">下载的安装包与已装版本的签名不同，无法覆盖安装。请到 Release 页面手动安装。</string>
+    <string name="main_section_resources">输入资源</string>
+    <string name="main_section_preferences">偏好设置</string>
+    <string name="section_input">输入</string>
+    <string name="section_layout_appearance">布局与外观</string>
+    <string name="section_sound_vibration">声音与振动</string>
+    <string name="section_key_feedback">按键反馈</string>
+    <string name="section_key_gestures">按键时长与手势</string>
+    <string name="section_candidates">候选栏</string>
+    <string name="section_shortcuts">快捷键</string>
+    <string name="section_records">记录</string>
+    <string name="section_paste">粘贴</string>
+    <string name="section_app_appearance">应用外观</string>
+    <string name="section_system_gestures">系统手势</string>
+    <string name="user_dict_local">本机词典</string>
+    <string name="user_dict_add">添加词典</string>
+    <string name="user_dict_close">关闭</string>
+    <string name="setup_title_enable">启用输入法</string>
+    <string name="setup_title_select">设为默认输入法</string>
+    <string name="setup_title_model">下载 Suzu 模型</string>
+    <string name="setup_title_grammar">下载语法模型</string>
+    <string name="setup_title_ai">启动 AI 服务</string>
 </resources>

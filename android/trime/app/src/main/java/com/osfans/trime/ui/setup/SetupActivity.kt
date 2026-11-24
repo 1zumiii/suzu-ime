@@ -5,6 +5,9 @@
 
 package com.osfans.trime.ui.setup
 
+import com.osfans.trime.ui.common.themeColor
+import android.widget.LinearLayout
+import android.graphics.drawable.GradientDrawable
 import android.app.PendingIntent
 import com.osfans.trime.ui.common.materialDialog
 import android.content.Intent
@@ -39,6 +42,7 @@ import splitties.systemservices.notificationManager
 
 class SetupActivity : AppCompatActivity() {
     private lateinit var viewPager: ViewPager2
+    private lateinit var binding: ActivitySetupBinding
 
     private lateinit var skipButton: Button
     private lateinit var prevButton: Button
@@ -67,7 +71,7 @@ class SetupActivity : AppCompatActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         enableEdgeToEdge()
-        val binding = ActivitySetupBinding.inflate(layoutInflater)
+        binding = ActivitySetupBinding.inflate(layoutInflater)
         ViewCompat.setOnApplyWindowInsetsListener(binding.root) { _, windowInsets ->
             val sysBars = windowInsets.getInsets(WindowInsetsCompat.Type.systemBars())
             binding.root.setPadding(
@@ -122,7 +126,29 @@ class SetupActivity : AppCompatActivity() {
         )
     }
 
+    /** 顶部的步骤进度条：已完成和当前步用主色，其余用浅色 */
+    private fun renderStepBar() {
+        val bar = binding.stepBar
+        val d = resources.displayMetrics.density
+        bar.removeAllViews()
+        SetupPage.entries.forEachIndexed { i, page ->
+            val on = i <= viewPager.currentItem || page.isDone()
+            bar.addView(
+                View(this).apply {
+                    background = GradientDrawable().apply {
+                        setColor(themeColor(if (on) androidx.appcompat.R.attr.colorPrimary else com.google.android.material.R.attr.colorSurfaceVariant))
+                        cornerRadius = 2 * d
+                    }
+                },
+                LinearLayout.LayoutParams(0, (4 * d).toInt(), 1f).apply {
+                    if (i > 0) marginStart = (6 * d).toInt()
+                },
+            )
+        }
+    }
+
     fun updateButtons() {
+        renderStepBar()
         val allDone = !SetupPage.hasUndonePage()
         val isFirstPage = viewPager.currentItem == 0
         val isLastPage = viewPager.currentItem.isLastPage()

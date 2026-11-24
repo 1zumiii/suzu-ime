@@ -6,18 +6,23 @@ SPDX-FileCopyrightText: 2015 - 2026 Rime community
 SPDX-License-Identifier: GPL-3.0-or-later
 -->
 
+<!-- 顶栏与页面同色、不抬升，子页面标题用大号字 -->
 <com.google.android.material.appbar.AppBarLayout
     xmlns:android="http://schemas.android.com/apk/res/android"
     xmlns:app="http://schemas.android.com/apk/res-auto"
     android:id="@+id/appBar"
     android:layout_width="match_parent"
     android:layout_height="wrap_content"
+    android:background="?android:attr/colorBackground"
     android:fitsSystemWindows="false"
-    app:liftOnScroll="true"
-    app:liftOnScrollTargetViewId="@id/recycler_view">
+    app:elevation="0dp"
+    app:liftOnScroll="false">
     <com.google.android.material.appbar.MaterialToolbar
         android:id="@+id/toolbar"
         android:layout_width="match_parent"
         android:layout_height="wrap_content"
-        android:minHeight="?attr/actionBarSize" />
+        android:background="?android:attr/colorBackground"
+        android:minHeight="72dp"
+        app:titleTextAppearance="@style/TextAppearance.Trime.PageTitle"
+        app:subtitleTextAppearance="?attr/textAppearanceBodyMedium" />
 </com.google.android.material.appbar.AppBarLayout>

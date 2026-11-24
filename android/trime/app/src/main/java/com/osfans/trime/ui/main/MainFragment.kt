@@ -6,13 +6,15 @@
 package com.osfans.trime.ui.main
 
 import android.os.Bundle
-import androidx.annotation.DrawableRes
 import androidx.annotation.StringRes
 import androidx.fragment.app.activityViewModels
 import androidx.navigation.fragment.findNavController
+import androidx.preference.Preference
 import androidx.preference.PreferenceGroup
 import com.osfans.trime.R
+import com.osfans.trime.ui.common.FullBleed
 import com.osfans.trime.ui.common.PaddingPreferenceFragment
+import com.osfans.trime.ui.common.mdiIcon
 import com.osfans.trime.util.addCategory
 import com.osfans.trime.util.addPreference
 import com.osfans.trime.util.navigateWithAnim
@@ -32,66 +34,41 @@ class MainFragment : PaddingPreferenceFragment() {
 
     private fun PreferenceGroup.addDestinationPreference(
         @StringRes title: Int,
-        @DrawableRes icon: Int,
+        icon: String,
         route: NavigationRoute,
     ) {
-        addPreference(title, icon = icon) {
+        addPreference(title) {
             findNavController().navigateWithAnim(route)
         }
+        getPreference(preferenceCount - 1).mdiIcon(icon)
     }
 
     override fun onCreatePreferences(
         savedInstanceState: Bundle?,
         rootKey: String?,
     ) {
-        preferenceScreen = preferenceManager.createPreferenceScreen(requireContext()).apply {
-            addDestinationPreference(
-                R.string.dict_packs,
-                R.drawable.ic_round_view_list_24,
-                NavigationRoute.DictPacks,
+        val ctx = requireContext()
+        preferenceScreen = preferenceManager.createPreferenceScreen(ctx).apply {
+            addPreference(
+                object : Preference(ctx), FullBleed {}.apply {
+                    layoutResource = R.layout.preference_app_header
+                    title = getString(R.string.trime_app_name)
+                    summary = getString(R.string.trime_app_slogan)
+                    isSelectable = false
+                },
             )
-            addDestinationPreference(
-                R.string.models,
-                R.drawable.ic_baseline_smart_toy_24,
-                NavigationRoute.Models,
-            )
-            addDestinationPreference(
-                R.string.user_dictionary,
-                R.drawable.ic_baseline_book_24,
-                NavigationRoute.UserDict,
-            )
-            addDestinationPreference(
-                R.string.emoji_custom,
-                R.drawable.ic_baseline_emoji_emotions_24,
-                NavigationRoute.EmojiCustom,
-            )
-            addDestinationPreference(
-                R.string.profile,
-                R.drawable.ic_baseline_snippet_folder_24,
-                NavigationRoute.Profile,
-            )
-            addCategory("") {
-                isIconSpaceReserved = false
-                addDestinationPreference(
-                    R.string.general,
-                    R.drawable.ic_baseline_tune_24,
-                    NavigationRoute.General,
-                )
-                addDestinationPreference(
-                    R.string.virtual_keyboard,
-                    R.drawable.ic_baseline_keyboard_24,
-                    NavigationRoute.VirtualKeyboard,
-                )
-                addDestinationPreference(
-                    R.string.clipboard,
-                    R.drawable.ic_clipboard_24,
-                    NavigationRoute.Clipboard,
-                )
-                addDestinationPreference(
-                    R.string.advanced,
-                    R.drawable.ic_baseline_more_horiz_24,
-                    NavigationRoute.Advanced,
-                )
+            addCategory(R.string.main_section_resources) {
+                addDestinationPreference(R.string.dict_packs, "bookshelf", NavigationRoute.DictPacks)
+                addDestinationPreference(R.string.models, "chip", NavigationRoute.Models)
+                addDestinationPreference(R.string.user_dictionary, "account_box_outline", NavigationRoute.UserDict)
+                addDestinationPreference(R.string.emoji_custom, "emoticon_outline", NavigationRoute.EmojiCustom)
+                addDestinationPreference(R.string.profile, "folder_cog_outline", NavigationRoute.Profile)
+            }
+            addCategory(R.string.main_section_preferences) {
+                addDestinationPreference(R.string.general, "tune_variant", NavigationRoute.General)
+                addDestinationPreference(R.string.virtual_keyboard, "keyboard_outline", NavigationRoute.VirtualKeyboard)
+                addDestinationPreference(R.string.clipboard, "clipboard_text_outline", NavigationRoute.Clipboard)
+                addDestinationPreference(R.string.advanced, "cog_outline", NavigationRoute.Advanced)
             }
         }
     }

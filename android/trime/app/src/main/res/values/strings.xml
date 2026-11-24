@@ -314,4 +314,25 @@ Package: %3$s (%4$s MB)</string>
     <string name="suzu_update_downloading_progress">Downloading</string>
     <string name="suzu_update_download_failed">Update download failed</string>
     <string name="suzu_update_signature_mismatch">The downloaded package is signed with a different key from the installed app and cannot replace it. Install it manually from the Releases page.</string>
+    <string name="main_section_resources">Input resources</string>
+    <string name="main_section_preferences">Preferences</string>
+    <string name="section_input">Input</string>
+    <string name="section_layout_appearance">Layout and appearance</string>
+    <string name="section_sound_vibration">Sound and vibration</string>
+    <string name="section_key_feedback">Key feedback</string>
+    <string name="section_key_gestures">Key timing and gestures</string>
+    <string name="section_candidates">Candidate bar</string>
+    <string name="section_shortcuts">Shortcuts</string>
+    <string name="section_records">History</string>
+    <string name="section_paste">Paste</string>
+    <string name="section_app_appearance">App appearance</string>
+    <string name="section_system_gestures">System gestures</string>
+    <string name="user_dict_local">On this device</string>
+    <string name="user_dict_add">Add dictionary</string>
+    <string name="user_dict_close">Close</string>
+    <string name="setup_title_enable">Enable the keyboard</string>
+    <string name="setup_title_select">Make it the default</string>
+    <string name="setup_title_model">Download a Suzu model</string>
+    <string name="setup_title_grammar">Download the grammar model</string>
+    <string name="setup_title_ai">Start the AI service</string>
 </resources>

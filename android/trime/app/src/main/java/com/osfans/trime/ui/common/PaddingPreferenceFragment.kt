@@ -9,6 +9,8 @@ import android.os.Bundle
 import android.view.LayoutInflater
 import android.view.ViewGroup
 import androidx.preference.PreferenceFragmentCompat
+import androidx.preference.PreferenceScreen
+import androidx.recyclerview.widget.RecyclerView
 import com.osfans.trime.util.applyNavBarInsetsBottomPadding
 
 /**
@@ -24,5 +26,18 @@ abstract class PaddingPreferenceFragment : PreferenceFragmentCompat() {
         savedInstanceState: Bundle?,
     ) = super.onCreateView(inflater, container, savedInstanceState).apply {
         listView.applyNavBarInsetsBottomPadding()
+        // 卡片样式：去掉默认分隔线，改画卡片内的分隔线，上下留白
+        setDivider(null)
+        listView.addItemDecoration(CardDividerDecoration(context))
+        listView.clipToPadding = false
+        listView.setPadding(listView.paddingLeft, (8 * resources.displayMetrics.density).toInt(), listView.paddingRight, listView.paddingBottom)
+    }
+
+    override fun onCreateAdapter(preferenceScreen: PreferenceScreen): RecyclerView.Adapter<*> =
+        CardPreferenceAdapter(preferenceScreen)
+
+    override fun setPreferenceScreen(preferenceScreen: PreferenceScreen?) {
+        preferenceScreen?.let(::decorateForCards)
+        super.setPreferenceScreen(preferenceScreen)
     }
 }

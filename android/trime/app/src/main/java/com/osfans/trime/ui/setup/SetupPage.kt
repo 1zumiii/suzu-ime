@@ -36,6 +36,27 @@ enum class SetupPage(val required: Boolean) {
             else -> null
         }
 
+    /** 每一步的大标题 */
+    fun getTitle(context: Context): CharSequence = context.getText(
+        when (this) {
+            Enable -> R.string.setup_title_enable
+            Select -> R.string.setup_title_select
+            Model -> R.string.setup_title_model
+            Grammar -> R.string.setup_title_grammar
+            Ai -> R.string.setup_title_ai
+        },
+    )
+
+    /** 标题上方图标方块里的 MDI 图标 */
+    val icon: String
+        get() = when (this) {
+            Enable -> "keyboard_outline"
+            Select -> "keyboard_settings_outline"
+            Model -> "chip"
+            Grammar -> "file_document_outline"
+            Ai -> "auto_fix"
+        }
+
     fun getStepText(context: Context): CharSequence = when (this) {
         Enable -> context.getText(R.string.setup__step_one)
         Select -> context.getText(R.string.setup__step_two)

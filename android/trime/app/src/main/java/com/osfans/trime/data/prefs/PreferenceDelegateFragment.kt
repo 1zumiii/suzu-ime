@@ -31,6 +31,9 @@ abstract class PreferenceDelegateFragment(
 
     open fun onPreferenceUiCreated(screen: PreferenceScreen) {}
 
+    /** 放在页面最上方、不属于任何分组的项（如键盘预览），默认没有 */
+    open fun headerPreference(screen: PreferenceScreen): Preference? = null
+
     @CallSuper
     override fun onCreatePreferences(
         savedInstanceState: Bundle?,
@@ -40,6 +43,7 @@ abstract class PreferenceDelegateFragment(
         preferenceScreen =
             preferenceManager.createPreferenceScreen(preferenceManager.context).also { screen ->
                 preferenceProvider.createUi(screen)
+                SettingsSections.arrange(screen, preferenceProvider, headerPreference(screen))
                 onPreferenceUiCreated(screen)
             }
     }

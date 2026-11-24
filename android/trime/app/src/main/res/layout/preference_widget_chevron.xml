@@ -1,0 +1,12 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+  ~ SPDX-FileCopyrightText: 2026 Rime community
+  ~ SPDX-License-Identifier: GPL-3.0-or-later
+  -->
+<!-- 设置项右侧的箭头：表示点按后进入下一级或弹出选择 -->
+<ImageView xmlns:android="http://schemas.android.com/apk/res/android"
+    android:layout_width="24dp"
+    android:layout_height="24dp"
+    android:importantForAccessibility="no"
+    android:src="@drawable/ic_chevron_right_24"
+    android:tint="?attr/colorOnSurfaceVariant" />

@@ -8,17 +8,24 @@ package com.osfans.trime.suzu
 import android.os.Bundle
 import com.osfans.trime.ui.common.materialDialog
 import androidx.activity.result.contract.ActivityResultContracts
-import androidx.appcompat.app.AlertDialog
 import androidx.fragment.app.activityViewModels
 import androidx.lifecycle.lifecycleScope
 import com.osfans.trime.R
+import androidx.preference.Preference
 import com.osfans.trime.ui.common.PaddingPreferenceFragment
+import com.osfans.trime.ui.common.SheetAction
+import com.osfans.trime.ui.common.SheetOption
+import com.osfans.trime.ui.common.actionSheet
+import com.osfans.trime.ui.common.choiceSheet
+import com.osfans.trime.ui.common.mdiIcon
+import com.osfans.trime.ui.common.showDestructive
+import com.osfans.trime.util.addCategory
 import com.osfans.trime.ui.main.MainViewModel
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.drop
 import kotlinx.coroutines.launch
 
-/** 模型页：下载、换用、导入或删除 Suzu 模型和语法模型。文件在就算启用 */
+/** 模型页：顶部是当前 Suzu 模型的卡片，下面是语法模型和已下载模型的管理。文件在就算启用 */
 class ModelFragment : PaddingPreferenceFragment() {
     private val viewModel: MainViewModel by activityViewModels()
 
@@ -26,101 +33,179 @@ class ModelFragment : PaddingPreferenceFragment() {
         uri?.let(SuzuAssets::importGrammar)
     }
 
+    private var card: ModelCardPreference? = null
+    private var grammarPref: AssetPreference? = null
+    private var storagePref: Preference? = null
+
     override fun onCreatePreferences(
         savedInstanceState: Bundle?,
         rootKey: String?,
     ) {
         build()
-        // 下载进度变化时只更新这两行，不重建页面
+        // 下载进度变化时只刷新这几项，不重建页面
         lifecycleScope.launch {
             SuzuAssets.states.drop(1).collect {
-                if (isAdded) assetPrefs.forEach { (asset, pref) -> renderAsset(asset, pref) }
+                if (isAdded) render()
             }
         }
-        // 先拉最新的模型名录，点开列表时就是新的
+        // 先拉最新的模型列表，打开选择面板时就是新的
         lifecycleScope.launch(Dispatchers.IO) { SuzuModels.refresh() }
-    }
-
-    private val assetPrefs = HashMap<SuzuAsset, AssetPreference>()
-
-    private fun renderAsset(asset: SuzuAsset, pref: AssetPreference) {
-        val state = SuzuAssets.state(asset)
-        pref.percent = (state as? SuzuAssets.State.Downloading)?.percent
-        pref.summary = when {
-            state is SuzuAssets.State.Downloading ->
-                "正在下载${state.model?.let { " ${it.title}" }.orEmpty()} ${state.percent}%（${state.doneMb} / ${state.totalMb} MB），点按取消"
-            asset == SuzuAsset.Grammar && SuzuAssets.isInstalled(asset) ->
-                getString(R.string.suzu_grammar_installed, SuzuAssets.installedGrammarDescription(requireContext()))
-            asset == SuzuAsset.Model && SuzuAssets.isInstalled(asset) ->
-                "已安装 ${SuzuAssets.installedModelTitle() ?: "Suzu 模型"}，点按可换用其他模型或删除"
-            SuzuAssets.isInstalled(asset) -> "已安装，点按可删除并关闭此功能"
-            state is SuzuAssets.State.Failed -> "下载失败：${state.message}\n点按重试"
-            asset == SuzuAsset.Grammar -> getString(R.string.suzu_grammar_available, asset.sizeMb)
-            else -> "未安装，此功能已关闭。点按选择模型并下载"
-        }
     }
 
     private fun build() {
         val ctx = requireContext()
         preferenceScreen = preferenceManager.createPreferenceScreen(ctx).apply {
-            for (asset in SuzuAsset.entries) {
-                val pref = AssetPreference(ctx).apply {
-                    title = asset.title
+            card = ModelCardPreference(ctx) { onModelCardClick() }.also(::addPreference)
+            addCategory("语法模型") {
+                grammarPref = AssetPreference(ctx).apply {
+                    title = "万象语法模型"
                     isSingleLineTitle = false
+                    mdiIcon("file_document_outline")
                     setOnPreferenceClickListener {
-                        onAssetClick(asset)
+                        onGrammarClick()
                         true
                     }
-                }
-                addPreference(pref)
-                assetPrefs[asset] = pref
-                renderAsset(asset, pref)
+                }.also(::addPreference)
             }
+            addCategory("存储") {
+                storagePref = Preference(ctx).apply {
+                    title = "管理已下载的模型"
+                    mdiIcon("harddisk")
+                    setOnPreferenceClickListener {
+                        manageDownloaded()
+                        true
+                    }
+                }.also(::addPreference)
+            }
+        }
+        render()
+    }
+
+    private fun render() {
+        val state = SuzuAssets.state(SuzuAsset.Model)
+        card?.apply {
+            percent = (state as? SuzuAssets.State.Downloading)?.percent
+            when {
+                state is SuzuAssets.State.Downloading -> {
+                    label = "Suzu 模型 · 正在下载 ${state.percent}%（${state.doneMb} / ${state.totalMb} MB）"
+                    name = state.model?.title ?: "Suzu 模型"
+                    action = "取消下载"
+                }
+                SuzuAssets.isInstalled(SuzuAsset.Model) -> {
+                    label = "Suzu 模型 · 正在使用"
+                    name = SuzuAssets.installedModelTitle() ?: "Suzu 模型"
+                    action = "选择模型"
+                }
+                state is SuzuAssets.State.Failed -> {
+                    label = "Suzu 模型 · 下载失败"
+                    name = state.message
+                    action = "选择模型重新下载"
+                }
+                else -> {
+                    label = "Suzu 模型 · 未安装，AI 重排已关闭"
+                    name = "尚未选择模型"
+                    action = "选择模型并下载"
+                }
+            }
+            update()
+        }
+        grammarPref?.apply {
+            val g = SuzuAssets.state(SuzuAsset.Grammar)
+            percent = (g as? SuzuAssets.State.Downloading)?.percent
+            summary = when {
+                g is SuzuAssets.State.Downloading -> "正在下载 ${g.percent}%（${g.doneMb} / ${g.totalMb} MB），点按取消"
+                SuzuAssets.isInstalled(SuzuAsset.Grammar) -> SuzuAssets.installedGrammarDescription(requireContext())
+                g is SuzuAssets.State.Failed -> "下载失败：${g.message}\n点按重试"
+                else -> getString(R.string.suzu_grammar_available, SuzuAsset.Grammar.sizeMb)
+            }
+        }
+        storagePref?.summary = SuzuAsset.entries.count(SuzuAssets::isInstalled).let { n ->
+            if (n == 0) "还没有下载模型" else "$n 个模型"
         }
     }
 
-    private fun onAssetClick(asset: SuzuAsset) {
+    private fun onModelCardClick() {
+        if (SuzuAssets.state(SuzuAsset.Model) is SuzuAssets.State.Downloading) {
+            SuzuAssets.cancel(SuzuAsset.Model)
+            render()
+        } else {
+            chooseModel()
+        }
+    }
+
+    private fun onGrammarClick() {
+        val asset = SuzuAsset.Grammar
         when {
             SuzuAssets.state(asset) is SuzuAssets.State.Downloading -> SuzuAssets.cancel(asset)
-            asset == SuzuAsset.Model -> chooseModel()
             SuzuAssets.isInstalled(asset) -> confirmDelete(asset)
-            asset == SuzuAsset.Grammar ->
+            else ->
                 materialDialog(requireContext())
-                    .setTitle(asset.title)
+                    .setTitle("万象语法模型")
                     .setItems(arrayOf(getString(R.string.suzu_grammar_download_lts, asset.sizeMb), getString(R.string.suzu_choose_downloaded_file))) { _, which ->
                         if (which == 0) SuzuAssets.start(asset) else pickGrammar.launch(arrayOf("*/*"))
+                        render()
                     }.show()
-            else -> SuzuAssets.start(asset)
         }
-        if (isAdded) build()
+        render()
     }
 
-    /** 列出名录里的模型（从新到旧），点按即下载并换用。已装模型时末尾加“删除模型” */
+    /** 从模型列表（从新到旧）里选一个，下载并换用 */
     private fun chooseModel() {
         val models = SuzuModels.list.value
+        if (models.isEmpty()) return
         val installed = SuzuAssets.isInstalled(SuzuAsset.Model)
-        val current = SuzuAssets.installedModelTitle()
-        val items = models.map { m ->
-            if (installed && m.title == current) "${m.title}（当前）" else "${m.title}（约 ${m.sizeMb} MB）"
-        } + if (installed) listOf("删除模型") else emptyList()
-        materialDialog(requireContext())
-            .setTitle(if (installed) "换用模型" else "下载模型")
-            .setItems(items.toTypedArray()) { _, which ->
-                val m = models.getOrNull(which)
-                when {
-                    m == null -> confirmDelete(SuzuAsset.Model)
-                    installed && m.title == current -> Unit
-                    else -> SuzuAssets.start(SuzuAsset.Model, m)
-                }
-                if (isAdded) build()
+        val currentTitle = SuzuAssets.installedModelTitle()
+        val current = models.indexOfFirst { installed && it.title == currentTitle }.takeIf { it >= 0 }
+        requireContext().choiceSheet(
+            icon = "chip",
+            title = "选择 Suzu 模型",
+            message = null,
+            options = models.mapIndexed { i, m ->
+                SheetOption(m.title, if (i == current) "正在使用" else "需下载 · 约 ${m.sizeMb} MB")
+            },
+            current = current,
+            initial = models.indices.firstOrNull { it != current } ?: 0,
+            confirmLabel = { "下载并使用" },
+        ) { which ->
+            SuzuAssets.start(SuzuAsset.Model, models[which])
+            if (isAdded) render()
+        }
+    }
+
+    private fun manageDownloaded() {
+        val ctx = requireContext()
+        val actions = buildList {
+            if (SuzuAssets.isInstalled(SuzuAsset.Model)) {
+                add(
+                    SheetAction(
+                        title = SuzuAssets.installedModelTitle() ?: "Suzu 模型",
+                        subtitle = "正在使用",
+                        leadingIcon = "chip",
+                        trailingIcon = "delete_outline",
+                        trailingOnly = true,
+                    ) { confirmDelete(SuzuAsset.Model) },
+                )
             }
-            .setNegativeButton(android.R.string.cancel, null)
-            .show()
+            if (SuzuAssets.isInstalled(SuzuAsset.Grammar)) {
+                add(
+                    SheetAction(
+                        title = "万象语法模型",
+                        subtitle = SuzuAssets.installedGrammarDescription(ctx),
+                        leadingIcon = "file_document_outline",
+                        trailingIcon = "delete_outline",
+                        trailingOnly = true,
+                    ) { confirmDelete(SuzuAsset.Grammar) },
+                )
+            }
+        }
+        ctx.actionSheet("harddisk", "已下载的模型", actions, "完成", emptyText = "还没有下载模型。")
     }
 
     private fun confirmDelete(asset: SuzuAsset) {
-        materialDialog(requireContext())
-            .setTitle("删除${asset.title}？")
+        val ctx = requireContext()
+        val name = if (asset == SuzuAsset.Model) SuzuAssets.installedModelTitle() ?: asset.title else "万象语法模型"
+        materialDialog(ctx)
+            .setTitle("删除$name？")
             .setMessage(
                 if (asset == SuzuAsset.Model) {
                     "删除后关闭 AI 重排，仍可正常打字。之后可在此页重新下载。"
@@ -129,12 +214,12 @@ class ModelFragment : PaddingPreferenceFragment() {
                 },
             )
             .setNegativeButton(android.R.string.cancel, null)
-            .setPositiveButton(android.R.string.ok) { _, _ ->
+            .setPositiveButton("删除") { _, _ ->
                 if (asset == SuzuAsset.Model) {
                     lifecycleScope.launch { viewModel.rime.runOnReady { setRuntimeOption("ai_rerank", false) } }
                 }
                 SuzuAssets.delete(asset)
-                build()
-            }.show()
+                if (isAdded) render()
+            }.showDestructive()
     }
 }

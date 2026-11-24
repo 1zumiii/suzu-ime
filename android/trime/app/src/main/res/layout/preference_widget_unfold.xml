@@ -1,0 +1,12 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+  ~ SPDX-FileCopyrightText: 2026 Rime community
+  ~ SPDX-License-Identifier: GPL-3.0-or-later
+  -->
+<!-- 点按后从底部弹出选择面板 -->
+<ImageView xmlns:android="http://schemas.android.com/apk/res/android"
+    android:layout_width="24dp"
+    android:layout_height="24dp"
+    android:importantForAccessibility="no"
+    android:src="@drawable/ic_unfold_more_24"
+    android:tint="?attr/colorOnSurfaceVariant" />

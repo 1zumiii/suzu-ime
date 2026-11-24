@@ -38,6 +38,8 @@ import com.osfans.trime.data.prefs.AppPrefs
 import com.osfans.trime.data.soundeffect.SoundEffectManager
 import com.osfans.trime.databinding.ActivityMainBinding
 import com.osfans.trime.suzu.AppUpdater
+import com.osfans.trime.ui.common.mdi
+import com.osfans.trime.ui.common.themeColor
 import com.osfans.trime.ui.setup.SetupActivity
 import com.osfans.trime.util.item
 import com.osfans.trime.util.parcelable
@@ -103,12 +105,13 @@ class MainActivity : AppCompatActivity() {
         }
 
         setContentView(binding.root)
-        // always show toolbar back arrow icon
-        binding.mainToolbar.toolbar.navigationIcon =
+        // 子页面显示返回箭头；主页用列表里的大标题，顶栏不显示标题和箭头
+        val backIcon =
             DrawerArrowDrawable(this).apply {
                 progress = 1f
                 color = MaterialColors.getColor(binding.mainToolbar.toolbar, com.google.android.material.R.attr.colorOnSurface)
             }
+        binding.mainToolbar.toolbar.navigationIcon = backIcon
         // show menu icon and other action icons on toolbar
         // don't use `setSupportActionBar(binding.toolbar)` here,
         // because navController would change toolbar title, we need to control it by ourselves
@@ -137,13 +140,10 @@ class MainActivity : AppCompatActivity() {
             binding.mainToolbar.toolbar.title = it
         }
         navController.addOnDestinationChangedListener { _, dest, _ ->
-            dest.label?.let { viewModel.setToolbarTitle(it.toString()) }
-            binding.mainToolbar.toolbar.subtitle =
-                if (dest.hasRoute<NavigationRoute.Main>()) {
-                    getString(R.string.trime_app_slogan)
-                } else {
-                    ""
-                }
+            val isMain = dest.hasRoute<NavigationRoute.Main>()
+            viewModel.setToolbarTitle(if (isMain) "" else dest.label?.toString().orEmpty())
+            binding.mainToolbar.toolbar.subtitle = ""
+            binding.mainToolbar.toolbar.navigationIcon = if (isMain) null else backIcon
         }
 
         supportActionBar?.setDisplayHomeAsUpEnabled(true)
@@ -174,12 +174,12 @@ class MainActivity : AppCompatActivity() {
 
     private fun setupToolbarMenu(menu: Menu) {
         val optionMenuItems = listOf(
-            menu.item(R.string.deploy, R.drawable.ic_baseline_refresh_reversed_24, showAsAction = true) {
+            menu.item(R.string.deploy, showAsAction = true) {
                 viewModel.rime.launchOnReady { it.deploy() }
-            },
-            menu.item(R.string.test_input, R.drawable.ic_baseline_keyboard_24, showAsAction = true) {
+            }.apply { icon = mdi("refresh", toolbarIconColor()) },
+            menu.item(R.string.test_input, showAsAction = true) {
                 testInputPanel?.show(window)
-            },
+            }.apply { icon = mdi("keyboard_outline", toolbarIconColor()) },
             menu.item(R.string.developer) {
                 navController.navigate(NavigationRoute.Developer)
             },
@@ -192,16 +192,18 @@ class MainActivity : AppCompatActivity() {
                 item.isVisible = enabled
             }
         }
-        menu.item(R.string.edit, R.drawable.ic_baseline_edit_24, showAsAction = true) {
+        menu.item(R.string.edit, showAsAction = true) {
             viewModel.toolbarEditButtonOnClickListener.value?.invoke()
         }.apply {
+            icon = mdi("pencil_outline", toolbarIconColor())
             viewModel.toolbarEditButtonVisible.observe(this@MainActivity) {
                 isVisible = it
             }
         }
-        menu.item(R.string.delete, R.drawable.ic_baseline_delete_24, showAsAction = true) {
+        menu.item(R.string.delete, showAsAction = true) {
             viewModel.toolbarDeleteButtonOnClickListener.value?.invoke()
         }.apply {
+            icon = mdi("delete_outline", toolbarIconColor())
             viewModel.toolbarDeleteButtonOnClickListener.observe(this@MainActivity) {
                 isVisible = it != null
             }
@@ -211,6 +213,8 @@ class MainActivity : AppCompatActivity() {
             item.isVisible = false
         }
     }
+
+    private fun toolbarIconColor() = themeColor(com.google.android.material.R.attr.colorOnSurfaceVariant)
 
     override fun onResume() {
         super.onResume()

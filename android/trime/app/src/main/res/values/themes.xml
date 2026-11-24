@@ -40,20 +40,55 @@ SPDX-License-Identifier: GPL-3.0-or-later
         <item name="colorSurfaceInverse">@color/m3_inverseSurface</item>
         <item name="colorOnSurfaceInverse">@color/m3_inverseOnSurface</item>
         <item name="colorPrimaryInverse">@color/m3_inversePrimary</item>
-        <item name="android:colorBackground">@color/m3_surface</item>
+        <item name="android:colorBackground">@color/m3_page</item>
+        <item name="android:windowBackground">@color/m3_page</item>
         <item name="colorOnBackground">@color/m3_onSurface</item>
         <item name="android:statusBarColor">@android:color/transparent</item>
         <item name="android:navigationBarColor">@android:color/transparent</item>
         <item name="preferenceTheme">@style/PreferenceThemeOverlay.Trime</item>
+        <item name="materialAlertDialogTheme">@style/ThemeOverlay.Trime.MaterialAlertDialog</item>
+        <item name="bottomSheetDialogTheme">@style/ThemeOverlay.Trime.BottomSheetDialog</item>
+    </style>
+
+    <!-- 对话框：确认按钮用实心按钮 -->
+    <style name="ThemeOverlay.Trime.MaterialAlertDialog" parent="ThemeOverlay.Material3.MaterialAlertDialog">
+        <item name="buttonBarPositiveButtonStyle">@style/Widget.Trime.DialogButton.Filled</item>
+        <item name="materialAlertDialogTitleTextStyle">@style/MaterialAlertDialog.Trime.Title.Text</item>
+    </style>
+
+    <style name="MaterialAlertDialog.Trime.Title.Text" parent="MaterialAlertDialog.Material3.Title.Text">
+        <item name="android:textStyle">bold</item>
+    </style>
+
+    <style name="Widget.Trime.DialogButton.Filled" parent="Widget.Material3.Button">
+        <item name="android:layout_marginStart">8dp</item>
+    </style>
+
+    <style name="ThemeOverlay.Trime.BottomSheetDialog" parent="ThemeOverlay.Material3.BottomSheetDialog">
+        <item name="android:navigationBarColor">@android:color/transparent</item>
+    </style>
+
+    <!-- 页面大标题 -->
+    <style name="TextAppearance.Trime.PageTitle" parent="TextAppearance.Material3.HeadlineSmall">
+        <item name="android:textStyle">bold</item>
+    </style>
+
+    <style name="TextAppearance.Trime.AppTitle" parent="TextAppearance.Material3.DisplaySmall">
+        <item name="android:textStyle">bold</item>
     </style>
 
     <!-- 设置页的开关换成 Material 3 的 MaterialSwitch -->
     <style name="PreferenceThemeOverlay.Trime" parent="@style/PreferenceThemeOverlay">
         <item name="switchPreferenceCompatStyle">@style/Preference.SwitchPreferenceCompat.Trime</item>
+        <item name="preferenceCategoryStyle">@style/Preference.Category.Trime</item>
     </style>
 
     <style name="Preference.SwitchPreferenceCompat.Trime" parent="@style/Preference.SwitchPreferenceCompat.Material">
         <item name="widgetLayout">@layout/preference_material_switch</item>
+    </style>
+
+    <style name="Preference.Category.Trime" parent="@style/Preference.Category.Material">
+        <item name="android:layout">@layout/preference_category_card</item>
     </style>
 
     <style name="Theme.DialogTheme" parent="@android:style/Theme.DeviceDefault.Light.Dialog" />

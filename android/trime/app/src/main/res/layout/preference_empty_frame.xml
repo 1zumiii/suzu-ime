@@ -1,0 +1,9 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+  ~ SPDX-FileCopyrightText: 2026 Rime community
+  ~ SPDX-License-Identifier: GPL-3.0-or-later
+  -->
+<!-- 由代码自行填充内容的设置项（键盘预览、模型卡片） -->
+<FrameLayout xmlns:android="http://schemas.android.com/apk/res/android"
+    android:layout_width="match_parent"
+    android:layout_height="wrap_content" />
