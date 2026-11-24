@@ -4,6 +4,7 @@
   ~ SPDX-License-Identifier: GPL-3.0-or-later
   -->
 <!-- Material 3 配色，种子色 #009BD1（原强调色）；不跟随系统壁纸取色，免得壁纸颜色带偏界面 -->
+<!-- 深色：背景与卡片用中性近黑（参照原型的暗色），强调色仍是蓝色 -->
 <resources>
     <color name="m3_primary">#7DD0FF</color>
     <color name="m3_onPrimary">#00344A</color>
@@ -21,23 +22,23 @@
     <color name="m3_onError">#690005</color>
     <color name="m3_errorContainer">#93000A</color>
     <color name="m3_onErrorContainer">#FFDAD6</color>
-    <color name="m3_surface">#0F1417</color>
-    <color name="m3_onSurface">#DFE3E7</color>
-    <color name="m3_surfaceVariant">#41484D</color>
-    <color name="m3_onSurfaceVariant">#C0C7CD</color>
-    <color name="m3_outline">#8A9297</color>
-    <color name="m3_outlineVariant">#41484D</color>
-    <color name="m3_surfaceContainerLowest">#0A0F12</color>
-    <color name="m3_surfaceContainerLow">#171C1F</color>
-    <color name="m3_surfaceContainer">#1B2023</color>
-    <color name="m3_surfaceContainerHigh">#252B2E</color>
-    <color name="m3_surfaceContainerHighest">#303539</color>
-    <color name="m3_surfaceDim">#0F1417</color>
-    <color name="m3_surfaceBright">#353A3D</color>
-    <color name="m3_inverseSurface">#DFE3E7</color>
-    <color name="m3_inverseOnSurface">#2C3134</color>
+    <color name="m3_surface">#1B1C19</color>
+    <color name="m3_onSurface">#E4E3DB</color>
+    <color name="m3_surfaceVariant">#45483F</color>
+    <color name="m3_onSurfaceVariant">#C5C7BC</color>
+    <color name="m3_outline">#8F9287</color>
+    <color name="m3_outlineVariant">#3A3D36</color>
+    <color name="m3_surfaceContainerLowest">#151613</color>
+    <color name="m3_surfaceContainerLow">#1F201D</color>
+    <color name="m3_surfaceContainer">#232521</color>
+    <color name="m3_surfaceContainerHigh">#2E312C</color>
+    <color name="m3_surfaceContainerHighest">#393B36</color>
+    <color name="m3_surfaceDim">#1B1C19</color>
+    <color name="m3_surfaceBright">#393B36</color>
+    <color name="m3_inverseSurface">#E4E3DB</color>
+    <color name="m3_inverseOnSurface">#2F312C</color>
     <color name="m3_inversePrimary">#00668A</color>
     <!-- 设置页：页面底色与卡片色 -->
-    <color name="m3_page">#0F1417</color>
-    <color name="m3_card">#22282B</color>
+    <color name="m3_page">#1B1C19</color>
+    <color name="m3_card">#272925</color>
 </resources>

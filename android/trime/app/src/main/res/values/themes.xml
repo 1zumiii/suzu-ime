@@ -54,6 +54,13 @@ SPDX-License-Identifier: GPL-3.0-or-later
     <style name="ThemeOverlay.Trime.MaterialAlertDialog" parent="ThemeOverlay.Material3.MaterialAlertDialog">
         <item name="buttonBarPositiveButtonStyle">@style/Widget.Trime.DialogButton.Filled</item>
         <item name="materialAlertDialogTitleTextStyle">@style/MaterialAlertDialog.Trime.Title.Text</item>
+        <item name="shapeAppearanceCornerExtraLarge">@style/ShapeAppearance.Trime.Dialog</item>
+    </style>
+
+    <!-- 中心对话框：圆角矩形，圆角比 Material 3 默认的 28dp 小 -->
+    <style name="ShapeAppearance.Trime.Dialog" parent="">
+        <item name="cornerFamily">rounded</item>
+        <item name="cornerSize">16dp</item>
     </style>
 
     <style name="MaterialAlertDialog.Trime.Title.Text" parent="MaterialAlertDialog.Material3.Title.Text">
@@ -65,7 +72,12 @@ SPDX-License-Identifier: GPL-3.0-or-later
     </style>
 
     <style name="ThemeOverlay.Trime.BottomSheetDialog" parent="ThemeOverlay.Material3.BottomSheetDialog">
+        <item name="bottomSheetStyle">@style/Widget.Trime.BottomSheet</item>
         <item name="android:navigationBarColor">@android:color/transparent</item>
+    </style>
+
+    <style name="Widget.Trime.BottomSheet" parent="Widget.Material3.BottomSheet.Modal">
+        <item name="backgroundTint">?attr/colorSurfaceContainerHigh</item>
     </style>
 
     <!-- 页面大标题 -->
