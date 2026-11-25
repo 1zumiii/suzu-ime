@@ -1113,7 +1113,10 @@ return function(translation0, env)
     local t0 = os.clock()
     local n0 = _G.llm_infer_n or 0
     flags = {}
-    if _G.ai_select_stats_on then flags.rp = {} end   -- 回放数据（见 replay_cands）
+    -- 回放数据（见 replay_cands）：选词统计要用；Android 的选错修正也要用其中的 rp.nat（同页候选及其终点），
+    -- 所以客户端库有 fix_note 时也整理。以前只在开了诊断记录时才有，默认配置下选错修正提示不出现
+    local llm0 = _G.ai_rerank_llm
+    if _G.ai_select_stats_on or (llm0 and llm0.fix_note) then flags.rp = {} end
 
     local native = {}
     for cand in translation:iter() do

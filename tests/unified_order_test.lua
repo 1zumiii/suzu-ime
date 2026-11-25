@@ -179,5 +179,23 @@ do
   os.remove(tmp .. "/glyph_missing.txt"); gg.refresh(true)
 end
 
+-- 选错修正要用选词信息里的 rp.nat（同页候选及其终点）。诊断记录全关（默认配置）时也要有，
+-- 只要核心有 fix_note（Android）；没有 fix_note 的桌面端仍不整理
+do
+  gen_list = {}
+  _G.ai_select_stats_on = nil
+  _G.ai_select_info = nil
+  run("ok", cands())
+  local info = _G.ai_select_info
+  check("诊断记录关闭、没有 fix_note：不整理回放数据", info ~= nil and info.rp == nil)
+  _G.ai_rerank_llm.fix_note = function() end
+  _G.ai_select_info = nil
+  run("ok", cands())
+  info = _G.ai_select_info
+  check("诊断记录关闭、有 fix_note：选词信息里有同页候选", info ~= nil and info.rp ~= nil and info.rp.nat ~= nil and #info.rp.nat > 0,
+        info and info.rp and info.rp.nat and tostring(#info.rp.nat) or "nil")
+  _G.ai_rerank_llm.fix_note = nil
+end
+
 print(fails == 0 and "ALL OK" or (fails .. " FAILED"))
 os.exit(fails == 0 and 0 or 1)
