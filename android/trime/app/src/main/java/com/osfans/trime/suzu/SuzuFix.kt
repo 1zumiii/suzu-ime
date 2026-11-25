@@ -26,6 +26,8 @@ import java.util.concurrent.Executors
 // 事件：take 上屏时领到候选，pick 在输入框里定位到原词，check 打完分（不论是否过门槛），fail 打分失败，
 //       shown 显示提示，accepted 采纳，ignored 忽略，stale 点了但文字已变；
 //       offer 光标换词列出候选（分差为排第一的候选比原词），chose 换了词（分差为所选比原词，名次从 0 起），
+//       short_ctx 词在句首、上文不足 2 个字，不打分；no_cands 同页候选都不在词表里，不打分；
+//       fail 只剩守护进程不在、超时或 AI 关闭等真正的打分失败；
 //       unchosen 列出后没换；lookup 词库查到了光标处的词，lookup_none 没查到，lookup_timeout Lua 没有及时回应。
 object SuzuFix {
     const val THRESHOLD = 8.0
@@ -466,7 +468,18 @@ object SuzuFix {
             val right = vocabPrefix(before.substring(off + p.word.length).take(RIGHT_MAX))
             if (right.isEmpty() || right == p.scoredRight || !inVocab(p.word)) continue
             p.scoredRight = right
-            jobs += Job(p, before.substring(maxOf(0, off - LEFT_MAX), off), right)
+            // 同页候选里没有词表内的词：没有可比的对象，单独记 no_cands
+            if (p.cands.none { it != p.word && inVocab(it) }) {
+                diag("no_cands", 0.0, p.word.length, right.length, p.aiChanged)
+                continue
+            }
+            val left = before.substring(maxOf(0, off - LEFT_MAX), off)
+            // 守护进程要求上文至少 2 个字，句首的词打不了分：单独记 short_ctx，不算打分失败
+            if (left.codePointCount(0, left.length) < 2) {
+                diag("short_ctx", 0.0, p.word.length, right.length, p.aiChanged)
+                continue
+            }
+            jobs += Job(p, left, right)
             if (jobs.size >= PER_PAUSE) break
         }
         if (jobs.isEmpty()) return
