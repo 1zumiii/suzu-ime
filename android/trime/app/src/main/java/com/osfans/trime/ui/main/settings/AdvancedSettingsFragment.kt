@@ -11,9 +11,18 @@ import android.content.pm.PackageManager
 import android.os.Bundle
 import androidx.annotation.Keep
 import androidx.appcompat.app.AppCompatDelegate
+import androidx.fragment.app.activityViewModels
+import androidx.lifecycle.lifecycleScope
+import androidx.preference.PreferenceScreen
+import androidx.preference.SwitchPreferenceCompat
 import com.osfans.trime.data.prefs.AppPrefs
 import com.osfans.trime.data.prefs.PreferenceDelegate
 import com.osfans.trime.data.prefs.PreferenceDelegateFragment
+import com.osfans.trime.suzu.SuzuFeatures
+import com.osfans.trime.ui.main.MainViewModel
+import com.osfans.trime.util.addCategory
+import com.osfans.trime.util.toast
+import kotlinx.coroutines.launch
 
 class AdvancedSettingsFragment : PreferenceDelegateFragment(AppPrefs.defaultInstance().advanced) {
 
@@ -34,6 +43,38 @@ class AdvancedSettingsFragment : PreferenceDelegateFragment(AppPrefs.defaultInst
     @Keep
     private val onShowAppIconChange = PreferenceDelegate.OnChangeListener<Boolean> { _, v ->
         showAppIcon(requireContext(), v)
+    }
+
+    private val viewModel: MainViewModel by activityViewModels()
+
+    // 诊断记录：用户目录里的 .enabled 文件。Lua 在部署时读取，所以改完重新部署一次
+    override fun onPreferenceUiCreated(screen: PreferenceScreen) {
+        screen.addCategory("诊断记录") {
+            for (d in SuzuFeatures.Diag.entries) {
+                addPreference(
+                    SwitchPreferenceCompat(context).apply {
+                        isPersistent = false
+                        isIconSpaceReserved = false
+                        title = d.title
+                        summary = d.summary + "。文件只在本机"
+                        isChecked = SuzuFeatures.isOn(d)
+                        setOnPreferenceChangeListener { pref, v ->
+                            if (!SuzuFeatures.set(d, v as Boolean)) {
+                                context.toast("无法修改${d.title}的开关文件")
+                                return@setOnPreferenceChangeListener false
+                            }
+                            (pref as SwitchPreferenceCompat).isEnabled = false
+                            lifecycleScope.launch {
+                                runCatching { viewModel.rime.runOnReady { deploy() } }
+                                    .onFailure { context.toast("重新部署失败，重启输入法后生效") }
+                                pref.isEnabled = true
+                            }
+                            true
+                        }
+                    },
+                )
+            }
+        }
     }
 
     override fun onCreate(savedInstanceState: Bundle?) {

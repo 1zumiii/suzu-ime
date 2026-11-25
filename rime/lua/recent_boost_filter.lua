@@ -84,6 +84,12 @@ local function append_record(path, ts, text)
     f:close()
 end
 
+-- 读 Android 设置页写入的“关”选项（suzu_*_off）；拿不到选项时按没关处理
+local function opt_off(ctx, name)
+    local ok, v = pcall(function() return ctx:get_option(name) end)
+    return ok and v == true
+end
+
 function M.init(env)
     local config = env.engine.schema.config
     local ns = env.name_space:gsub("^%*", "")
@@ -121,8 +127,11 @@ function M.init(env)
             local text = rec.text
             if not text or text == "" or text:find("[\t\r\n]") then return end
             local now = os.time()
+            -- 个人习惯开关（Android 设置页写入运行时选项，其他平台没有这些选项，默认都开）：
+            -- 关掉的项不参与排序，也不再记录；已有的记录保留。词对关掉时仍要更新“前一个词”
+            if env.pp then env.pp.record(text, now, opt_off(ctx, "suzu_pairs_off")) end
+            if opt_off(ctx, "suzu_recent_off") then return end
             append_record(env.path, now, text)
-            if env.pp then env.pp.record(text, now) end
             local e = env.words[text]
             if e then
                 e.last = now
@@ -171,17 +180,19 @@ function M.func(input, env)
     end
 
     -- 找出窗口内用过的、或与上一个词有个人词对的候选；词对命中的优先，其余按最近时间，取前 max_boost 个
+    local ctx = env.engine.context
+    local recent_off, pairs_off, corr_off = opt_off(ctx, "suzu_recent_off"), opt_off(ctx, "suzu_pairs_off"), opt_off(ctx, "suzu_corr_off")
     local prev = env.pp and env.pp.prev(now) or nil
     local picked = {}
     for i, cand in ipairs(buf) do
         if ELIGIBLE[cand.type] then
             local e = env.words[cand.text]
-            local pe = prev and env.pp.eff(prev, cand.text, now) or 0
-            if prev then
+            local pe = (prev and not pairs_off) and env.pp.eff(prev, cand.text, now) or 0
+            if prev and not corr_off then
                 local ce = env.pp.choice_eff(prev, code, cand.text, now)
                 if ce * 1.5 > pe then pe = ce * 1.5 end   -- 纠错记忆：用户在这个情境下选过它，优先级不低于词对
             end
-            local recent = e and e.count >= env.min_count and now - e.last <= env.window
+            local recent = not recent_off and e and e.count >= env.min_count and now - e.last <= env.window
             if recent or pe >= env.min_pair then
                 picked[#picked + 1] = { pos = i, last = e and e.last or 0, count = e and e.count or 0,
                                         pair = pe >= env.min_pair and pe or 0 }

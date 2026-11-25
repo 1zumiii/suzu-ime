@@ -65,6 +65,7 @@ class MainFragment : PaddingPreferenceFragment() {
                 addDestinationPreference(R.string.profile, "folder_cog_outline", NavigationRoute.Profile)
             }
             addCategory(R.string.main_section_preferences) {
+                addDestinationPreference(R.string.suzu_features, "robot_outline", NavigationRoute.Features)
                 addDestinationPreference(R.string.general, "tune_variant", NavigationRoute.General)
                 addDestinationPreference(R.string.virtual_keyboard, "keyboard_outline", NavigationRoute.VirtualKeyboard)
                 addDestinationPreference(R.string.clipboard, "clipboard_text_outline", NavigationRoute.Clipboard)

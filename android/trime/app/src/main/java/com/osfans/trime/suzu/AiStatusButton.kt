@@ -172,6 +172,11 @@ class AiStatusButton(
     }
 
     private fun refresh() {
+        // 设置页关闭了 AI 重排：不显示徽标，也不自动启动 AI 服务
+        if (!SuzuFeatures.aiMaster) {
+            visibility = GONE
+            return
+        }
         val f = DataManager.userDataDir.resolve("ai_status.json")
         // 从没部署过守护进程：只有 Shizuku 在运行时才显示（红色，点一下就能启动）；否则隐藏
         if (!f.exists() && AiDaemonLauncher.availability() == AiDaemonLauncher.Availability.SHIZUKU_NOT_RUNNING) {

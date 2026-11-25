@@ -281,6 +281,7 @@
     <string name="suzu_open_shizuku">開啟 Shizuku</string>
     <string name="suzu_choose_downloaded_file">選擇已下載的檔案</string>
     <string name="suzu_current_color">配色：%1$s</string>
+    <string name="suzu_features">AI 與輸入輔助</string>
     <string name="suzu_module_status">功能狀態</string>
     <string name="suzu_mark_word">降低此 AI 候選的排序</string>
     <string name="suzu_unmark_word">取消降低排序</string>

@@ -318,10 +318,12 @@ int run_worker(const Options & opt) {
         c.gen_beam = opt.gen_beam;
     }
     engine.set_config(c);
-    // 默认关闭，与手机上方案开关 ai_rerank 的默认值一致；之前有过手动选择就恢复它（文件由手动开关写入）
-    bool restored = false;
-    engine.set_enabled(read_enabled_state(opt, &restored) && restored);
-    if (restored) log_event("AI enabled (restored from last manual choice)");
+    // 默认开启，与方案开关 ai_rerank 的默认值（reset: 1）一致；之前有过手动选择就恢复它（文件由手动开关写入）
+    bool restored = true;
+    bool has_state = read_enabled_state(opt, &restored);
+    engine.set_enabled(has_state ? restored : true);
+    if (!has_state) log_event("AI enabled (no saved choice, default on)");
+    else if (restored) log_event("AI enabled (restored from last manual choice)");
     if (c.vocab_path.empty()) log_event("no student vocab: reranking stays off (only Suzu models are supported)");
 
     w.token = make_token();

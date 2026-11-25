@@ -41,6 +41,7 @@ sealed class SwitchOptionEntry(
         fun fromSwitch(rime: RimeSession, it: RimeSchema.Switch): Custom? {
             val labels = it.states
             if (labels.size <= 1) return null
+            if (it.name in com.osfans.trime.suzu.SuzuFeatures.settingsOnlySwitches) return null   // 在“AI 与输入辅助”设置页里切换
             return if (it.name.isNotEmpty()) {
                 if (labels.size != 2) return null
                 val (disabledText, enabledText) = labels

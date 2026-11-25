@@ -281,6 +281,7 @@
     <string name="suzu_open_shizuku">Open Shizuku</string>
     <string name="suzu_choose_downloaded_file">Choose a downloaded file</string>
     <string name="suzu_current_color">Colors: %1$s</string>
+    <string name="suzu_features">AI &amp; Typing Aids</string>
     <string name="suzu_module_status">Feature status</string>
     <string name="suzu_mark_word">Lower this AI candidate</string>
     <string name="suzu_unmark_word">Undo candidate lowering</string>

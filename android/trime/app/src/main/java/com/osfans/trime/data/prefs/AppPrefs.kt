@@ -169,8 +169,8 @@ class AppPrefs(
 
         val colorMode = enum(R.string.color_mode, COLOR_MODE, ColorMode.FOLLOW_SYSTEM)
 
-        /** 按键画圆角背景。默认不画，键盘是无键帽的样式 */
-        val keyBackground = switch(R.string.key_background, KEY_BACKGROUND, false)
+        /** 按键画圆角背景。默认画（GBoard 风格），关闭后是无键帽的样式 */
+        val keyBackground = switch(R.string.key_background, KEY_BACKGROUND, true)
 
         /** 竖屏时键盘区的高度，单位 dp。横屏用主题里的固定高度 */
         val keyboardHeight = int(R.string.keyboard_height, KEYBOARD_HEIGHT, 245, 180, 320, "dp", step = 5)

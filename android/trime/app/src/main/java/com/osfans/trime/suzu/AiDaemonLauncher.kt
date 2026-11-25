@@ -79,13 +79,20 @@ object AiDaemonLauncher {
         """
         D=/data/local/tmp/rimellm
         mkdir -p ${'$'}D || exit 11
+        # --repack：CPU 权重重排。手机离线回放 5671 条选词，首位只变 3 条，打分快约 45%，常驻内存多约 41 MiB
+        ARGS="--model ${'$'}D/suzu.gguf --student-vocab ${'$'}D/suzu.vocab.txt --n-seq-max 11 --gen-beam 10 --repack"
+        TAIL="--rime-dir $rimeDir --log-dir ${'$'}D --port 17920 --threads 2 --idle-sec 0"
         ${if (onlyIfRunning) "pidof rimellmd >/dev/null 2>&1 || { echo NOT_RUNNING; exit 0; }" else ""}
         if pidof rimellmd >/dev/null 2>&1; then
           cmp -s "$libDir/librimellmd.so" ${'$'}D/rimellmd && cmp -s "$rimeDir/$STUDENT_MODEL" ${'$'}D/suzu.gguf &&
-            cmp -s "$rimeDir/$STUDENT_VOCAB" ${'$'}D/suzu.vocab.txt && { echo RUNNING; exit 0; }
-          # 程序或模型与用户目录里的不同（APK 升级、换了模型，或早先用 adb 推的）：停掉，下面换上新的
+            cmp -s "$rimeDir/$STUDENT_VOCAB" ${'$'}D/suzu.vocab.txt &&
+            [ "${'$'}(cat ${'$'}D/args 2>/dev/null)" = "${'$'}ARGS ${'$'}TAIL" ] && { echo RUNNING; exit 0; }
+          # 程序、模型或启动参数与这次的不同（APK 升级、换了模型、改了参数，或早先用 adb 推的）：
+          # 停掉所有 rimellmd（监督进程和工作进程，包括父进程已不在的），确认都退出了再换上新的
           kill ${'$'}(pidof rimellmd) 2>/dev/null
           i=0; while pidof rimellmd >/dev/null 2>&1 && [ ${'$'}i -lt 50 ]; do sleep 0.1; i=${'$'}((i+1)); done
+          # 5 秒还没退出（卡死、不响应 SIGTERM）：强制结束
+          pidof rimellmd >/dev/null 2>&1 && { kill -9 ${'$'}(pidof rimellmd) 2>/dev/null; sleep 0.5; }
           pidof rimellmd >/dev/null 2>&1 && { echo KILL_FAIL; exit 16; }
           echo REPLACED
         fi
@@ -93,9 +100,8 @@ object AiDaemonLauncher {
         [ -f "$rimeDir/$STUDENT_MODEL" ] && [ -f "$rimeDir/$STUDENT_VOCAB" ] || { echo NO_MODEL; exit 13; }
         cp "$rimeDir/$STUDENT_MODEL" ${'$'}D/suzu.gguf && cp "$rimeDir/$STUDENT_VOCAB" ${'$'}D/suzu.vocab.txt || { echo MODEL_COPY_FAIL; exit 14; }
         rm -f ${'$'}D/model.gguf                              # 旧版回退用的 Qwen 副本，不再使用
-        # --repack：CPU 权重重排。手机离线回放 5671 条选词，首位只变 3 条，打分快约 45%，常驻内存多约 41 MiB
-        ARGS="--model ${'$'}D/suzu.gguf --student-vocab ${'$'}D/suzu.vocab.txt --n-seq-max 10 --gen-beam 10 --repack"
         cd ${'$'}D
+        echo "${'$'}ARGS ${'$'}TAIL" > ${'$'}D/args
         ( setsid nohup ./rimellmd --supervise ${'$'}ARGS --rime-dir "$rimeDir" --log-dir ${'$'}D \
             --port 17920 --threads 2 --idle-sec 0 >> ${'$'}D/daemon.log 2>&1 < /dev/null & ) > /dev/null 2>&1 < /dev/null
         sleep 1

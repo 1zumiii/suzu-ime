@@ -58,7 +58,14 @@ class SwitchOptionWindow(di: DI) :
         val hints = !AppPrefs.defaultInstance().keyboard.hideKeySymbol.getValue()
         return arrayOf(
             SwitchOptionEntry.Static(if (ascii) "英文 → 中文" else "中文 → 英文", 0, SwitchOptionEntry.Static.Type.AsciiMode, if (ascii) "En" else "中"),
-            SwitchOptionEntry.Static(if (ai) "AI 重排：开" else "AI 重排：关", 0, SwitchOptionEntry.Static.Type.AiRerank, "AI"),
+        ) + (
+            // 设置页关闭了 AI 重排时不显示 AI 项
+            if (com.osfans.trime.suzu.SuzuFeatures.aiMaster) {
+                arrayOf(SwitchOptionEntry.Static(if (ai) "AI 重排：开" else "AI 重排：关", 0, SwitchOptionEntry.Static.Type.AiRerank, "AI"))
+            } else {
+                emptyArray()
+            }
+        ) + arrayOf(
             SwitchOptionEntry.Static(if (hints) "键帽提示：开" else "键帽提示：关", 0, SwitchOptionEntry.Static.Type.KeyHints, "¹a"),
             SwitchOptionEntry.Static("符号", 0, SwitchOptionEntry.Static.Type.Symbols, "#"),
             SwitchOptionEntry.Static("表情", 0, SwitchOptionEntry.Static.Type.Emoji, "☺"),

@@ -332,6 +332,7 @@ local function setup_choice_memory(env)
     connect(env, env.engine.context.select_notifier, function(ctx)
         pcall(function()
             if ctx:get_option("ai_no_log") then return end   -- 密码框、数字框等不记
+            if select(2, pcall(function() return ctx:get_option("suzu_corr_off") end)) == true then return end   -- Android 设置页关掉了纠错记忆
             local s = select_info.resolve(ctx, "choice")
             if not s or not s.whole or not s.input:match("^[a-z]+$") then return end   -- 只选了前半截：不记
             -- 整段上屏时上屏已先发生，pp.prev() 已是刚上屏的词，要用过滤器在上屏前记下的“前一个词”

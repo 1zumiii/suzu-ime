@@ -61,6 +61,7 @@ import splitties.bitflags.hasFlag
 import splitties.systemservices.clipboardManager
 import splitties.systemservices.inputMethodManager
 import timber.log.Timber
+import com.osfans.trime.suzu.SuzuFeatures
 import com.osfans.trime.suzu.SuzuFix
 import com.osfans.trime.suzu.SuzuAppContext
 
@@ -501,6 +502,15 @@ open class TrimeInputMethodService : LifecycleInputMethodService() {
         refreshAppContext()
         postRimeJob {
             setRuntimeOption("ai_no_log", noLog)
+            SuzuFeatures.applyRuntimeOptions(this)
+            // 设置页可能改过 AI 开关：设置页关闭了 AI 就关掉方案开关；否则按守护进程的实际状态对齐（守护进程不在时不动）
+            if (!SuzuFeatures.aiMaster) {
+                if (getRuntimeOption("ai_rerank")) setRuntimeOption("ai_rerank", false)
+            } else {
+                SuzuFeatures.aiState().takeIf { it.block == null }?.let {
+                    if (getRuntimeOption("ai_rerank") != it.enabled) setRuntimeOption("ai_rerank", it.enabled)
+                }
+            }
             // 换了输入框，或者应用重新开始了输入（很多聊天软件点发送后会这样清空输入框）：
             // 之前的上屏历史不再是光标前的内容，清空 AI 重排的上文和个人词对的“前一个词”。
             // 输入框里如果还有文字，上面 refreshAppContext() 读到的光标前文字照常作为上文

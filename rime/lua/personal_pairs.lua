@@ -203,12 +203,12 @@ function M.choice_eff(prev, input, word, now)
 end
 
 -- 上屏一个词时调用：若上一个词仍有效，记一条词对；然后把当前词作为新的「前一个词」
-function M.record(text, ts)
+function M.record(text, ts, no_pair)
     ts = ts or os.time()
     local pv = M.prev(ts)
     -- 两个都是单字（的、是、了之类）的搭配信息量很低、噪声多，不记
     local single = pv and (utf8.len(pv) or 0) == 1 and (utf8.len(text) or 0) == 1
-    if pv and usable(pv) and usable(text) and not single then
+    if not no_pair and pv and usable(pv) and usable(text) and not single then
         bump(pv, text, ts)
         local f = io.open(path, "a")
         if f then

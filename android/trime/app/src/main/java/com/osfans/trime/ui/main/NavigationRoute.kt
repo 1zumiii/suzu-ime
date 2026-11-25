@@ -18,6 +18,7 @@ import com.osfans.trime.ui.main.settings.ProfileSettingsFragment
 import com.osfans.trime.suzu.DictPackFragment
 import com.osfans.trime.suzu.EmojiCustomFragment
 import com.osfans.trime.suzu.ModelFragment
+import com.osfans.trime.suzu.SuzuFeatureFragment
 import com.osfans.trime.ui.main.settings.userdict.UserDictionaryFragment
 import kotlinx.parcelize.Parcelize
 import kotlinx.serialization.Serializable
@@ -42,6 +43,9 @@ sealed class NavigationRoute : Parcelable {
 
     @Serializable
     data object Profile : NavigationRoute()
+
+    @Serializable
+    data object Features : NavigationRoute()
 
     @Serializable
     data object General : NavigationRoute()
@@ -88,6 +92,9 @@ sealed class NavigationRoute : Parcelable {
                 label = ctx.getString(R.string.profile)
             }
 
+            fragment<SuzuFeatureFragment, Features> {
+                label = ctx.getString(R.string.suzu_features)
+            }
             fragment<GeneralSettingsFragment, General> {
                 label = ctx.getString(R.string.general)
             }

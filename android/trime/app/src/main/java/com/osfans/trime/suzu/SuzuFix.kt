@@ -18,7 +18,7 @@ import java.util.concurrent.Executors
 //    点哪个就把原词整段换成哪个。判断“是不是选错了”交给用户，模型只负责排序，所以没有门槛。
 //    最近整段选过的词用选词时记下的同页候选；其他文字（以前打的、粘贴的）由 Lua 查词库找出词和同音词。
 // 2. 自动提示：句子里每个整段选的词，停顿时补上右侧已打的文字，给原词与同页候选打整句分，
-//    某个候选比原词高出门槛时在工具栏提示“A → B”，点了才替换。选了 AI 改过的首位的词选错率高，用较低的门槛。
+//    停顿时间在设置页调整（默认 1.5 秒，见 SuzuFeatures.fixPauseMs）。某个候选比原词高出门槛时在工具栏提示“A → B”，点了才替换。选了 AI 改过的首位的词选错率高，用较低的门槛。
 // 记录来源：Lua 在选词时把“所选词与同页候选”登记到 librime_llm.so（fix_note），这里在上屏时按上屏文字领取（nativeTake）。
 // 打分：nativeScore 经单独的连接请求守护进程，各字对数概率之和；整句分 = score(左文 → X) + score(左文 + X → 右文)。
 // 文字只在内存里；统计只写数字（fix_stats.tsv：时间、事件、分差 ×10、原词字数、右文字数、类别 1 = AI 改过的首位、
@@ -28,7 +28,6 @@ import java.util.concurrent.Executors
 //       offer 光标换词列出候选（分差为排第一的候选比原词），chose 换了词（分差为所选比原词，名次从 0 起），
 //       unchosen 列出后没换；lookup 词库查到了光标处的词，lookup_none 没查到，lookup_timeout Lua 没有及时回应。
 object SuzuFix {
-    const val PAUSE_MS = 1500L
     const val THRESHOLD = 8.0
     const val THRESHOLD_AI = 5.0          // 选了 AI 改过的首位
     private const val BUDGET_MS = 300
@@ -190,13 +189,15 @@ object SuzuFix {
                 while (picks.size > KEEP) picks.removeFirst()
             }
         }
-        if (jumped) {
+        if (jumped && SuzuFeatures.active(SuzuFeatures.Feature.CursorSwap)) {
             if (offerChoices()) return
             hideStale()
         }
         // 位置可能已经不对（之前的文字改过），打分前按文字核对；这里只决定要不要等停顿
-        if (picks.any { !it.dismissed && it.end <= cursor && cursor - it.start <= SPAN_MAX }) {
-            main.postDelayed(check, PAUSE_MS)
+        if (SuzuFeatures.active(SuzuFeatures.Feature.FixHint) &&
+            picks.any { !it.dismissed && it.end <= cursor && cursor - it.start <= SPAN_MAX }
+        ) {
+            main.postDelayed(check, SuzuFeatures.fixPauseMs)
         }
     }
 

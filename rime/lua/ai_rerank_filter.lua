@@ -92,6 +92,28 @@ end
 -- 统一排序（llm_rerank/ranker: unified）的打分，见 rank_unified.lua
 local okru, ru = pcall(require, "rank_unified")
 
+-- 个人习惯开关：Android 设置页按输入框写入运行时选项 suzu_recent_off、suzu_pairs_off、suzu_corr_off，
+-- 关掉的项系数取 0。其他平台没有这些选项，读到 false，参数不变
+-- 候选生成开关：同样由 Android 设置页写入运行时选项 suzu_gen_off，每次过滤时更新
+local gen_off = false
+
+-- 读 Android 设置页写入的“关”选项（suzu_*_off）；拿不到选项时按没关处理
+local function opt_off(ctx, name)
+    local ok, v = pcall(function() return ctx:get_option(name) end)
+    return ok and v == true
+end
+
+local function personal_params(p, ctx)
+    local rec_off, pair_off, corr_off = opt_off(ctx, "suzu_recent_off"), opt_off(ctx, "suzu_pairs_off"), opt_off(ctx, "suzu_corr_off")
+    if not (rec_off or pair_off or corr_off) then return p end
+    local q = {}
+    for k, v in pairs(p) do q[k] = v end
+    if rec_off then q.mu = 0 end
+    if pair_off then q.pg = 0 end
+    if corr_off then q.cg = 0 end
+    return q
+end
+
 -- 回放数据用：不看融合系数是否为 0，取原始计数
 local function pp_raw(fn, ...)
     if not okpp or not pp[fn] or not (...) then return 0 end
@@ -508,7 +530,7 @@ end
 -- 返回不必再按原位输出的组内下标（已被提上来的）。
 local function add_generated(feats, cand_of, all, n, has_model, best_e, input, context, llm, rp, pre)
     local skip_tail = {}
-    if not (cfg.generate and has_model and best_e == #input and llm.generate) then return skip_tail end
+    if not (cfg.generate and not gen_off and has_model and best_e == #input and llm.generate) then return skip_tail end
     local okg, gl = true, pre
     if pre == false then gl = nil   -- 合并请求里已经试过，没生成出来：不再请求
     elseif not gl then okg, gl = pcall(llm.generate, context, input, cfg.gen_k, false) end
@@ -588,13 +610,14 @@ local function inner(translation, env)
     local unified = cfg.ranker == "unified" and okru
     local gen_probe, gen_pre = false, nil
     local use_model = llm ~= nil and env.engine.context:get_option("ai_rerank")
+    gen_off = opt_off(env.engine.context, "suzu_gen_off")
     if unified then
         -- 统一排序：只处理普通拼音输入；不用模型（关 AI、编码不匹配、模块未加载）时 λ = 0，照样按先验与个人习惯排序
         if not input:match("^[a-z' ]+$") then for _, c in ipairs(all) do Y(c) end; return end
         if use_model and not match_code_pattern(llm, input) then
             use_model = false
             -- 编码不匹配（如两个字母的简拼）：开了候选生成时先试探，能生成才用模型（全拼由核心判定为不适用，行为不变）
-            gen_probe = cfg.generate and llm.generate ~= nil
+            gen_probe = cfg.generate and not gen_off and llm.generate ~= nil
         end
     else
         if not llm then
@@ -741,7 +764,7 @@ local function inner(translation, env)
     local s1_hit = cache and cache.key == key1 and cache.result
     -- 合并请求：缓存没命中、且这次按键要生成时，打分与生成一次提交（Android 上少一次进程间往返）
     local merged = llm ~= nil and llm.score_gen ~= nil and not s1_hit
-    local wants_gen = unified and cfg.generate and best_e == #input and llm ~= nil and llm.generate ~= nil
+    local wants_gen = unified and cfg.generate and not gen_off and best_e == #input and llm ~= nil and llm.generate ~= nil
     local sg_ok, sg_result, sg_why
     if gen_probe and best_e == #input then
         if merged then
@@ -801,7 +824,7 @@ local function inner(translation, env)
         local mrank = {}
         if has_model then for i, w in ipairs(result) do mrank[w] = mrank[w] or i end end
         local feats = replay_cands(all, full_pos, n, mrank, has_model and scores or {}, input, okpp and pp.prev() or nil)
-        local p = cfg.uni
+        local p = personal_params(cfg.uni, env.engine.context)
         local hn = math.min(ru.han_count(context), 30)   -- λ 用整段上文的汉字数，rp.c 只留末 30 个字符，回放从它重算会偏少
         local lam = ru.lam(p, hn, #input, has_model)
         local cand_of = {}

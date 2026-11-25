@@ -20,7 +20,7 @@ sh(f"mkdir -p {D}/rime; pkill -f '[r]imellmd.*{PORT}'")
 for f in (binp, gguf, vocab): subprocess.run([ADB, "push", f, D + "/"], check=True, capture_output=True)
 sh(f"chmod 755 {D}/rimellmd")
 name = os.path.basename
-sh(f"cd {D}; (setsid nohup ./rimellmd --model {D}/{name(gguf)} --student-vocab {D}/{name(vocab)} --rime-dir {D}/rime --log-dir {D} --port {PORT} --threads 2 --idle-sec 0 --n-seq-max 10 > {D}/out.log 2>&1 < /dev/null &) >/dev/null 2>&1")
+sh(f"cd {D}; (setsid nohup ./rimellmd --model {D}/{name(gguf)} --student-vocab {D}/{name(vocab)} --rime-dir {D}/rime --log-dir {D} --port {PORT} --threads 2 --idle-sec 0 --n-seq-max 11 > {D}/out.log 2>&1 < /dev/null &) >/dev/null 2>&1")
 time.sleep(1.5)
 subprocess.run([ADB, "forward", f"tcp:{PORT}", f"tcp:{PORT}"], check=True, capture_output=True)
 s = socket.create_connection(("127.0.0.1", PORT), timeout=30)

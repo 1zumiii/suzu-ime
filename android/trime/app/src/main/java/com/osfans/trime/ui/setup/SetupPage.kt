@@ -125,7 +125,7 @@ enum class SetupPage(val required: Boolean) {
     }
 
     private fun startAi(activity: FragmentActivity) {
-        // 用户在引导里主动选择了启动，把 AI 开关记为开启（新装时默认关闭）
+        // 用户在引导里主动选择了启动，把 AI 开关记为开启（没有这个文件时守护进程也默认开启，这里写明确的选择）
         DataManager.userDataDir.resolve("ai_enabled.state").writeText("1")
         AiDaemonLauncher.start(activity) { result ->
             aiStarted = true
