@@ -209,6 +209,8 @@ object SuzuAssets {
             throw e
         }
         staging.deleteRecursively()
+        // 换好模型后，其他模型没下完的部分用不上了，一并删掉
+        userDir.resolve(MODEL_DOWNLOADS).listFiles()?.forEach { it.deleteRecursively() }
         // AI 服务正在跑时重启它，换上新模型
         AiDaemonLauncher.reloadIfRunning(appContext)
     }
@@ -279,6 +281,27 @@ object SuzuAssets {
         set(asset, State.Idle)
     }
 
+    /** 没下完的文件（中途取消或失败后留下，下次下载同一项时续传）。正在下载的不算 */
+    class Leftover(val title: String, val bytes: Long, internal val files: List<File>)
+
+    fun leftovers(): List<Leftover> {
+        val out = mutableListOf<Leftover>()
+        val downloadingModel = (state(SuzuAsset.Model) as? State.Downloading)?.model?.id
+        userDir.resolve(MODEL_DOWNLOADS).listFiles()?.filter { it.isDirectory && it.name != downloadingModel }?.forEach { dir ->
+            val bytes = dir.walk().filter { it.isFile }.sumOf { it.length() }
+            if (bytes > 0) out += Leftover(SuzuModels.byId(dir.name)?.title ?: dir.name, bytes, listOf(dir))
+        }
+        if (state(SuzuAsset.Grammar) !is State.Downloading) {
+            val parts = listOf(userDir.resolve("$GRAMMAR_FILE.part"), userDir.resolve("$GRAMMAR_FILE.import"), userDir.resolve(GRAMMAR_PART_DIGEST))
+                .filter { it.isFile }
+            val bytes = parts.sumOf { it.length() }
+            if (bytes > 0) out += Leftover("万象语法模型", bytes, parts)
+        }
+        return out
+    }
+
+    fun deleteLeftover(l: Leftover) = l.files.forEach { it.deleteRecursively() }
+
     /** 删除资源和没下完的部分，对应的功能随之关闭 */
     fun delete(asset: SuzuAsset) {
         cancel(asset)
@@ -290,6 +313,8 @@ object SuzuAssets {
             userDir.resolve("suzu.name").delete()
             userDir.resolve(MODEL_PATCH).delete()
             userDir.resolve(MODEL_DOWNLOADS).deleteRecursively()
+            // AI 服务目录里也有一份模型副本：停掉 AI 服务并删掉它，不然手机里还留着约 50～100 MB
+            AiDaemonLauncher.stopAndRemoveCopies(appContext)
         } else {
             userDir.resolve(GRAMMAR_INFO).delete()
             userDir.resolve(GRAMMAR_PART_DIGEST).delete()

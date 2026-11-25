@@ -108,6 +108,32 @@ object AiDaemonLauncher {
         pidof rimellmd >/dev/null 2>&1 && echo STARTED || { echo START_FAIL; exit 15; }
         """.trimIndent()
 
+    /**
+     * 删除模型后调用：经 Shizuku 停掉 AI 服务，删掉复制到 /data/local/tmp/rimellm 的程序、模型、词表和参数记录。
+     * 只删这几个文件，同目录里的其他文件不动。Shizuku 不可用时什么都不做（下次启动时会按缺模型处理）
+     */
+    fun stopAndRemoveCopies(context: Context) {
+        if (availability() != Availability.READY) return
+        Thread {
+            runCatching {
+                val method =
+                    Shizuku::class.java.getDeclaredMethod("newProcess", Array<String>::class.java, Array<String>::class.java, String::class.java)
+                method.isAccessible = true
+                val script =
+                    """
+                    D=/data/local/tmp/rimellm
+                    kill ${'$'}(pidof rimellmd) 2>/dev/null
+                    i=0; while pidof rimellmd >/dev/null 2>&1 && [ ${'$'}i -lt 50 ]; do sleep 0.1; i=${'$'}((i+1)); done
+                    pidof rimellmd >/dev/null 2>&1 && kill -9 ${'$'}(pidof rimellmd) 2>/dev/null
+                    rm -f ${'$'}D/rimellmd ${'$'}D/suzu.gguf ${'$'}D/suzu.vocab.txt ${'$'}D/args
+                    """.trimIndent()
+                val proc = method.invoke(null, arrayOf("sh", "-c", script), null, null) as Process
+                proc.waitFor()
+                Log.i(TAG, "已停止 AI 服务并删除模型副本")
+            }.onFailure { Log.w(TAG, "删除 AI 服务的模型副本失败：${it.message}") }
+        }.start()
+    }
+
     /** 在后台线程里经 Shizuku 以 shell 身份启动守护进程，结果回到主线程。 */
     fun start(context: Context, onResult: (Result) -> Unit) = execute(context, false, onResult)
 

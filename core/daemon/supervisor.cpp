@@ -75,6 +75,20 @@ bool sleep_interruptible(int ms) {
 
 }  // namespace
 
+// Trime 被卸载后（孤儿退出）删掉 App 复制过来的文件：程序、模型、词表、参数记录和日志，约 60 MB。
+// 只在日志目录里有 args（由 App 的启动脚本写入）时才删，并且只删日志目录里的这几个文件，
+// 不碰同目录里其他文件（例如手动推上去做实验的模型），也不碰主机上测试时用的模型。
+static void remove_managed_files(const Options & opt) {
+    const std::string d = opt.log_dir;
+    if (d.empty() || access((d + "/args").c_str(), F_OK) != 0) return;
+    auto in_dir = [&](const std::string & p) { return p.size() > d.size() + 1 && p.compare(0, d.size() + 1, d + "/") == 0; };
+    std::vector<std::string> files = {d + "/rimellmd", d + "/suzu.gguf", d + "/suzu.vocab.txt", d + "/daemon.log", d + "/args"};
+    if (in_dir(opt.model)) files.push_back(opt.model);
+    if (in_dir(opt.student_vocab)) files.push_back(opt.student_vocab);
+    for (const auto & f : files) unlink(f.c_str());
+    unlink((d + "/rime_llm_log.txt").c_str());   // 最后删日志：上面的 log_event 已经写完
+}
+
 int run_supervisor(Options opt) {
     signal(SIGPIPE, SIG_IGN);
     struct sigaction sa;
@@ -137,6 +151,7 @@ int run_supervisor(Options opt) {
         }
         if (WIFEXITED(st) && WEXITSTATUS(st) == kOrphanExit) {
             log_event("worker exited as orphan (Trime data dir gone); supervisor exiting");
+            remove_managed_files(opt);
             return 0;
         }
         long long up_s = (ipc::mono_ms() - start) / 1000;

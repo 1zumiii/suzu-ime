@@ -119,8 +119,10 @@ class ModelFragment : PaddingPreferenceFragment() {
                 else -> getString(R.string.suzu_grammar_available, SuzuAsset.Grammar.sizeMb)
             }
         }
+        val partial = SuzuAssets.leftovers().size
         storagePref?.summary = SuzuAsset.entries.count(SuzuAssets::isInstalled).let { n ->
-            if (n == 0) "还没有下载模型" else "$n 个模型"
+            val base = if (n == 0) "还没有下载模型" else "$n 个模型"
+            if (partial > 0) "$base，$partial 项未下载完" else base
         }
     }
 
@@ -197,6 +199,20 @@ class ModelFragment : PaddingPreferenceFragment() {
                     ) { confirmDelete(SuzuAsset.Grammar) },
                 )
             }
+        }.toMutableList()
+        for (l in SuzuAssets.leftovers()) {
+            actions.add(
+                SheetAction(
+                    title = "${l.title}（未下载完）",
+                    subtitle = "约 ${(l.bytes + 524_288) / 1_048_576} MB，重新下载时可续传",
+                    leadingIcon = "download_outline",
+                    trailingIcon = "delete_outline",
+                    trailingOnly = true,
+                ) {
+                    SuzuAssets.deleteLeftover(l)
+                    if (isAdded) render()
+                },
+            )
         }
         ctx.actionSheet("harddisk", "已下载的模型", actions, "完成", emptyText = "还没有下载模型。")
     }
