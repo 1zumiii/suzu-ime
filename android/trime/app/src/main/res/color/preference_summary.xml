@@ -1,0 +1,7 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- 设置项说明文字：比标题弱一级，禁用时再淡一些 -->
+<selector xmlns:android="http://schemas.android.com/apk/res/android"
+    xmlns:app="http://schemas.android.com/apk/res-auto">
+    <item android:state_enabled="false" android:color="?attr/colorOnSurface" android:alpha="0.38" app:alpha="0.38" />
+    <item android:color="?attr/colorOnSurfaceVariant" android:alpha="0.8" app:alpha="0.8" />
+</selector>

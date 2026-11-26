@@ -93,6 +93,14 @@ SPDX-License-Identifier: GPL-3.0-or-later
     <style name="PreferenceThemeOverlay.Trime" parent="@style/PreferenceThemeOverlay">
         <item name="switchPreferenceCompatStyle">@style/Preference.SwitchPreferenceCompat.Trime</item>
         <item name="preferenceCategoryStyle">@style/Preference.Category.Trime</item>
+        <!-- 说明文字比标题低一级：小一号，颜色淡一些 -->
+        <item name="android:textAppearanceSmall">@style/TextAppearance.Trime.PreferenceSummary</item>
+        <item name="android:textColorSecondary">@color/preference_summary</item>
+    </style>
+
+    <style name="TextAppearance.Trime.PreferenceSummary" parent="TextAppearance.Material3.BodySmall">
+        <item name="android:textSize">13sp</item>
+        <item name="android:textColor">@color/preference_summary</item>
     </style>
 
     <style name="Preference.SwitchPreferenceCompat.Trime" parent="@style/Preference.SwitchPreferenceCompat.Material">
