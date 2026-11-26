@@ -301,7 +301,11 @@ object AppUpdater {
                             }
                         }
                     }
-                    check(sameSigner(activity, target)) { activity.getString(R.string.suzu_update_signature_mismatch) }
+                    val archive = packageArchiveInfo(activity, target)
+                    check(archive != null && archive.packageName == activity.packageName) {
+                        activity.getString(R.string.suzu_update_package_mismatch)
+                    }
+                    check(sameSigner(activity, archive)) { activity.getString(R.string.suzu_update_signature_mismatch) }
                 }
             }
             dialog.dismiss()
@@ -333,17 +337,22 @@ object AppUpdater {
         return sigs.orEmpty().map { sha256(it.toByteArray()) }.toSet()
     }
 
-    /** 下载的 APK 必须和已装的用同一把密钥签名，否则系统也会拒绝覆盖安装 */
     @Suppress("DEPRECATION")
-    private fun sameSigner(context: Context, apk: File): Boolean {
-        val flags = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.P) {
+    private fun signatureFlags(): Int =
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.P) {
             PackageManager.GET_SIGNING_CERTIFICATES
         } else {
             PackageManager.GET_SIGNATURES
         }
-        val pm = context.packageManager
-        val installed = signatures(pm.getPackageInfo(context.packageName, flags))
-        val downloaded = signatures(pm.getPackageArchiveInfo(apk.path, flags))
+
+    @Suppress("DEPRECATION")
+    private fun packageArchiveInfo(context: Context, apk: File): PackageInfo? =
+        context.packageManager.getPackageArchiveInfo(apk.path, signatureFlags())
+
+    @Suppress("DEPRECATION")
+    private fun sameSigner(context: Context, archive: PackageInfo): Boolean {
+        val installed = signatures(context.packageManager.getPackageInfo(context.packageName, signatureFlags()))
+        val downloaded = signatures(archive)
         return installed.isNotEmpty() && downloaded.isNotEmpty() && downloaded.any { it in installed }
     }
 

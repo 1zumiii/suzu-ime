@@ -67,5 +67,17 @@ JL="$SRC/app/src/main/jniLibs/arm64-v8a"; mkdir -p "$JL"
 
 # 4. 对齐 + 签名
 mkdir -p "$(dirname "$OUT")"
-"$REPO/android/trime/sign_apk.sh" "$(ls "$SRC"/app/build/outputs/apk/release/*-unsigned.apk | head -1)" "$OUT"
+APK_DIR="$SRC/app/build/outputs/apk/release"
+APK_NAME="$(python3 - "$APK_DIR/output-metadata.json" <<'PY'
+import json
+import sys
+
+with open(sys.argv[1], encoding="utf-8") as metadata:
+    outputs = json.load(metadata)["elements"]
+if len(outputs) != 1:
+    raise SystemExit("Expected one Android release APK")
+print(outputs[0]["outputFile"])
+PY
+)"
+"$REPO/android/trime/sign_apk.sh" "$APK_DIR/$APK_NAME" "$OUT"
 echo "完成：$OUT"

@@ -41,6 +41,7 @@ import com.osfans.trime.data.prefs.AppPrefs
 import com.osfans.trime.data.soundeffect.SoundEffectManager
 import com.osfans.trime.databinding.ActivityMainBinding
 import com.osfans.trime.suzu.AppUpdater
+import com.osfans.trime.suzu.LegacyPackageMigration
 import com.osfans.trime.ui.common.SheetButton
 import com.osfans.trime.ui.common.mdi
 import com.osfans.trime.ui.common.settingsSheet
@@ -62,6 +63,7 @@ class MainActivity : AppCompatActivity() {
     private lateinit var updateItem: MenuItem
     private var testInputMode = 0
     private var testInputSheet: BottomSheetDialog? = null
+    private val legacyMigration = LegacyPackageMigration(this)
 
     override fun onCreate(savedInstanceState: Bundle?) {
         val uiMode =
@@ -72,6 +74,10 @@ class MainActivity : AppCompatActivity() {
             }
         AppCompatDelegate.setDefaultNightMode(uiMode)
         super.onCreate(savedInstanceState)
+        if (LegacyPackageMigration.shouldOffer(this)) {
+            legacyMigration.show()
+            return
+        }
         if (SetupActivity.shouldShowUp()) {
             startActivity<SetupActivity>()
             finish()
@@ -157,7 +163,7 @@ class MainActivity : AppCompatActivity() {
 
     override fun onNewIntent(intent: Intent) {
         super.onNewIntent(intent)
-        processIntent(intent)
+        if (::navController.isInitialized) processIntent(intent) else setIntent(intent)
     }
 
     private fun processIntent(intent: Intent?) {

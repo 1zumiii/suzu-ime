@@ -58,13 +58,13 @@ object AiDaemonLauncher {
         }
 
     /** 弹出 Shizuku 的授权请求；授权后回调 [onGranted]。 */
-    fun requestPermission(onGranted: () -> Unit) {
+    fun requestPermission(onDenied: () -> Unit = {}, onGranted: () -> Unit) {
         val listener =
             object : Shizuku.OnRequestPermissionResultListener {
                 override fun onRequestPermissionResult(requestCode: Int, grantResult: Int) {
                     if (requestCode != REQUEST_CODE) return
                     Shizuku.removeRequestPermissionResultListener(this)
-                    if (grantResult == PackageManager.PERMISSION_GRANTED) main.post(onGranted)
+                    main.post(if (grantResult == PackageManager.PERMISSION_GRANTED) onGranted else onDenied)
                 }
             }
         Shizuku.addRequestPermissionResultListener(listener)
@@ -72,6 +72,7 @@ object AiDaemonLauncher {
             Shizuku.requestPermission(REQUEST_CODE)
         } catch (e: Throwable) {
             Shizuku.removeRequestPermissionResultListener(listener)
+            main.post(onDenied)
         }
     }
 

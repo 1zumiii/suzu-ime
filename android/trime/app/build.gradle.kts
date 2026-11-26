@@ -22,7 +22,9 @@ android {
     buildToolsVersion = "36.0.0"
 
     defaultConfig {
-        applicationId = "com.osfans.trime"
+        val legacyMigrationBridge = providers.gradleProperty("suzuLegacyMigrationBridge").orNull == "true"
+        applicationId = if (legacyMigrationBridge) "com.osfans.trime" else "izumiii.suzu.ime"
+        manifestPlaceholders["legacyMigrationBridge"] = legacyMigrationBridge.toString()
         minSdk = 21
         targetSdk = 37
         versionCode = 20261128

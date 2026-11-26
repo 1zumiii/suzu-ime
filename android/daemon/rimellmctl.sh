@@ -11,7 +11,7 @@
 set -euo pipefail
 
 ADB="${ADB:-adb}"
-PKG=com.osfans.trime
+PKG=izumiii.suzu.ime
 RIME_DIR=/sdcard/Android/data/$PKG/files/rime
 DIR=/data/local/tmp/rimellm
 REPO="$(cd "$(dirname "$0")/../.." && pwd)"

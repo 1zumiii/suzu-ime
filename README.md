@@ -86,7 +86,7 @@ Android 真实使用中的打分耗时（同一台 ASUS Zenfone 10，取自守�
 
 词库在“设置 → 词库”中切换，详见 [Android 说明](android/README.md)。
 
-从旧版本覆盖安装时，用户词典、设置和已下载的模型都会保留。已下载的模型不会自动更新，要换时在“设置 → 模型”点按模型，从列表中选择。之前装的是其他签名的同文输入法时，须先卸载才能安装，卸载会清空用户词典，请先备份手机上的 `Android/data/com.osfans.trime/files/rime` 目录。
+Suzu 的 Android 包名为 `izumiii.suzu.ime`，可和同文输入法或旧包名的 Suzu 并存。若从 `com.osfans.trime` 迁移，请在首次打开新版时导入旧数据。确认词典和模型可用后，再按需卸载旧版。[迁移步骤](android/README.md#从旧包名迁移)
 
 ### 手动安装推理核心
 

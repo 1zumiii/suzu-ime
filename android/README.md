@@ -35,7 +35,7 @@
 测试名录改动时不必先推到 main：把名录放到 `Android/data/<包名>/files/dicts.override.json`，应用会用它代替在线名录，删掉后恢复。条目同样受上述地址限制与 SHA-256 校验。正式版只在 Android 11 及以上读取这个文件，debug 构建不限版本。
 
 ```bash
-adb push dicts.json /sdcard/Android/data/com.osfans.trime/files/dicts.override.json
+adb push dicts.json /sdcard/Android/data/izumiii.suzu.ime/files/dicts.override.json
 ```
 - 语法模型也可以用 rime-suzu 的 `llm-android/deploy_trime.sh` 从电脑推送。
 
@@ -104,11 +104,33 @@ Trime（改版 APK）                              rimellmd（shell 身份，由
 
 ## 构建与测试
 
+### 从旧包名迁移
+
+新版包名是 `izumiii.suzu.ime`。旧版 Suzu 和同文输入法使用 `com.osfans.trime`。旧版的应用内更新可能会打开新版安装器，安装后两者会同时出现在设备上。
+
+1. 结束旧版输入，保留旧应用。安装新版后，先打开设置首页，再启用新键盘。
+2. 选择“迁移旧版数据”。启动 Shizuku，并向新版重新授权。迁移会复制 Rime 配置、用户词典和已下载的模型，保留新版已有的同名条目。
+3. 启用并选中新版键盘。确认词典和模型可用后，再按需卸载旧应用。
+
+旧版若没有“导出设置”，先覆盖安装同签名、带有设置备份的旧包名版本，再打开新版迁移。新版仅在签名匹配时自动读取旧版设置，也可以手动导入旧版导出的 JSON。若当前使用上游同文输入法，可迁移 Rime 数据，再在新版重新设置界面选项。
+
+没有 Shizuku 时，可用 ADB 备份旧版 Rime 目录，并将目录内的文件打包成 ZIP。请保留旧应用，直到确认新版能正常使用。
+
+```bash
+adb pull /sdcard/Android/data/com.osfans.trime/files/rime ./suzu-rime-backup
+(cd ./suzu-rime-backup && zip -r ../suzu-rime-backup.zip .)
+adb push ./suzu-rime-backup.zip /sdcard/Download/
+```
+
+首次打开新版时，选择“导入 ZIP 备份”，再选择下载目录中的 ZIP 文件。
+
 ### 备份应用设置
 
-在设置首页进入“配置 → 设置备份”。导出的 JSON 包含键盘配色、按键反馈、剪贴板规则和 AI 开关等设置。导入时先校验文件，确认后覆盖对应设置。用户词典和候选映射保存在 Rime 数据目录，模型可从模型页重新下载。
+从设置首页进入“配置 → 设置备份”。导出的 JSON 包含键盘外观、按键反馈、剪贴板规则和 AI 功能开关等设置。导入时会先验证备份，确认后覆写对应设置。Rime 数据（含用户词典、候选映射）和模型文件分别使用迁移和下载功能。
 
-从 `com.osfans.trime` 迁移到新包名时，请先覆盖安装带有设置备份的旧包名版本。启动新版的迁移功能后，同签名的新版可从旧版读取设置，也可以手动导入 JSON。确认新版可用后，再按需卸载旧版。
+正常卸载并删除数据时，Android 会移除该包名下的应用数据和模型原件。保存在下载目录等共享位置的备份会保留。Shizuku 启动的 AI 服务若仍在运行，会在 Rime 目录消失约 10 分钟后退出并尝试清理副本。服务若已停止或设备在清理前重启，`/data/local/tmp/rimellm/` 可能留下模型副本或日志。卸载前可在 Shizuku 已授权时，从模型页删除 Suzu 模型以同时清理模型副本。
+
+### 编译安装包
 
 整套产物（改版 APK、客户端库、守护进程）由 `trime/build_apk.sh` 一次完成。前提：JDK 17、Android NDK r28c（`28.2.13676358`，默认取 Android SDK 的 `ndk/` 目录）、CMake 3.31.6，以及 llama.cpp 与 Lua 源码（布局见 [core/README.md](../core/README.md)）。CMake 和第三方源码默认放在 `~/Dev/ime-deps`，可用环境变量 `IME_DEPS` 指定；工作目录默认是仓库旁边的 `rime-android-port/`，可用 `WORK` 指定。推理部分默认按通用指令集 `armv8.2-a+dotprod+fp16` 编译；只装支持 i8mm 的手机时，可用环境变量 `ARM_ARCH` 指定更高的指令集，如骁龙 8 Gen 2 用 `ARM_ARCH=armv8.6-a+dotprod+fp16+i8mm`。没有 i8mm 的芯片运行这种包会直接崩溃。
 
@@ -165,7 +187,7 @@ Trime 的 nightly 构建（arm64，v3.3.12-73）：
 
 - 内嵌 librime 1.17.0、librime-lua（Lua 5.4.6）、librime-octagram 和 librime-predict，均静态链接在 `librime_jni.so` 中。
 - `librime_jni.so` 导出 155 个 Lua 符号（`lua_*`、`luaL_*`、`luaopen_*`），`rime_llm.so` 所需符号全部在内。它同时导入了 `dlopen` 和 `dlsym`，说明内嵌的 Lua 启用了 C 模块的动态加载。
-- 用户数据目录：`/sdcard/Android/data/com.osfans.trime/files/rime`。
+- 该移植版本的用户数据目录为 `/sdcard/Android/data/com.osfans.trime/files/rime`。当前 Suzu 使用 `/sdcard/Android/data/izumiii.suzu.ime/files/rime`。
 - 该数据目录挂载为 `noexec`，`.so` 不能放在其中加载。将其打包进 APK 的原生库目录，再用 `package.loadlib("librime_llm.so", ...)` 即可加载，后面的方案以此为基础。
 
 ### 早期配置编译对照
