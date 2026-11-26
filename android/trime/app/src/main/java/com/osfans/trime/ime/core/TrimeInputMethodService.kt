@@ -13,6 +13,7 @@ import android.content.Intent
 import android.content.IntentFilter
 import android.content.pm.ActivityInfo
 import android.content.res.Configuration
+import android.graphics.Color
 import android.inputmethodservice.InputMethodService
 import android.os.Build
 import android.os.Bundle
@@ -25,16 +26,20 @@ import android.view.View
 import android.view.ViewGroup
 import android.view.Window
 import android.view.WindowManager
+import android.view.inputmethod.CursorAnchorInfo
 import android.view.inputmethod.EditorInfo
 import android.view.inputmethod.ExtractedTextRequest
 import android.view.inputmethod.InlineSuggestionsRequest
 import android.view.inputmethod.InlineSuggestionsResponse
+import android.view.inputmethod.InputConnection
 import android.widget.FrameLayout
 import androidx.annotation.Keep
 import androidx.annotation.RequiresApi
 import androidx.core.content.ContextCompat
+import androidx.core.graphics.ColorUtils
 import androidx.core.view.updateLayoutParams
 import androidx.lifecycle.lifecycleScope
+import com.osfans.trime.BuildConfig
 import com.osfans.trime.core.KeyModifiers
 import com.osfans.trime.core.RimeApi
 import com.osfans.trime.core.RimeKeyMapping
@@ -61,6 +66,7 @@ import splitties.bitflags.hasFlag
 import splitties.systemservices.clipboardManager
 import splitties.systemservices.inputMethodManager
 import timber.log.Timber
+import com.osfans.trime.suzu.HostAppearance
 import com.osfans.trime.suzu.SuzuFeatures
 import com.osfans.trime.suzu.SuzuFix
 import com.osfans.trime.suzu.SuzuAppContext
@@ -78,6 +84,28 @@ open class TrimeInputMethodService : LifecycleInputMethodService() {
     private var inputView: InputView? = null
     private val navBarManager = NavigationBarManager()
     private val rimeIntentReceiver = RimeIntentReceiver()
+    /** 正在等哪个应用回字色，null 表示没在等 */
+    private var awaitingEditorColorPackage: String? = null
+
+    /**
+     * 各应用上次判断出的深浅色，只存在内存里。键盘弹出时先套用它，回调来了再修正，
+     * 换输入框时不用先回落到全局配色再切过去，也就不会闪一下。
+     * fromText 表示结果来自输入框字色，这比宿主状态栏外观可靠，状态栏的结果不覆盖它。
+     */
+    private data class EditorDark(val dark: Boolean, val fromText: Boolean)
+
+    private val editorDarkByPackage = HashMap<String, EditorDark>()
+
+    /** 每次弹出键盘加一，异步结果只认发起时的这一次 */
+    private var editorColorSession = 0
+
+    /** 本次弹出已经从输入框字色拿到结果，状态栏外观的结果不再用 */
+    private var editorColorFromText = false
+
+    @Keep
+    private val onFollowEditorColorsChange = PreferenceDelegate.OnChangeListener<Boolean> { _, enabled ->
+        if (!enabled) resetEditorColor()
+    }
 
     private var lastCommittedText: String = ""
 
@@ -191,6 +219,7 @@ open class TrimeInputMethodService : LifecycleInputMethodService() {
         recreateInputViewPrefs.forEach {
             it.registerOnChangeListener(recreateInputViewListener)
         }
+        prefs.keyboard.followEditorColors.registerOnChangeListener(onFollowEditorColorsChange)
         // ensure theme and color managers are initialized after rime is ready
         lifecycleScope.launch {
             rime.runOnReady {
@@ -327,6 +356,8 @@ open class TrimeInputMethodService : LifecycleInputMethodService() {
             it.unregisterOnChangeListener(recreateInputViewListener)
         }
         ColorManager.removeOnChangedListener(onColorChangeListener)
+        prefs.keyboard.followEditorColors.unregisterOnChangeListener(onFollowEditorColorsChange)
+        resetEditorColor()
         super.onDestroy()
         unregisterReceiver(rimeIntentReceiver)
         unregisterReceiver(screenStateReceiver)
@@ -548,6 +579,81 @@ open class TrimeInputMethodService : LifecycleInputMethodService() {
         }
         ensureInputView()
         inputView?.startInput(attribute, restarting)
+        requestEditorColor(attribute)
+    }
+
+    private fun requestEditorColor(attribute: EditorInfo) {
+        if (Build.VERSION.SDK_INT < Build.VERSION_CODES.UPSIDE_DOWN_CAKE ||
+            !prefs.keyboard.followEditorColors.getValue() ||
+            prefs.keyboard.colorMode.getValue() != AppPrefs.Keyboard.ColorMode.FOLLOW_SYSTEM
+        ) {
+            return
+        }
+        val pkg = attribute.packageName
+        if (pkg == null) {
+            resetEditorColor()
+            return
+        }
+        // 判断顺序：输入框字色 > 宿主状态栏外观（Shizuku）> 这个应用上次的结果 > 系统深浅色。
+        // 先套用上次的结果，没记录过的应用回到全局配色，等异步结果再定
+        val session = ++editorColorSession
+        editorColorFromText = false
+        val cached = editorDarkByPackage[pkg]
+        ColorManager.setEditorDarkMode(cached?.dark)
+        val accepted = currentInputConnection?.requestCursorUpdates(
+            InputConnection.CURSOR_UPDATE_IMMEDIATE,
+            InputConnection.CURSOR_UPDATE_FILTER_TEXT_APPEARANCE,
+        ) == true
+        awaitingEditorColorPackage = if (accepted) pkg else null
+        if (BuildConfig.DEBUG) {
+            Timber.d("Editor colors requested: package=%s accepted=%s cached=%s", pkg, accepted, cached)
+        }
+        // 输入框字色更可靠，以前从字色判断过的应用不再查状态栏
+        if (cached?.fromText == true) return
+        HostAppearance.query(pkg) { dark ->
+            ContextCompat.getMainExecutor(this).execute {
+                if (session != editorColorSession || editorColorFromText || dark == null) return@execute
+                if (currentInputEditorInfo?.packageName != pkg) return@execute
+                if (!prefs.keyboard.followEditorColors.getValue()) return@execute
+                if (BuildConfig.DEBUG) Timber.d("Host appearance: package=%s dark=%s", pkg, dark)
+                editorDarkByPackage[pkg] = EditorDark(dark, fromText = false)
+                ColorManager.setEditorDarkMode(dark)
+            }
+        }
+    }
+
+    override fun onUpdateCursorAnchorInfo(info: CursorAnchorInfo) {
+        super.onUpdateCursorAnchorInfo(info)
+        if (Build.VERSION.SDK_INT < Build.VERSION_CODES.UPSIDE_DOWN_CAKE) return
+        val pkg = awaitingEditorColorPackage ?: return
+        // 回调晚到、输入框已经换到别的应用时不用它
+        if (currentInputEditorInfo?.packageName != pkg) {
+            awaitingEditorColorPackage = null
+            return
+        }
+        val color = info.textAppearanceInfo?.textColor ?: return
+        awaitingEditorColorPackage = null
+        // 半透明字色在黑底和白底上合成，只有整个亮度范围足够亮或暗时才切换。
+        // 判断不出（字色是中间灰）时保持当前的配色
+        val dark = when {
+            Color.luminance(ColorUtils.compositeColors(color, Color.BLACK)) >= 0.65f -> true
+            Color.luminance(ColorUtils.compositeColors(color, Color.WHITE)) <= 0.18f -> false
+            else -> null
+        }
+        if (BuildConfig.DEBUG) {
+            Timber.d("Editor colors returned: package=%s color=%08X dark=%s", pkg, color, dark)
+        }
+        if (dark == null) return
+        editorColorFromText = true
+        editorDarkByPackage[pkg] = EditorDark(dark, fromText = true)
+        ColorManager.setEditorDarkMode(dark)
+    }
+
+    private fun resetEditorColor() {
+        awaitingEditorColorPackage = null
+        editorColorSession++
+        editorDarkByPackage.clear()
+        ColorManager.setEditorDarkMode(null)
     }
 
     override fun onFinishInputView(finishingInput: Boolean) {

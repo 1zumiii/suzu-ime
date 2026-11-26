@@ -81,10 +81,11 @@ abstract class PreferenceDelegateOwner(
         defaultValue: Boolean,
         @StringRes
         summary: Int? = null,
+        summaryOn: (() -> Int?)? = null,
         enableUiOn: (() -> Boolean)? = null,
     ): PreferenceDelegate<Boolean> {
         val pref = PreferenceDelegate(sharedPreferences, key, defaultValue)
-        val ui = PreferenceDelegateUi.Switch(title, key, defaultValue, summary, enableUiOn)
+        val ui = PreferenceDelegateUi.Switch(title, key, defaultValue, summary, enableUiOn, summaryOn)
         pref.register()
         ui.registerUi()
         return pref

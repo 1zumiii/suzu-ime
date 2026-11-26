@@ -114,6 +114,7 @@ class AppPrefs(
             const val HIDE_KEY_SYMBOL = "hide_key_symbol"
             const val HIDE_KEY_HINT = "hide_key_hint"
             const val COLOR_MODE = "color_mode"
+            const val FOLLOW_EDITOR_COLORS = "follow_editor_colors"
             const val KEY_BACKGROUND = "key_background"
             const val KEYBOARD_HEIGHT = "keyboard_height"
             const val KEY_VERTICAL_GAP = "key_vertical_gap"
@@ -168,6 +169,24 @@ class AppPrefs(
         }
 
         val colorMode = enum(R.string.color_mode, COLOR_MODE, ColorMode.FOLLOW_SYSTEM)
+
+        /** 跟随应用深浅色用不了的原因，能用时为 null */
+        private val followEditorColorsBlocker: () -> Int? = {
+            when {
+                Build.VERSION.SDK_INT < Build.VERSION_CODES.UPSIDE_DOWN_CAKE -> R.string.follow_editor_colors_unsupported
+                (shared.getString(COLOR_MODE, null) ?: ColorMode.FOLLOW_SYSTEM.name) != ColorMode.FOLLOW_SYSTEM.name ->
+                    R.string.follow_editor_colors_needs_follow_system
+                else -> null
+            }
+        }
+
+        val followEditorColors = switch(
+            R.string.follow_editor_colors,
+            FOLLOW_EDITOR_COLORS,
+            false,
+            enableUiOn = { followEditorColorsBlocker() == null },
+            summaryOn = { followEditorColorsBlocker() ?: R.string.follow_editor_colors_summary },
+        )
 
         /** 按键画圆角背景。默认画（GBoard 风格），关闭后是无键帽的样式 */
         val keyBackground = switch(R.string.key_background, KEY_BACKGROUND, true)

@@ -250,6 +250,10 @@
     <string name="dict_packs">Dictionaries</string>
     <string name="emoji_custom">Candidate mapping</string>
     <string name="color_mode">Keyboard colors</string>
+    <string name="follow_editor_colors">Match app light or dark theme</string>
+    <string name="follow_editor_colors_summary">Uses the system API first, and Shizuku when it is unavailable.</string>
+    <string name="follow_editor_colors_unsupported">Not supported on this Android version</string>
+    <string name="follow_editor_colors_needs_follow_system">Only works when keyboard colors follow the system</string>
     <string name="key_background">Key backgrounds</string>
     <string name="keyboard_height">Keyboard height</string>
     <string name="key_vertical_gap">Vertical key gap</string>

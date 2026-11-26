@@ -41,6 +41,7 @@ object ColorManager {
     private var scope: ThemeScope? = null
 
     private var isNightMode = false
+    private var editorDarkMode: Boolean? = null
 
     private val colorMode = AppPrefs.defaultInstance().keyboard.colorMode
     private val keyBackground = AppPrefs.defaultInstance().keyboard.keyBackground
@@ -109,6 +110,12 @@ object ColorManager {
         activateScheme(notify = true)
     }
 
+    fun setEditorDarkMode(dark: Boolean?) {
+        if (editorDarkMode == dark) return
+        editorDarkMode = dark
+        activateScheme(notify = true)
+    }
+
     /** The current theme scope, or null before the first theme is attached. */
     fun currentScope(): ThemeScope? = scope
 
@@ -126,8 +133,9 @@ object ColorManager {
 
     /** 浅色和深色各一套，默认跟随系统，也可以在设置里固定一套 */
     private fun resolveActiveScheme(theme: Theme): ColorScheme {
+        // 跟随应用深浅色只在“跟随系统”下生效，固定浅色或深色时不覆盖
         val dark = when (colorMode.getValue()) {
-            AppPrefs.Keyboard.ColorMode.FOLLOW_SYSTEM -> isNightMode
+            AppPrefs.Keyboard.ColorMode.FOLLOW_SYSTEM -> editorDarkMode ?: isNightMode
             AppPrefs.Keyboard.ColorMode.LIGHT -> false
             AppPrefs.Keyboard.ColorMode.DARK -> true
         }

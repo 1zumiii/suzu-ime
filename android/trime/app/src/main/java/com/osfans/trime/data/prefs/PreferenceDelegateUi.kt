@@ -50,15 +50,19 @@ abstract class PreferenceDelegateUi<T : Preference>(
         @StringRes
         val summary: Int? = null,
         enableUiOn: (() -> Boolean)? = null,
+        /** 说明随条件变化时用它，优先于 [summary]；条件变了由 PreferenceDelegateFragment 刷新 */
+        private val summaryOn: (() -> Int?)? = null,
     ) : PreferenceDelegateUi<SwitchPreferenceCompat>(key, enableUiOn) {
+        fun currentSummary(): Int? = summaryOn?.invoke() ?: summary
+
+        val hasDynamicSummary get() = summaryOn != null
+
         override fun createUi(context: Context) = SwitchPreferenceCompat(context).apply {
             key = this@Switch.key
             isIconSpaceReserved = false
             isSingleLineTitle = false
             setDefaultValue(defaultValue)
-            if (this@Switch.summary != null) {
-                setSummary(this@Switch.summary)
-            }
+            currentSummary()?.let { setSummary(it) }
             setTitle(this@Switch.title)
         }
     }

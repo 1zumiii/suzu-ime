@@ -65,6 +65,20 @@ abstract class PreferenceDelegateFragment(
                 }
             }
         }
+        val summaries =
+            preferenceProvider.preferenceDelegatesUi
+                .filterIsInstance<PreferenceDelegateUi.Switch>()
+                .filter { it.hasDynamicSummary }
+        if (summaries.isNotEmpty()) {
+            lifecycleScope.launch {
+                summaries.forEach { ui ->
+                    findPreference<Preference>(ui.key)?.let { pref ->
+                        val res = ui.currentSummary()
+                        pref.summary = res?.let { getString(it) }
+                    }
+                }
+            }
+        }
     }
 
     override fun onStop() {

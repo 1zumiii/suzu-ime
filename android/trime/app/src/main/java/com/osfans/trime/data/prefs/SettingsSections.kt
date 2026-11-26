@@ -35,6 +35,7 @@ object SettingsSections {
                     R.string.section_layout_appearance,
                     listOf(
                         Keyboard.COLOR_MODE,
+                        Keyboard.FOLLOW_EDITOR_COLORS,
                         Keyboard.KEY_BACKGROUND,
                         Keyboard.KEYBOARD_HEIGHT,
                         Keyboard.KEY_VERTICAL_GAP,
