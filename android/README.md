@@ -31,6 +31,12 @@
 - 附加词库叠加在词库包之上，启用状态保存在用户目录的 `suzu_addons/`。应用下载并校验后保留 2～8 字的条目，过滤同字重复。名录的 `weight` 为 `uniform` 时统一写入权重 10，为 `preserve` 时保留有效原权重。切换附加词库后，应用重新部署，守护进程检测到文件变化时重读词典。
 
 词库包和附加词库共用仓库根目录的 `dicts.json`。词库页打开时刷新在线名录，网络失败时使用上次缓存，首次离线使用 APK 内置副本。下载地址限于 `1zumiii/suzu-ime` 和 `1zumiii/rime-suzu` 的 GitHub Release，以及现有萌娘百科词库的上游附件。附件跳转限于 GitHub 官方附件域或上述 Release 地址。更新名录可以新增下载项，已下载的附加词库保留在原位置。
+
+测试名录改动时不必先推到 main：把名录放到 `Android/data/<包名>/files/dicts.override.json`，应用会用它代替在线名录，删掉后恢复。条目同样受上述地址限制与 SHA-256 校验。正式版只在 Android 11 及以上读取这个文件，debug 构建不限版本。
+
+```bash
+adb push dicts.json /sdcard/Android/data/com.osfans.trime/files/dicts.override.json
+```
 - 语法模型也可以用 rime-suzu 的 `llm-android/deploy_trime.sh` 从电脑推送。
 
 用户目录中的同名配置文件优先于 APK 内置配置。调试时可临时推送文件，“功能状态”页会列出覆盖项；调试完成后须删除临时文件。

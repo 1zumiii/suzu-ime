@@ -5,7 +5,9 @@
 
 package com.osfans.trime.suzu
 
+import android.os.Build
 import android.util.AtomicFile
+import com.osfans.trime.BuildConfig
 import com.osfans.trime.util.appContext
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.asStateFlow
@@ -19,6 +21,7 @@ import java.io.File
 import java.io.InputStream
 import java.net.HttpURLConnection
 import java.net.URI
+import java.util.concurrent.atomic.AtomicBoolean
 
 data class DictAddon(
     val id: String,
@@ -32,6 +35,7 @@ data class DictAddon(
 object DictCatalog {
     private const val CATALOG_URL = "https://raw.githubusercontent.com/1zumiii/suzu-ime/main/dicts.json"
     private const val FILE = "dicts.json"
+    private const val OVERRIDE_FILE = "dicts.override.json"
     private const val MAX_BYTES = 256 * 1024
     private val ID = Regex("[a-z][a-z0-9_-]{0,39}")
     private val SHA = Regex("[0-9a-f]{64}")
@@ -141,38 +145,67 @@ object DictCatalog {
         string(key).takeIf { it.isNotBlank() && it.length <= max && it.none(Char::isISOControl) }
 
     private val cache get() = AtomicFile(File(appContext.filesDir, "suzu-dicts.json"))
+    private val refreshing = AtomicBoolean(false)
 
+    /**
+     * 测试用的本地名录：放在应用专属外部目录（adb push 到 Android/data/<包名>/files/dicts.override.json），
+     * 存在时代替在线名录，删掉即恢复。条目照常经过地址白名单与 SHA-256 校验，也不写入缓存。
+     * Android 10 及以下其他应用可能写得进这个目录，所以只在 debug 构建或 Android 11 起读取。
+     */
+    private fun loadOverride(): Snapshot? {
+        if (!BuildConfig.DEBUG && Build.VERSION.SDK_INT < Build.VERSION_CODES.R) return null
+        val file = appContext.getExternalFilesDir(null)?.resolve(OVERRIDE_FILE)?.takeIf { it.isFile } ?: return null
+        return runCatching { file.inputStream().use(::readText).let(::parse) }.getOrNull()
+            .also { if (it == null) Timber.w("Dictionary catalog override is invalid, ignored") }
+    }
+
+    /** 只读本地文件，不碰网络，冷启动时 Rime 线程也会调用 */
     @Synchronized
     fun loadCache() {
         if (mutable.value != null) return
-        mutable.value = runCatching { cache.openRead().use(::readText).let(::parse) }.getOrNull() ?: builtin
+        mutable.value = loadOverride()
+            ?: runCatching { cache.openRead().use(::readText).let(::parse) }.getOrNull()
+            ?: builtin
     }
 
-    /** 与模型名录相同，先用缓存显示，在线成功后再更新。只从后台线程调用。 */
-    @Synchronized
+    /**
+     * 与模型名录相同，先用缓存显示，在线成功后再更新。只从后台线程调用。
+     * 网络请求不持有锁，避免和冷启动时的 loadCache 互相等待；同一时间只跑一次刷新。
+     */
     fun refresh() {
         loadCache()
-        runCatching {
-            val text = connection(URI(CATALOG_URL), 10_000).let { conn ->
-                try {
-                    check(conn.responseCode == HttpURLConnection.HTTP_OK)
-                    conn.inputStream.use(::readText)
-                } finally {
-                    conn.disconnect()
+        if (!refreshing.compareAndSet(false, true)) return
+        try {
+            loadOverride()?.let {
+                mutable.value = it
+                return
+            }
+            runCatching {
+                val text = connection(URI(CATALOG_URL), 10_000).let { conn ->
+                    try {
+                        check(conn.responseCode == HttpURLConnection.HTTP_OK)
+                        conn.inputStream.use(::readText)
+                    } finally {
+                        conn.disconnect()
+                    }
                 }
-            }
-            val parsed = parse(text) ?: return
-            val file = cache
-            val stream = file.startWrite()
-            try {
-                stream.write(text.toByteArray(Charsets.UTF_8))
-                file.finishWrite(stream)
-            } catch (e: Exception) {
-                file.failWrite(stream)
-                Timber.w(e, "Could not cache dictionary catalog")
-            }
-            mutable.value = parsed
-        }.onFailure { Timber.i("Dictionary catalog fetch failed: %s", it.message) }
+                val parsed = parse(text) ?: return
+                synchronized(this) {
+                    val file = cache
+                    val stream = file.startWrite()
+                    try {
+                        stream.write(text.toByteArray(Charsets.UTF_8))
+                        file.finishWrite(stream)
+                    } catch (e: Exception) {
+                        file.failWrite(stream)
+                        Timber.w(e, "Could not cache dictionary catalog")
+                    }
+                }
+                mutable.value = parsed
+            }.onFailure { Timber.i("Dictionary catalog fetch failed: %s", it.message) }
+        } finally {
+            refreshing.set(false)
+        }
     }
 
     private fun readText(input: InputStream): String {
