@@ -14,6 +14,8 @@
 
 工具栏三个点的面板提供“配色”“词库”“重新加载配置”和“功能状态”等入口。“重新加载配置”只读取本机配置；获取新版内置配置须更新 APK。
 
+“虚拟键盘 → 跟随应用深浅色”适用于 Android 14 及以上，须将“键盘配色”设为“跟随系统”。应用提供可识别的输入框文字颜色时，键盘据此选择深浅色。取不到颜色时，键盘跟随系统。
+
 ## 候选生成
 
 简拼和混合输入时，守护进程从词典中按上文筛选 Rime 未给出的词，补充到候选中。此功能默认开启（`W` 请求，见 `core/ipc/protocol.h`）：
@@ -76,7 +78,7 @@ Trime（改版 APK）                              rimellmd（shell 身份，由
 | `trime/app/src/main/java/com/osfans/trime/suzu/SuzuFeatures.kt`、`SuzuFeatureFragment.kt` | “设置 → AI 与输入辅助”：各功能的开关与开启条件。AI 重排开关与选错修正的停顿时间（`suzu_fix_pause_ms`，0.5～5 秒，步长 0.5 秒）存在 App 偏好里。Lua 侧的功能在每次进入输入框时写成运行时选项（`ai_stage2`、`suzu_gen_off`、`suzu_recent_off`、`suzu_pairs_off`、`suzu_corr_off`），桌面端没有这些选项，功能照常开着。AI 重排以 `ai_status.json` 为准，条件不满足时开关为关且不可点。诊断记录的三个 `.enabled` 文件由“高级”页开关，切换后重新部署 |
 | `trime/app/src/main/java/com/osfans/trime/ime/keyboard/` | 键盘：`KeyModel.kt` 是按键数据、类型化的动作和纯函数的布局计算，`MainPages.kt` 是主键盘、数字页和数字小键盘的布局，`SuzuKeyboard.kt` 管理当前页、Shift 状态并执行动作，`KeyCapView.kt` 只负责手势和绘制，`EditorWindow.kt` 是编辑面板。数字页和小键盘用 `AsciiPolicy.Follow`：进出时不改中英文状态，中文模式下进入时先上屏未完成的输入，避免数字键选中候选 |
 | `trime/app/src/main/java/com/osfans/trime/ime/symbol/` | 符号面板：`SymbolWindow.kt` 把符号、表情和颜文字合成一个面板，分类条加可滚动网格，每组记住上次的分类和最近用过的条目。内容在 `SymbolData.kt`，符号取自 `symbols_v.yaml` 与旧主题数据并按分类去重，表情按 Unicode 标准顺序分组。条目用 `KeyCommand.Commit` 原样上屏，不经 Rime 的标点映射，与中英文状态无关。`PanelBottomBar.kt` 是符号面板的底栏 |
-| `trime/app/src/main/java/com/osfans/trime/data/theme/BuiltinTheme.kt` | 内置主题：样式、工具栏和浅色、深色两套配色。配色可选跟随系统、浅色或深色（`AppPrefs.Keyboard.colorMode`） |
+| `trime/app/src/main/java/com/osfans/trime/data/theme/BuiltinTheme.kt` | 内置主题、工具栏和深浅两套配色。跟随应用时，`HostAppearance.kt` 根据输入框文字颜色选择配色 |
 | `trime/gen_assets.py` | 构建时生成 `assets/shared` 和词库包，由 `build_apk.sh` 调用 |
 | `trime/build_apk.sh` | 从源码到签名 APK 的完整流程；`trime/sign_apk.sh` 仅负责对齐和签名 |
 | `docs/preview.png` | README 使用的 Android 预览图 |
@@ -106,13 +108,14 @@ Trime（改版 APK）                              rimellmd（shell 身份，由
 
 ### 从旧包名迁移
 
-新版包名是 `izumiii.suzu.ime`。旧版 Suzu 和同文输入法使用 `com.osfans.trime`。旧版的应用内更新可能会打开新版安装器，安装后两者会同时出现在设备上。
+新版包名是 `izumiii.suzu.ime`。旧版 Suzu 使用 `com.osfans.trime`。Android 会将两个包名视为独立应用。
 
-1. 结束旧版输入，保留旧应用。安装新版后，先打开设置首页，再启用新键盘。
-2. 选择“迁移旧版数据”。启动 Shizuku，并向新版重新授权。迁移会复制 Rime 配置、用户词典和已下载的模型，保留新版已有的同名条目。
-3. 启用并选中新版键盘。确认词典和模型可用后，再按需卸载旧应用。
+1. 从 [发布页](https://github.com/1zumiii/suzu-ime/releases/latest) 下载 `suzu-android-migration.zip`，解压并用其中的 APK 覆盖安装旧版 Suzu。已能使用“配置 → 设置备份”的旧版 Suzu 可跳过此步，也可以先导出一份 JSON。
+2. 收起旧版键盘。安装并打开新版，选择“迁移旧版数据”，按提示向新版授予 Shizuku 权限。
+3. 迁移会复制 Rime 配置、用户词典、已下载的词库和模型，并保留新版已有的同名条目。同签名的新版会读取旧版设置，也可以在新版手动导入 JSON。
+4. 启用并选中新版键盘。确认词典、模型和设置可用后，再按需卸载旧版。
 
-旧版若没有“导出设置”，先覆盖安装同签名、带有设置备份的旧包名版本，再打开新版迁移。新版仅在签名匹配时自动读取旧版设置，也可以手动导入旧版导出的 JSON。若当前使用上游同文输入法，可迁移 Rime 数据，再在新版重新设置界面选项。
+若当前使用上游同文输入法，可直接迁移 Rime 数据，再在新版重新设置界面选项。
 
 没有 Shizuku 时，可用 ADB 备份旧版 Rime 目录，并将目录内的文件打包成 ZIP。请保留旧应用，直到确认新版能正常使用。
 

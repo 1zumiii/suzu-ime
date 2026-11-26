@@ -27,8 +27,8 @@ android {
         manifestPlaceholders["legacyMigrationBridge"] = legacyMigrationBridge.toString()
         minSdk = 21
         targetSdk = 37
-        versionCode = 20261128
-        versionName = "0.5.1"
+        versionCode = 20261129
+        versionName = "0.6.0"
 
         multiDexEnabled = true
         buildConfigField("String", "BUILDER", "\"${project.builder}\"")
