@@ -9,7 +9,11 @@ import com.osfans.trime.core.RimeApi
 import com.osfans.trime.data.base.DataManager
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
+import timber.log.Timber
 import java.io.File
+import kotlin.math.expm1
+import kotlin.math.ln1p
+import kotlin.math.roundToLong
 
 /** 附加词库的纯文本处理，和文件、网络无关 */
 object AddonRules {
@@ -50,6 +54,61 @@ object AddonRules {
         }
     }
 
+    /** 写在换算后词库开头的尺度标记，用来判断切换词库包后要不要重写 */
+    const val SCALE_PREFIX = "# scale: "
+
+    fun scaleTag(pack: String, map: List<Pair<Double, Double>>?): String =
+        if (map == null) pack else "$pack@" + Integer.toHexString(map.hashCode())
+
+    fun scaleTagOf(lines: Sequence<String>): String? =
+        lines.takeWhile { it != "---" }.firstOrNull { it.startsWith(SCALE_PREFIX) }?.removePrefix(SCALE_PREFIX)
+
+    /**
+     * 基准尺度（白霜）的权重换到当前包：在节点之间按 ln(1+w) 线性插值，
+     * 低于第一个节点取第一个节点的值，高于最后一个节点取最后一个节点的值（不放大到超出该包的常见范围）。
+     */
+    fun scaleWeight(w: Double, map: List<Pair<Double, Double>>?): Double {
+        if (map.isNullOrEmpty()) return w
+        if (w <= map.first().first) return map.first().second
+        if (w >= map.last().first) return map.last().second
+        val i = map.indexOfFirst { it.first > w }
+        val (x0, y0) = map[i - 1]
+        val (x1, y1) = map[i]
+        if (w == x0 || y0 == y1) return y0
+        val t =(ln1p(w) - ln1p(x0)) / (ln1p(x1) - ln1p(x0))
+        return expm1(ln1p(y0) + t * (ln1p(y1) - ln1p(y0)))
+    }
+
+    private fun formatWeight(w: Double): String {
+        val r = w.roundToLong()
+        return (if (w > 0 && r < 1) 1 else r).toString()
+    }
+
+    /** 把基准尺度的附加词库原稿改写成当前包的尺度，并在开头写上尺度标记 */
+    fun rescale(source: Sequence<String>, map: List<Pair<Double, Double>>?, tag: String): Sequence<String> = sequence {
+        var body = false
+        var tagged = false
+        for (line in source) {
+            if (!body) {
+                if (line.startsWith(SCALE_PREFIX)) continue
+                if (!tagged && line == "---") {
+                    yield("$SCALE_PREFIX$tag")
+                    tagged = true
+                }
+                yield(line)
+                body = line.startsWith("...")
+                continue
+            }
+            val fields = line.split('\t')
+            val w = fields.getOrNull(2)?.trim()?.toDoubleOrNull()
+            if (fields.size >= 3 && w != null && !line.startsWith("#")) {
+                yield("${fields[0]}\t${fields[1]}\t${if (map == null) fields[2].trim() else formatWeight(scaleWeight(w, map))}")
+            } else {
+                yield(line)
+            }
+        }
+    }
+
     /** 把启用的附加词库加进主词典的导入列表 */
     fun composeMainDict(main: String, addons: List<String>): String {
         if (addons.isEmpty()) return main
@@ -68,14 +127,54 @@ object DictAddons {
     /** 关闭时把词库挪到这里（不以 .dict.yaml 结尾，Rime 不会读），再打开时不用重新下载 */
     private fun offOf(addon: DictAddon) = dir.resolve("${addon.id}.dict.yaml.off")
 
+    /** 基准尺度（白霜）的原稿。不以 .dict.yaml 结尾，Rime 不会读；切换词库包时从它重新换算 */
+    private fun refOf(id: String) = dir.resolve("$id.ref.yaml")
+
     fun isEnabled(addon: DictAddon) = fileOf(addon).isFile
 
     fun isDownloaded(addon: DictAddon) = fileOf(addon).isFile || offOf(addon).isFile
 
-    fun downloadedBytes(addon: DictAddon): Long = listOf(fileOf(addon), offOf(addon)).filter { it.isFile }.sumOf { it.length() }
+    fun downloadedBytes(addon: DictAddon): Long =
+        listOf(fileOf(addon), offOf(addon), refOf(addon.id)).filter { it.isFile }.sumOf { it.length() }
 
     /** 删除已关闭的附加词库的本地文件；开着的不删 */
-    fun deleteDownloaded(addon: DictAddon): Boolean = !isEnabled(addon) && offOf(addon).delete()
+    fun deleteDownloaded(addon: DictAddon): Boolean =
+        !isEnabled(addon) && offOf(addon).delete().also { if (it) refOf(addon.id).delete() }
+
+    /**
+     * 按当前词库包的权重尺度重写已启用的附加词库，在主词典生成前调用。
+     * 尺度标记与当前包一致时不动。旧版装的附加词库没有原稿，它的权重本来就是基准尺度，直接拿来当原稿。
+     * 出错只记日志，保留原文件。返回是否重写了文件。
+     */
+    fun rescaleEnabled(pack: String): Boolean {
+        val map = DictCatalog.pack(pack)?.weightMap
+        val tag = AddonRules.scaleTag(pack, map)
+        var changed = false
+        for (id in enabledIds()) {
+            runCatching {
+                val target = dir.resolve("$id.dict.yaml")
+                val ref = refOf(id)
+                if (!ref.isFile) target.copyTo(ref)
+                if (target.useLines { AddonRules.scaleTagOf(it) } == tag) return@runCatching
+                val tmp = File(dir, "$id.scale.tmp")
+                try {
+                    ref.useLines { lines ->
+                        tmp.bufferedWriter().use { out ->
+                            AddonRules.rescale(lines, map, tag).forEach {
+                                out.write(it)
+                                out.write("\n")
+                            }
+                        }
+                    }
+                    check(tmp.renameTo(target)) { "无法保存词库" }
+                    changed = true
+                } finally {
+                    tmp.delete()
+                }
+            }.onFailure { Timber.w(it, "Rescaling dictionary addon %s failed", id) }
+        }
+        return changed
+    }
 
     private fun moveFile(from: File, to: File) {
         if (!from.renameTo(to)) {
@@ -154,7 +253,9 @@ object DictAddons {
                 }
             }
             check(hasEntries) { "附加词库没有可用词条" }
-            check(tmp.renameTo(fileOf(addon))) { "无法保存词库，请检查存储空间后重试" }
+            // 先存基准尺度的原稿，再复制一份启用；随后的 DictPacks.activate 会按当前包换算
+            check(tmp.renameTo(refOf(addon.id))) { "无法保存词库，请检查存储空间后重试" }
+            refOf(addon.id).copyTo(fileOf(addon), overwrite = true)
         } finally {
             source.delete()
             tmp.delete()

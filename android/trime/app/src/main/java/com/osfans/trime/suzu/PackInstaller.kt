@@ -29,6 +29,8 @@ object PackInstaller {
         val size: Long,
         val schemaLabel: String,
         val source: String,
+        /** 基准尺度（白霜）权重到本包权重的换算节点；为 null 表示与基准相同 */
+        val weightMap: List<Pair<Double, Double>>? = null,
     )
 
     val catalog: List<Entry> get() = DictCatalog.current.packs

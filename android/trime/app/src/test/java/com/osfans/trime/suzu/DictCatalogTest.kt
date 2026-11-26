@@ -34,6 +34,17 @@ class DictCatalogTest : StringSpec({
         DictCatalog.parse(document().replace("\"schema\":1", "\"schema\":2")) shouldBe null
         DictCatalog.parse(document().replace("\"size\":42", "\"size\":0")) shouldBe null
     }
+    "词库包的权重换算节点：合法时读入，格式不对时按与基准相同处理" {
+        checkNotNull(DictCatalog.parse(document())).packs.single().weightMap shouldBe null
+        val withMap = pack.replace("\"size\":42", "\"size\":42,\"weight_map\":[[0,100],[13,100],[100,2448]]")
+        checkNotNull(DictCatalog.parse("""{"schema":1,"packs":[$withMap],"addons":[]}""")).packs.single().weightMap shouldBe
+            listOf(0.0 to 100.0, 13.0 to 100.0, 100.0 to 2448.0)
+        for (bad in listOf("[[0,100]]", "[[10,5],[5,6]]", "[[0,9],[1,8]]", "[[0,\"1\"],[1,2]]", "[[0,1,2],[3,4]]", "[[-1,1],[2,3]]")) {
+            val p = pack.replace("\"size\":42", "\"size\":42,\"weight_map\":$bad")
+            val parsed = checkNotNull(DictCatalog.parse("""{"schema":1,"packs":[$p],"addons":[]}"""))
+            parsed.packs.single().weightMap shouldBe null
+        }
+    }
     "跳过不合格及重复的附加词库" {
         val entries = checkNotNull(DictCatalog.parse(document("$addon,$addon,${addon.replace("\"preserve\"", "\"invalid\"")}")))
         entries.addons.size shouldBe 1

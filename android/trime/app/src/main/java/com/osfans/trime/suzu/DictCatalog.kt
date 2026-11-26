@@ -15,6 +15,7 @@ import kotlinx.serialization.json.Json
 import kotlinx.serialization.json.JsonArray
 import kotlinx.serialization.json.JsonObject
 import kotlinx.serialization.json.JsonPrimitive
+import kotlinx.serialization.json.doubleOrNull
 import kotlinx.serialization.json.longOrNull
 import timber.log.Timber
 import java.io.File
@@ -113,7 +114,7 @@ object DictCatalog {
             val commit = o.string("commit").takeIf(HEX_COMMIT::matches) ?: return@mapNotNull null
             val label = o.display("schema_label", 60) ?: o.display("title", 60) ?: return@mapNotNull null
             PackInstaller.Entry(id, o.string("title"), o.string("license"), commit, remote.url,
-                remote.sha256, remote.size, label, o.string("source"))
+                remote.sha256, remote.size, label, o.string("source"), weightMap(o["weight_map"]))
         }.distinctBy { it.name }
         val addonEntries = addons.mapNotNull { item ->
             val o = item as? JsonObject ?: return@mapNotNull null
@@ -124,6 +125,25 @@ object DictCatalog {
             DictAddon(id, o.string("title"), o.string("source"), o.string("license"), remote, weight == "preserve")
         }.distinctBy { it.id }
         return Snapshot(packEntries, addonEntries).takeIf { packEntries.isNotEmpty() }
+    }
+
+    /**
+     * 附加词库的权重按基准尺度（白霜）写。其他词库包用 weight_map 给出换算节点 [[基准权重, 本包权重], ...]：
+     * 基准权重严格递增，本包权重不减，2～64 个点。格式不对时忽略这一项，按与基准相同处理。
+     */
+    fun weightMap(element: kotlinx.serialization.json.JsonElement?): List<Pair<Double, Double>>? {
+        val arr = element as? JsonArray ?: return null
+        if (arr.size !in 2..64) return null
+        val points = arr.map { p ->
+            val xy = p as? JsonArray ?: return null
+            if (xy.size != 2) return null
+            val x = (xy[0] as? JsonPrimitive)?.takeIf { !it.isString }?.doubleOrNull ?: return null
+            val y = (xy[1] as? JsonPrimitive)?.takeIf { !it.isString }?.doubleOrNull ?: return null
+            if (!x.isFinite() || !y.isFinite() || x < 0 || y < 0) return null
+            x to y
+        }
+        if (points.zipWithNext().any { (a, b) -> b.first <= a.first || b.second < a.second }) return null
+        return points
     }
 
     private fun remote(o: JsonObject, file: String): RemoteFile? {

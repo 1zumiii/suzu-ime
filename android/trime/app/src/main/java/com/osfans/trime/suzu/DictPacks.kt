@@ -73,6 +73,7 @@ object DictPacks {
     fun activate(pack: String) {
         val dir = dirOf(pack)
         require(dir.resolve(PACK_MAIN).isFile) { "词库包 $pack 没有装好" }
+        DictAddons.rescaleEnabled(pack)
         writeAtomically(userDir.resolve(MAIN_DICT), AddonRules.composeMainDict(dir.resolve(PACK_MAIN).readText(), DictAddons.enabledIds()))
         writeAtomically(userDir.resolve(LOCK), dir.resolve(PACK_LOCK).takeIf { it.isFile }?.readText() ?: "pack\t$pack\n")
         writeAtomically(userDir.resolve(PATCH), packPatch(pack))
@@ -83,9 +84,11 @@ object DictPacks {
     fun ensureActive(): Boolean {
         val active = active()
         if (active != null) {
+            // 升级后第一次启动：旧版装的附加词库补上原稿并按当前包换算，主词典的导入列表不变
+            val rescaled = DictAddons.rescaleEnabled(active)
             val patch = userDir.resolve(PATCH)
             val expected = packPatch(active)
-            if (patch.readText() == expected) return false
+            if (patch.readText() == expected) return rescaled
             writeAtomically(patch, expected)
             return true
         }
