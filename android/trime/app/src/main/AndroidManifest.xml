@@ -18,6 +18,10 @@ SPDX-License-Identifier: GPL-3.0-or-later
     <!-- 检查更新：下载新版 APK 后调起系统安装器 -->
     <uses-permission android:name="android.permission.REQUEST_INSTALL_PACKAGES" />
 
+    <queries>
+        <package android:name="izumiii.suzu.ime" />
+    </queries>
+
     <application
         android:name="com.osfans.trime.TrimeApplication"
         android:allowBackup="true"
@@ -67,6 +71,11 @@ SPDX-License-Identifier: GPL-3.0-or-later
             android:directBootAware="true"
             android:exported="false"
             tools:node="merge" />
+
+        <provider
+            android:name=".suzu.LegacySettingsProvider"
+            android:authorities="${applicationId}.suzu.legacy-settings"
+            android:exported="true" />
 
         <!-- Settings activity -->
         <activity

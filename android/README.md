@@ -104,6 +104,12 @@ Trime（改版 APK）                              rimellmd（shell 身份，由
 
 ## 构建与测试
 
+### 备份应用设置
+
+在设置首页进入“配置 → 设置备份”。导出的 JSON 包含键盘配色、按键反馈、剪贴板规则和 AI 开关等设置。导入时先校验文件，确认后覆盖对应设置。用户词典和候选映射保存在 Rime 数据目录，模型可从模型页重新下载。
+
+从 `com.osfans.trime` 迁移到新包名时，请先覆盖安装带有设置备份的旧包名版本。启动新版的迁移功能后，同签名的新版可从旧版读取设置，也可以手动导入 JSON。确认新版可用后，再按需卸载旧版。
+
 整套产物（改版 APK、客户端库、守护进程）由 `trime/build_apk.sh` 一次完成。前提：JDK 17、Android NDK r28c（`28.2.13676358`，默认取 Android SDK 的 `ndk/` 目录）、CMake 3.31.6，以及 llama.cpp 与 Lua 源码（布局见 [core/README.md](../core/README.md)）。CMake 和第三方源码默认放在 `~/Dev/ime-deps`，可用环境变量 `IME_DEPS` 指定；工作目录默认是仓库旁边的 `rime-android-port/`，可用 `WORK` 指定。推理部分默认按通用指令集 `armv8.2-a+dotprod+fp16` 编译；只装支持 i8mm 的手机时，可用环境变量 `ARM_ARCH` 指定更高的指令集，如骁龙 8 Gen 2 用 `ARM_ARCH=armv8.6-a+dotprod+fp16+i8mm`。没有 i8mm 的芯片运行这种包会直接崩溃。
 
 单独编译守护进程和客户端的命令见 core/README.md 的 Android 一节。`SUZU_LUA_HOST_LIB` 指向 Trime 的 `librime_jni.so`，使加载器把客户端中的 `lua_*` 符号解析到它。
