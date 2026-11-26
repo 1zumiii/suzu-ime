@@ -42,11 +42,11 @@
       "weight": "uniform"
     },
     {
-      "id": "neg_phrase",
-      "title": "口语正反问",
-      "source": "“解没解决”“同不同意”这类正反问说法，由 Suzu 从 MNBVC 公开口语语料（知乎、天涯、树洞）统计，只收出现 5 次以上的组合",
+      "id": "colloquial",
+      "title": "口语句式",
+      "source": "常用词库没有收录的口语句式，目前收录“解没解决”“同不同意”这类正反问。由 Suzu 从 MNBVC 公开口语语料（知乎、天涯、树洞）统计，只收出现 5 次以上的组合",
       "license": "GPL-3.0",
-      "url": "https://github.com/1zumiii/rime-suzu/releases/download/dict-packs/neg-phrase-409dc9c.dict.yaml",
+      "url": "https://github.com/1zumiii/rime-suzu/releases/download/dict-packs/colloquial-409dc9c.dict.yaml",
       "sha256": "1e02865005eb3c6f41388a0444d6457b89386e67f9fdbeb9cee31d458cd3e150",
       "size": 24076,
       "weight": "preserve"
