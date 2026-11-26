@@ -7,6 +7,7 @@ package com.osfans.trime.suzu
 
 import com.osfans.trime.data.base.DataManager
 import com.osfans.trime.util.appContext
+import kotlinx.serialization.json.JsonPrimitive
 import timber.log.Timber
 import java.io.File
 
@@ -74,16 +75,30 @@ object DictPacks {
         require(dir.resolve(PACK_MAIN).isFile) { "词库包 $pack 没有装好" }
         writeAtomically(userDir.resolve(MAIN_DICT), AddonRules.composeMainDict(dir.resolve(PACK_MAIN).readText(), DictAddons.enabledIds()))
         writeAtomically(userDir.resolve(LOCK), dir.resolve(PACK_LOCK).takeIf { it.isFile }?.readText() ?: "pack\t$pack\n")
-        writeAtomically(userDir.resolve(PATCH), "patch:\n  llm_rerank/lexicon_dir: ${dirName(pack)}\n")
+        writeAtomically(userDir.resolve(PATCH), packPatch(pack))
         Timber.i("Dict pack activated: %s", pack)
     }
 
     /** 还没有启用任何包时启用默认包；返回是否改了文件 */
     fun ensureActive(): Boolean {
-        if (active() != null) return false
+        val active = active()
+        if (active != null) {
+            val patch = userDir.resolve(PATCH)
+            val expected = packPatch(active)
+            if (patch.readText() == expected) return false
+            writeAtomically(patch, expected)
+            return true
+        }
         val pack = defaultPack.takeIf { it in installed() } ?: installed().firstOrNull() ?: return false
         activate(pack)
         return true
+    }
+
+    private fun packPatch(pack: String): String {
+        require(DictCatalog.validId(pack))
+        val label = DictCatalog.pack(pack)?.schemaLabel ?: info(pack)["schema_label"] ?: pack
+        val name = JsonPrimitive(label)
+        return "patch:\n  schema/name: $name\n  llm_rerank/lexicon_dir: ${dirName(pack)}\n"
     }
 
     private fun writeAtomically(target: File, text: String) {

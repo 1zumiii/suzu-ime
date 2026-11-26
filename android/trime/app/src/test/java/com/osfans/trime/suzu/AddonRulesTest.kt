@@ -40,4 +40,12 @@ class AddonRulesTest : BehaviorSpec({
             AddonRules.composeMainDict(main, listOf("moegirl")) stringShouldContain "import_tables:\n  - suzu_addons/moegirl\n  - cn_dicts_frost/base"
         }
     }
+    Given("保留原权重的附加词库") {
+        Then("保留合法权重，继续过滤单字、同字重复和无效权重") {
+            val source = sequenceOf("...", "不沟通\tbu gou tong\t215", "没通知\tmei tong zhi\t12.5",
+                "啊啊\ta a\t100", "无效\twu xiao\tNaN", "不处理\tbu chu li")
+            AddonRules.convert("fixture", source, preserveWeight = true).filter { '\t' in it }.toList() shouldBe
+                listOf("不沟通\tbu gou tong\t215", "没通知\tmei tong zhi\t12.5")
+        }
+    }
 })

@@ -9,18 +9,13 @@ import com.osfans.trime.core.RimeApi
 import com.osfans.trime.data.base.DataManager
 import com.osfans.trime.util.appContext
 import kotlinx.coroutines.Dispatchers
-import kotlinx.coroutines.ensureActive
 import kotlinx.coroutines.withContext
 import timber.log.Timber
 import java.io.File
-import java.net.HttpURLConnection
-import java.net.URL
-import java.security.MessageDigest
 import java.util.zip.ZipFile
-import kotlin.coroutines.coroutineContext
 
 /**
- * 下载、安装、切换词库包。清单 suzu_packs.tsv 由构建脚本按 rime-suzu 的 packs.tsv 生成，打在 APK 里：
+ * 下载、安装、切换词库包。在线与内置名录由 DictCatalog 管理。
  * 每个包一个内容确定的 zip，带 sha256。下载到临时文件，校验通过才解压；切换失败回到原来的包。
  */
 object PackInstaller {
@@ -32,79 +27,33 @@ object PackInstaller {
         val url: String,
         val sha256: String,
         val size: Long,
+        val schemaLabel: String,
+        val source: String,
     )
 
-    val catalog: List<Entry> by lazy {
-        runCatching {
-            appContext.assets.open("suzu_packs.tsv").bufferedReader().readLines()
-                .drop(1)
-                .mapNotNull { line ->
-                    val f = line.split('\t')
-                    if (f.size < 7) null else Entry(f[0], f[1], f[2], f[3], f[4], f[5], f[6].toLongOrNull() ?: 0)
-                }
-        }.getOrDefault(emptyList())
-    }
+    val catalog: List<Entry> get() = DictCatalog.current.packs
 
-    fun title(pack: String) = catalog.firstOrNull { it.name == pack }?.title ?: pack
+    fun title(pack: String) = DictCatalog.pack(pack)?.title ?: DictPacks.info(pack)["title"] ?: pack
 
     private val userDir get() = DataManager.userDataDir
 
     /** 下载并安装到用户目录；已装好的同名包会被替换。在 IO 线程调用 */
     suspend fun download(entry: Entry, progress: (done: Long, total: Long) -> Unit) = withContext(Dispatchers.IO) {
-        val zip = File(appContext.cacheDir, "pack-${entry.name}.zip")
+        check(DictCatalog.validId(entry.name))
+        val zip = File(appContext.cacheDir, "pack-${entry.name}-${entry.sha256.take(12)}.zip")
         try {
-            fetch(entry, zip, progress)
-            val digest = sha256(zip)
-            check(digest == entry.sha256) { "下载文件校验失败，请重新下载" }
-            install(entry.name, zip)
+            SuzuAssets.download(RemoteFile(zip.name, entry.url, entry.sha256, entry.size), zip, dictionary = true) {
+                progress(it, entry.size)
+            }
+            install(entry, zip)
         } finally {
             zip.delete()
         }
     }
 
-    private suspend fun fetch(entry: Entry, dst: File, progress: (Long, Long) -> Unit) {
-        val conn = (URL(entry.url).openConnection() as HttpURLConnection).apply {
-            connectTimeout = 15_000
-            readTimeout = 30_000
-            instanceFollowRedirects = true
-        }
-        try {
-            check(conn.responseCode == 200) { "下载失败：HTTP ${conn.responseCode}" }
-            val total = conn.contentLengthLong.takeIf { it > 0 } ?: entry.size
-            conn.inputStream.use { input ->
-                dst.outputStream().use { out ->
-                    val buf = ByteArray(64 * 1024)
-                    var done = 0L
-                    while (true) {
-                        coroutineContext.ensureActive()
-                        val n = input.read(buf)
-                        if (n < 0) break
-                        out.write(buf, 0, n)
-                        done += n
-                        progress(done, total)
-                    }
-                }
-            }
-        } finally {
-            conn.disconnect()
-        }
-    }
-
-    private fun sha256(file: File): String {
-        val md = MessageDigest.getInstance("SHA-256")
-        file.inputStream().use { input ->
-            val buf = ByteArray(64 * 1024)
-            while (true) {
-                val n = input.read(buf)
-                if (n < 0) break
-                md.update(buf, 0, n)
-            }
-        }
-        return md.digest().joinToString("") { "%02x".format(it) }
-    }
-
     /** 解压到临时目录，确认是这个包的目录后再换进用户目录 */
-    private fun install(pack: String, zip: File) {
+    private fun install(entry: Entry, zip: File) {
+        val pack = entry.name
         val prefix = DictPacks.dirName(pack)
         val tmp = userDir.resolve(".pack-$pack.tmp")
         tmp.deleteRecursively()
@@ -113,7 +62,7 @@ object PackInstaller {
             ZipFile(zip).use { zf ->
                 for (e in zf.entries()) {
                     val name = e.name
-                    check(name.startsWith("$prefix/") || name.startsWith("${prefix}_")) { "词库包内容不符，无法安装" }
+                    check(name.startsWith("$prefix/") || name.startsWith("${prefix}_cell/")) { "词库包内容不符，无法安装" }
                     check(!name.contains("..")) { "词库包包含不安全的文件路径，无法安装" }
                     if (e.isDirectory) continue
                     val out = tmp.resolve(name)
@@ -122,6 +71,10 @@ object PackInstaller {
                 }
             }
             check(tmp.resolve(prefix).resolve("pack.main.yaml").isFile) { "词库包缺少必要文件，请重新下载" }
+            val lock = tmp.resolve(prefix).resolve("pack.lock")
+            val metadata = if (lock.isFile) lock.readLines() else listOf("pack\t$pack", "commit\t${entry.commit}")
+            lock.writeText((metadata.filterNot { it.startsWith("title\t") || it.startsWith("schema_label\t") } +
+                listOf("title\t${entry.title}", "schema_label\t${entry.schemaLabel}")).joinToString("\n", postfix = "\n"))
             for (dir in tmp.listFiles().orEmpty()) {
                 val target = userDir.resolve(dir.name)
                 target.deleteRecursively()

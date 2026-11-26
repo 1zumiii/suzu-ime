@@ -329,10 +329,10 @@ object SuzuAssets {
     }
 
     /** 下载到 [target]。sha256 对不上时删掉临时文件，下次从头下载 */
-    suspend fun download(file: RemoteFile, target: File, progress: (Long) -> Unit) {
+    suspend fun download(file: RemoteFile, target: File, dictionary: Boolean = false, progress: (Long) -> Unit) {
         val part = File(target.parentFile, target.name + ".part")
         var have = if (part.isFile) part.length() else 0L
-        val conn = (URL(file.url).openConnection() as HttpURLConnection).apply {
+        val conn = if (dictionary) DictCatalog.openDownload(file.url, have) else (URL(file.url).openConnection() as HttpURLConnection).apply {
             connectTimeout = 15_000
             readTimeout = 30_000
             instanceFollowRedirects = true
@@ -353,6 +353,7 @@ object SuzuAssets {
                             coroutineContext.ensureActive()
                             val n = input.read(buf)
                             if (n < 0) break
+                            if (dictionary && done + n > file.size) error("词库文件大小与名录不符")
                             out.write(buf, 0, n)
                             done += n
                             if (done - reported >= 131072) {
@@ -366,7 +367,7 @@ object SuzuAssets {
         } finally {
             conn.disconnect()
         }
-        if (sha256(part) != file.sha256) {
+        if ((dictionary && part.length() != file.size) || sha256(part) != file.sha256) {
             part.delete()
             error(appContext.getString(R.string.suzu_file_checksum_failed))
         }

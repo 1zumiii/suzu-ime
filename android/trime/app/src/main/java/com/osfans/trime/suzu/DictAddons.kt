@@ -20,6 +20,7 @@ object AddonRules {
 
     private const val MAX_CHARS = 8
     private val CODE = Regex("[a-z]+( [a-z]+)*")
+    private val INPUT_WEIGHT = Regex("[0-9]{1,12}(\\.[0-9]{1,8})?")
 
     /** 单字、过长的条目和“啊啊啊”这类同字重复的条目没有输入价值 */
     fun keepWord(word: String): Boolean {
@@ -28,8 +29,8 @@ object AddonRules {
         return word.codePoints().distinct().count() > 1
     }
 
-    /** 把上游词表整理成 Rime 词典：只保留有效词条，统一权重 */
-    fun convert(id: String, source: Sequence<String>): Sequence<String> = sequence {
+    /** 把上游词表整理成 Rime 词典，按名录保留有效原权重或统一权重 */
+    fun convert(id: String, source: Sequence<String>, preserveWeight: Boolean = false): Sequence<String> = sequence {
         yield("# 由 App 从上游词表生成")
         yield("---")
         yield("name: $id")
@@ -44,7 +45,8 @@ object AddonRules {
             }
             val fields = line.split('\t')
             if (fields.size < 2 || line.startsWith("#")) continue
-            if (keepWord(fields[0]) && CODE.matches(fields[1])) yield("${fields[0]}\t${fields[1]}\t$WEIGHT")
+            val weight = if (preserveWeight) fields.getOrNull(2)?.trim()?.takeIf(INPUT_WEIGHT::matches) ?: continue else WEIGHT.toString()
+            if (keepWord(fields[0]) && CODE.matches(fields[1])) yield("${fields[0]}\t${fields[1]}\t$weight")
         }
     }
 
@@ -58,20 +60,6 @@ object AddonRules {
 }
 
 /** 叠加在词库包之上的词库。文件在就算启用，所有词库包共用 */
-enum class DictAddon(val id: String, val title: String, val source: String, val remote: RemoteFile) {
-    Moegirl(
-        "moegirl",
-        "萌娘百科",
-        "词条来自萌娘百科，由 mw2fcitx 项目整理",
-        RemoteFile(
-            "moegirl.source.yaml",
-            "https://github.com/outloudvi/mw2fcitx/releases/download/20261024/moegirl.dict.yaml",
-            "f7ed0e76e6bab529c43ff1fb59252e003267c4a339d83972b5b112d025e1b314",
-            4_121_164,
-        ),
-    ),
-}
-
 object DictAddons {
     private val dir get() = DataManager.userDataDir.resolve(AddonRules.DIR)
 
@@ -96,55 +84,76 @@ object DictAddons {
         }
     }
 
-    /** 启用的附加词库，按导入顺序 */
-    fun enabledIds(): List<String> = DictAddon.entries.filter(::isEnabled).map { it.id }
+    private fun localIds(suffix: String) = dir.listFiles().orEmpty()
+        .filter { it.isFile && it.name.endsWith(suffix) }
+        .map { it.name.removeSuffix(suffix) }
+        .filter(DictCatalog::validId)
+        .sorted()
+
+    /** 启用状态以文件为准，名录下架、断网和升级都不会取消导入。 */
+    fun enabledIds(): List<String> = localIds(".dict.yaml")
+
+    fun options(): List<DictAddon> {
+        val entries = DictCatalog.current.addons
+        val local = (enabledIds() + localIds(".dict.yaml.off")).distinct().filter { id -> entries.none { it.id == id } }
+        return entries + local.map { id ->
+            DictCatalog.builtinAddon(id)?.copy(remote = null) ?: DictAddon(id, id, "", "", null)
+        }
+    }
 
     /** 开关一个附加词库并重新编译；编译失败时恢复原状并抛出原因 */
     suspend fun setEnabled(rime: RimeApi, addon: DictAddon, enabled: Boolean, stage: (String, Int?) -> Unit) {
         val pack = DictPacks.active() ?: error("请先选择一个词库包，再启用附加词库")
+        if (enabled == isEnabled(addon)) return
         if (enabled) {
             if (offOf(addon).isFile) {
                 withContext(Dispatchers.IO) { moveFile(offOf(addon), fileOf(addon)) }
             } else {
+                val remote = addon.remote ?: error("找不到该附加词库的下载信息")
                 stage("正在下载${addon.title}词库", 0)
-                install(addon) { done ->
-                    stage("正在下载${addon.title}词库", (done * 100 / addon.remote.size).toInt().coerceIn(0, 100))
+                install(addon, remote) { done ->
+                    stage("正在下载${addon.title}词库", (done * 100 / remote.size).toInt().coerceIn(0, 100))
                 }
             }
         } else {
             withContext(Dispatchers.IO) { if (fileOf(addon).isFile) moveFile(fileOf(addon), offOf(addon)) }
         }
-        withContext(Dispatchers.IO) { DictPacks.activate(pack) }
-        stage("正在编译词库，请稍候", null)
         try {
+            withContext(Dispatchers.IO) { DictPacks.activate(pack) }
+            stage("正在编译词库，请稍候", null)
             rime.deploy()
         } catch (e: Exception) {
-            if (enabled) {
-                stage("编译失败，正在恢复", null)
-                withContext(Dispatchers.IO) {
+            stage("编译失败，正在恢复", null)
+            withContext(Dispatchers.IO + kotlinx.coroutines.NonCancellable) {
+                if (enabled) {
                     if (fileOf(addon).isFile) moveFile(fileOf(addon), offOf(addon))
-                    DictPacks.activate(pack)
+                } else {
+                    if (offOf(addon).isFile) moveFile(offOf(addon), fileOf(addon))
                 }
+                DictPacks.activate(pack)
                 runCatching { rime.deploy() }
             }
             throw IllegalStateException("词库编译失败，请检查词库状态后重试", e)
         }
     }
 
-    private suspend fun install(addon: DictAddon, progress: (Long) -> Unit) = withContext(Dispatchers.IO) {
+    private suspend fun install(addon: DictAddon, remote: RemoteFile, progress: (Long) -> Unit) = withContext(Dispatchers.IO) {
         dir.mkdirs()
-        val source = File(dir, addon.remote.name)
+        val source = File(dir, "${addon.id}-${remote.sha256.take(12)}.source")
         val tmp = File(dir, "${addon.id}.tmp")
         try {
-            SuzuAssets.download(addon.remote, source) { progress(it) }
+            SuzuAssets.download(remote, source, dictionary = true) { progress(it) }
+            var hasEntries = false
             source.useLines { lines ->
                 tmp.bufferedWriter().use { out ->
-                    AddonRules.convert(addon.id, lines).forEach {
+                    AddonRules.convert(addon.id, lines, addon.preserveWeight).forEach {
+                        hasEntries = hasEntries || '\t' in it
                         out.write(it)
                         out.write("\n")
                     }
                 }
             }
+            check(hasEntries) { "附加词库没有可用词条" }
             check(tmp.renameTo(fileOf(addon))) { "无法保存词库，请检查存储空间后重试" }
         } finally {
             source.delete()

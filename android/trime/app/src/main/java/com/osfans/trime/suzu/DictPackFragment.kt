@@ -8,12 +8,15 @@ package com.osfans.trime.suzu
 import android.content.Context
 import com.osfans.trime.ui.common.materialDialog
 import android.os.Bundle
+import android.view.View
 import android.widget.LinearLayout
 import android.widget.ProgressBar
 import android.widget.TextView
 import androidx.appcompat.app.AlertDialog
 import androidx.fragment.app.activityViewModels
 import androidx.lifecycle.lifecycleScope
+import androidx.lifecycle.Lifecycle
+import androidx.lifecycle.repeatOnLifecycle
 import androidx.preference.Preference
 import androidx.preference.SwitchPreferenceCompat
 import com.osfans.trime.R
@@ -43,14 +46,25 @@ class DictPackFragment : PaddingPreferenceFragment() {
         build()
     }
 
+    override fun onViewCreated(view: View, savedInstanceState: Bundle?) {
+        super.onViewCreated(view, savedInstanceState)
+        viewLifecycleOwner.lifecycleScope.launch {
+            viewLifecycleOwner.repeatOnLifecycle(Lifecycle.State.STARTED) {
+                DictCatalog.state.collect { if (it != null) build() }
+            }
+        }
+        viewLifecycleOwner.lifecycleScope.launch(Dispatchers.IO) { DictCatalog.refresh() }
+    }
+
     private fun mb(bytes: Long) = (bytes + 524288) / 1048576
 
     private fun build() {
         val ctx = requireContext()
         val active = DictPacks.active()
         val installed = DictPacks.installed()
+        val addons = DictAddons.options()
         val names = (PackInstaller.catalog.map { it.name } + installed).distinct()
-        val activeEntry = PackInstaller.catalog.firstOrNull { it.name == active }
+        val activeEntry = active?.let(DictCatalog::pack)
         preferenceScreen = preferenceManager.createPreferenceScreen(ctx).apply {
             addCategory("词库包") {
                 addPreference(
@@ -67,7 +81,7 @@ class DictPackFragment : PaddingPreferenceFragment() {
                 )
             }
             addCategory("附加词库") {
-                for (addon in DictAddon.entries) {
+                for (addon in addons) {
                     val on = DictAddons.isEnabled(addon)
                     addPreference(
                         SwitchPreferenceCompat(ctx).apply {
@@ -76,7 +90,8 @@ class DictPackFragment : PaddingPreferenceFragment() {
                             title = addon.title
                             isChecked = on
                             if (!on) {
-                                summary = if (DictAddons.isDownloaded(addon)) "已下载，开启不用重新下载" else "开启需下载约 ${mb(addon.remote.size)} MB"
+                                summary = if (DictAddons.isDownloaded(addon)) "已下载，开启不用重新下载"
+                                    else addon.remote?.let { "开启需下载约 ${mb(it.size)} MB" }
                             }
                             // 开关只发起确认，真正改完后整页重建
                             setOnPreferenceChangeListener { _, value ->
@@ -87,12 +102,14 @@ class DictPackFragment : PaddingPreferenceFragment() {
                     )
                 }
             }
-            for (addon in DictAddon.entries) addPreference(FooterPreference(ctx, "${addon.source}。"))
+            for (addon in addons) if (addon.source.isNotBlank()) {
+                addPreference(FooterPreference(ctx, "${addon.source}。"))
+            }
             addCategory("存储") {
                 addPreference(
                     Preference(ctx).apply {
                         title = "管理已下载的词库"
-                        val n = installed.size + DictAddon.entries.count(DictAddons::isDownloaded)
+                        val n = installed.size + addons.count(DictAddons::isDownloaded)
                         summary = if (n == 0) "还没有下载词库" else "$n 项"
                         mdiIcon("harddisk")
                         setOnPreferenceClickListener {
@@ -164,7 +181,7 @@ class DictPackFragment : PaddingPreferenceFragment() {
                     ) { confirmDelete(PackInstaller.title(name)) { DictPacks.delete(name) } },
                 )
             }
-            for (addon in DictAddon.entries.filter(DictAddons::isDownloaded)) {
+            for (addon in DictAddons.options().filter(DictAddons::isDownloaded)) {
                 val on = DictAddons.isEnabled(addon)
                 add(
                     SheetAction(

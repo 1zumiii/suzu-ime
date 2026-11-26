@@ -6,7 +6,7 @@
   rime/<词库目录>/    默认词库包，同步到用户目录；包的主词典与说明放在包目录里，由 App 启用时写到用户目录
   rime/opencc/       rime-suzu 的 OpenCC 配置（emoji 等）。shared/opencc 归 OpenCC 数据任务管，不往里放
   suzu_sources.txt   来源提交，状态页显示
-  suzu_packs.tsv     可下载的词库包清单（名字、说明、许可证、提交、下载地址、sha256、大小）
+  dicts.json         在线词库名录的内置副本
 另外把每个词库包打成内容确定的 zip 放进 --pack-out（同样的提交总是得到同样的 sha256），发布到下载地址。
 shared/ 里由 Trime 仓库跟踪的 opencc/ 保留，其余每次重新生成。
 
@@ -17,6 +17,7 @@ import os
 import re
 import shutil
 import hashlib
+import json
 import subprocess
 import sys
 import zipfile
@@ -75,13 +76,19 @@ def copy_config(src, shared):
         shutil.copytree(s, d) if os.path.isdir(s) else shutil.copy2(s, d)
 
 
-def make_suzu(src, shared):
+def make_suzu(src, shared, schema_label):
     # 方案：改 ID，主翻译器与部首反查都用 suzu 词典
     text = read(os.path.join(shared, f"{BASE}.schema.yaml"))
     text = sub_once(rf"^(\s*schema_id:\s*){BASE}\b", rf"\g<1>{SCHEMA}", text, "schema_id")
+    text = sub_once(r"^  name: .+$", lambda _: "  name: " + json.dumps(schema_label, ensure_ascii=False),
+                    text, "方案显示名")
     text, n = re.subn(rf"^(\s*dictionary:\s*){BASE}\b", rf"\g<1>{SCHEMA}", text, flags=re.M)
     if n != 2:
         fail(f"方案里 dictionary: {BASE} 应有 2 处（主翻译器与部首反查），实际 {n} 处")
+    # 在方案根上按路径应用补丁。若先合成到 .custom 的 patch 内，schema/name
+    # 会先变成 schema: {name: ...}，后续应用时替换掉整个 schema 节点。
+    text = text.replace("\n__patch:\n  - rime_ice.custom:/patch?\n  - suzu_pack:/patch?\n", "\n")
+    text += "\n__patch:\n  - suzu.custom:/patch?\n  - suzu_pack:/patch?\n  - suzu_model:/patch?\n"
     write(os.path.join(shared, f"{SCHEMA}.schema.yaml"), text)
     os.remove(os.path.join(shared, f"{BASE}.schema.yaml"))
 
@@ -95,12 +102,6 @@ def make_suzu(src, shared):
         text = read(tgt)
         write(tgt, text.rstrip("\n") + "\n" + read(os.path.join(src, "llm-android", "trime", ov)))
     custom = read(os.path.join(shared, f"{BASE}.custom.yaml"))
-    custom = custom.rstrip("\n") + (
-        "\n  # App 在用户目录写入选用的词库包和模型配置。\n"
-        "  __patch:\n"
-        "    - suzu_pack:/patch?\n"
-        "    - suzu_model:/patch?\n"
-    )
     write(os.path.join(shared, f"{SCHEMA}.custom.yaml"), custom)
     os.remove(os.path.join(shared, f"{BASE}.custom.yaml"))
 
@@ -193,7 +194,7 @@ def make_packs(src, assets, default, pack_out):
         title = re.split("[：（]", row.get("note", name))[0]
         lines.append("\t".join([name, title, row.get("license", ""), row["commit"], PACK_URL.format(file=file),
                                 hashlib.sha256(data).hexdigest(), str(len(data))]))
-    write(os.path.join(assets, "suzu_packs.tsv"), "name\ttitle\tlicense\tcommit\turl\tsha256\tsize\n" + "".join(l + "\n" for l in lines))
+    write(os.path.join(pack_out, "suzu_packs.tsv"), "name\ttitle\tlicense\tcommit\turl\tsha256\tsize\n" + "".join(l + "\n" for l in lines))
     return len(lines)
 
 
@@ -206,12 +207,21 @@ def main():
     ap.add_argument("--sources", nargs="*", default=[])
     a = ap.parse_args()
     repo = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+    catalog_file = os.path.join(repo, "dicts.json")
+    catalog = json.loads(read(catalog_file))
+    labels = {pack["id"]: pack.get("schema_label", pack["title"]) for pack in catalog["packs"]}
+    if a.pack not in labels:
+        fail(f"词库名录未登记默认包 {a.pack}")
     shared = os.path.join(a.assets, "shared")
     clean_shared(shared)
     copy_config(a.rime_suzu, shared)
     overlay_lua(repo, shared)
-    make_suzu(a.rime_suzu, shared)
+    make_suzu(a.rime_suzu, shared, labels[a.pack])
     n_packs = make_packs(a.rime_suzu, a.assets, a.pack, a.pack_out)
+    shutil.copy2(catalog_file, os.path.join(a.assets, "dicts.json"))
+    previous_catalog = os.path.join(a.assets, "suzu_packs.tsv")
+    if os.path.isfile(previous_catalog):
+        os.remove(previous_catalog)
     write(os.path.join(a.assets, "suzu_sources.txt"), "".join(s + "\n" for s in a.sources + [f"词库包 {a.pack}"]))
     n = sum(len(fs) for _, _, fs in os.walk(shared))
     print(f"已生成：shared {n} 个文件，默认词库包 {a.pack}，可下载的包 {n_packs} 个（{a.pack_out}）")

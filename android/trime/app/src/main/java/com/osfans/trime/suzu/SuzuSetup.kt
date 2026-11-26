@@ -10,6 +10,7 @@ import timber.log.Timber
 /** Rime 准备好之后、开始部署之前的步骤：迁移旧数据，确保启用了一个词库包。出错只记日志，不挡住 Rime 启动 */
 object SuzuSetup {
     fun beforeMaintenance(): Boolean {
+        if (DictCatalog.state.value == null) DictCatalog.loadCache()
         val migrated = runCatching { SuzuMigration.run() }
             .onFailure { Timber.e(it, "Suzu migration failed") }
             .getOrDefault(false)

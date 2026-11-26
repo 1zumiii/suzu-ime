@@ -1,0 +1,44 @@
+{
+  "schema": 1,
+  "default_pack": "frost",
+  "packs": [
+    {
+      "id": "ice",
+      "title": "雾凇拼音词库",
+      "schema_label": "雾凇",
+      "source": "雾凇拼音（rime-ice）",
+      "license": "GPL-3.0",
+      "url": "https://github.com/1zumiii/rime-suzu/releases/download/dict-packs/ice-da1fbe602e38.zip",
+      "sha256": "257375a82086276d11f352ff2f67e5a65ae8ff1d06b7bc039d49dd9f0d868f5b",
+      "size": 14546083,
+      "repo": "https://github.com/iDvel/rime-ice.git",
+      "commit": "da1fbe602e38f26db846fa10120ee64c2b0324c0",
+      "main_dict": "rime_ice.dict.yaml"
+    },
+    {
+      "id": "frost",
+      "title": "白霜词库",
+      "schema_label": "白霜",
+      "source": "白霜拼音（rime-frost），派生自雾凇拼音",
+      "license": "GPL-3.0",
+      "url": "https://github.com/1zumiii/rime-suzu/releases/download/dict-packs/frost-c34bbd820db0.zip",
+      "sha256": "b36371e71996c4c79f8f4fcdb61705bcb965864de6b4818b140b21f98f142bc1",
+      "size": 22013843,
+      "repo": "https://github.com/gaboolic/rime-frost.git",
+      "commit": "c34bbd820db0a2887aa3f75f4b67d85a01b6a0e1",
+      "main_dict": "rime_frost.dict.yaml"
+    }
+  ],
+  "addons": [
+    {
+      "id": "moegirl",
+      "title": "萌娘百科",
+      "source": "词条来自萌娘百科，由 mw2fcitx 项目整理",
+      "license": "CC BY-NC-SA",
+      "url": "https://github.com/outloudvi/mw2fcitx/releases/download/20261024/moegirl.dict.yaml",
+      "sha256": "f7ed0e76e6bab529c43ff1fb59252e003267c4a339d83972b5b112d025e1b314",
+      "size": 4121164,
+      "weight": "uniform"
+    }
+  ]
+}
