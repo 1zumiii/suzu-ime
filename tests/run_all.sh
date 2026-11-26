@@ -72,6 +72,7 @@ lua_tests() {
   run "input_log_test"        "$LUA" input_log_test.lua "$REPO" "$(d ilog)"
   run "replay_test"           "$LUA" replay_test.lua "$REPO" "$B" "$MODEL" "$VOCAB" "$(d replay)"
   run "unified_order_test"    "$LUA" unified_order_test.lua "$REPO" "$(d uorder)"
+  run "ab_question_test"      "$LUA" ab_question_test.lua "$REPO"
   run "session_test"          "$LUA" session_test.lua "$REPO" "$(d session)"
   run "filter_test"           "$LUA" filter_test.lua "$REPO" "$UD" "$UD/suzu.gguf"
   run "idle_test"             "$LUA" idle_test.lua "$B" "$MODEL" "$(d idle)" exit

@@ -96,6 +96,7 @@ def make_suzu(src, shared):
         write(tgt, text.rstrip("\n") + "\n" + read(os.path.join(src, "llm-android", "trime", ov)))
     custom = read(os.path.join(shared, f"{BASE}.custom.yaml"))
     custom = custom.rstrip("\n") + (
+        '\n  "engine/translators/@after last": lua_translator@*ab_question_translator\n'
         "\n  # App 在用户目录写入选用的词库包和模型配置。\n"
         "  __patch:\n"
         "    - suzu_pack:/patch?\n"

@@ -15,6 +15,7 @@ patch:
   # processor 放最前；光标上文接入层紧跟其后（"@before 0" 先生效，"@before 1" 插在它后面）
   "engine/processors/@before 0": lua_processor@*ai_rerank_processor
   "engine/processors/@before 1": lua_processor@*ai_rerank_app_ctx
+  "engine/translators/@after last": lua_translator@*ab_question_translator
   # filter 放最后（去重之后）
   "engine/filters/@after last": lua_filter@*ai_rerank_filter
   # 两个开关一次追加（同名键写两次会被 YAML 覆盖）。reset: 1 表示默认开：
