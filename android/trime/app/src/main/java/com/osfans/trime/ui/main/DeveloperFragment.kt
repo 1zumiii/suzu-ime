@@ -5,8 +5,8 @@
 
 package com.osfans.trime.ui.main
 
-import android.app.AlertDialog
-import com.osfans.trime.ui.common.materialDialog
+import com.osfans.trime.ui.common.SheetButton
+import com.osfans.trime.ui.common.settingsSheet
 import android.os.Bundle
 import androidx.fragment.app.activityViewModels
 import androidx.preference.Preference
@@ -39,12 +39,16 @@ class DeveloperFragment : PaddingPreferenceFragment() {
                 setTitle(R.string.real_time_logs_clear)
                 isIconSpaceReserved = false
                 setOnPreferenceClickListener {
-                    materialDialog(context)
-                        .setMessage(R.string.real_time_logs_confirm)
-                        .setPositiveButton(R.string.ok) { _, _ ->
+                    context.settingsSheet(
+                        icon = "delete_outline",
+                        title = getString(R.string.real_time_logs_clear),
+                        message = getString(R.string.real_time_logs_confirm),
+                        confirm = SheetButton(getString(R.string.ok)) {
                             Logcat.Companion.default.clearLog()
-                        }.setNegativeButton(R.string.cancel, null)
-                        .show()
+                        },
+                        cancel = getString(R.string.cancel),
+                        destructive = true,
+                    ).show()
                     true
                 }
             },

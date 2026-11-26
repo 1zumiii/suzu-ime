@@ -15,11 +15,13 @@ import android.util.TypedValue
 import android.view.Gravity
 import android.view.View
 import android.view.ViewGroup
+import android.view.WindowManager
 import android.widget.FrameLayout
 import android.widget.ImageView
 import android.widget.LinearLayout
 import android.widget.TextView
-import androidx.appcompat.app.AlertDialog
+import androidx.core.view.ViewCompat
+import androidx.core.widget.NestedScrollView
 import androidx.core.widget.TextViewCompat
 import com.google.android.material.R as MR
 import com.google.android.material.bottomsheet.BottomSheetBehavior
@@ -73,6 +75,7 @@ private fun Context.sheetHeader(
     }
     val t = text(title, MR.attr.textAppearanceHeadlineSmall).apply {
         setTypeface(typeface, android.graphics.Typeface.BOLD)
+        ViewCompat.setAccessibilityHeading(this, true)
         layoutParams = LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT).apply {
             topMargin = dp(16)
         }
@@ -89,7 +92,21 @@ private fun Context.sheetHeader(
 }
 
 private fun Context.buttonRow(vararg buttons: MaterialButton) =
-    LinearLayout(this).apply {
+    object : LinearLayout(this) {
+        override fun onMeasure(widthMeasureSpec: Int, heightMeasureSpec: Int) {
+            val availableWidth = MeasureSpec.getSize(widthMeasureSpec) - paddingLeft - paddingRight
+            val naturalWidth = buttons.sumOf { button ->
+                button.measure(MeasureSpec.UNSPECIFIED, MeasureSpec.UNSPECIFIED)
+                button.measuredWidth + (button.layoutParams as LayoutParams).marginStart
+            }
+            orientation = if (MeasureSpec.getMode(widthMeasureSpec) != MeasureSpec.UNSPECIFIED && naturalWidth > availableWidth) {
+                VERTICAL
+            } else {
+                HORIZONTAL
+            }
+            super.onMeasure(widthMeasureSpec, heightMeasureSpec)
+        }
+    }.apply {
         orientation = LinearLayout.HORIZONTAL
         gravity = Gravity.END or Gravity.CENTER_VERTICAL
         buttons.forEach { b ->
@@ -110,14 +127,99 @@ private fun Context.newSheet(content: LinearLayout): BottomSheetDialog {
     val dialog = BottomSheetDialog(this)
     val root = LinearLayout(this).apply {
         orientation = LinearLayout.VERTICAL
+        isFocusableInTouchMode = true
         addView(BottomSheetDragHandleView(this@newSheet))
         content.setPadding(dp(24), 0, dp(24), dp(24))
-        addView(content)
+        addView(NestedScrollView(this@newSheet).apply {
+            clipToPadding = false
+            addView(content)
+        }, LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT))
     }
     dialog.setContentView(root)
+    dialog.window?.setSoftInputMode(
+        WindowManager.LayoutParams.SOFT_INPUT_ADJUST_RESIZE or WindowManager.LayoutParams.SOFT_INPUT_STATE_ALWAYS_HIDDEN,
+    )
     dialog.behavior.state = BottomSheetBehavior.STATE_EXPANDED
     dialog.behavior.skipCollapsed = true
     return dialog
+}
+
+class SheetButton(val label: CharSequence, val onClick: () -> Unit = {})
+
+fun Context.settingsSheet(
+    icon: String,
+    title: CharSequence,
+    message: CharSequence? = null,
+    body: View? = null,
+    confirm: SheetButton? = null,
+    cancel: CharSequence? = null,
+    extra: SheetButton? = null,
+    destructive: Boolean = false,
+    cancelable: Boolean = true,
+    configureConfirm: (MaterialButton) -> Unit = {},
+): BottomSheetDialog {
+    val content = LinearLayout(this).apply { orientation = LinearLayout.VERTICAL }
+    sheetHeader(icon, title, message).forEach(content::addView)
+    if (body != null) {
+        content.addView(body, LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT).apply {
+            topMargin = dp(16)
+        })
+    }
+    val dialog = newSheet(content)
+    dialog.setCancelable(cancelable)
+    dialog.behavior.isDraggable = cancelable
+    val buttons = buildList {
+        extra?.let { action ->
+            add(textButton(action.label).apply {
+                setOnClickListener {
+                    dialog.dismiss()
+                    action.onClick()
+                }
+            })
+        }
+        cancel?.let { label -> add(textButton(label).apply { setOnClickListener { dialog.dismiss() } }) }
+        confirm?.let { action ->
+            add(filledButton(action.label).apply {
+                if (destructive) {
+                    backgroundTintList = ColorStateList.valueOf(themeColor(androidx.appcompat.R.attr.colorError))
+                    setTextColor(themeColor(MR.attr.colorOnError))
+                }
+                setOnClickListener {
+                    dialog.dismiss()
+                    action.onClick()
+                }
+                configureConfirm(this)
+            })
+        }
+    }
+    if (buttons.isNotEmpty()) content.addView(buttonRow(*buttons.toTypedArray()))
+    return dialog
+}
+
+fun Context.pickSheet(
+    icon: String,
+    title: CharSequence,
+    options: List<CharSequence>,
+    selected: Int,
+    onPick: (Int) -> Unit,
+) {
+    lateinit var dialog: BottomSheetDialog
+    val list = LinearLayout(this).apply {
+        orientation = LinearLayout.VERTICAL
+        options.forEachIndexed { index, label ->
+            addView(MaterialRadioButton(context).apply {
+                text = label
+                isChecked = index == selected
+                minimumHeight = dp(48)
+                setOnClickListener {
+                    dialog.dismiss()
+                    onPick(index)
+                }
+            }, LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT))
+        }
+    }
+    dialog = settingsSheet(icon, title, body = list, cancel = getString(android.R.string.cancel))
+    dialog.show()
 }
 
 class SheetOption(
@@ -294,45 +396,27 @@ fun Context.actionSheet(
     dialog.show()
 }
 
-/** 删除类确认：确认按钮用错误色 */
-fun AlertDialog.Builder.showDestructive(): AlertDialog =
-    show().also { d ->
-        d.getButton(AlertDialog.BUTTON_POSITIVE)?.let { b ->
-            val ctx = b.context
-            (b as? MaterialButton)?.backgroundTintList = ColorStateList.valueOf(ctx.themeColor(androidx.appcompat.R.attr.colorError))
-            b.setTextColor(ctx.themeColor(MR.attr.colorOnError))
-        }
-    }
-
-/** 对话框里的“标签 + 输入框”，标签在输入框上方 */
+/** 底部弹窗的 Material 3 文本输入框。 */
 class LabeledField(
     context: Context,
     label: CharSequence,
     value: String,
-    hint: CharSequence? = null,
+    placeholder: CharSequence? = null,
+    helper: CharSequence? = null,
 ) {
-    val input: TextInputEditText
-    val view: LinearLayout
+    val view = TextInputLayout(context, null, MR.attr.textInputOutlinedStyle).apply {
+        boxBackgroundMode = TextInputLayout.BOX_BACKGROUND_OUTLINE
+        hint = label
+        placeholderText = placeholder
+        if (helper != null) helperText = helper
+    }
+    val input = TextInputEditText(view.context).apply {
+        inputType = InputType.TYPE_CLASS_TEXT
+        setText(value)
+    }
 
     init {
-        val layout = TextInputLayout(context, null, MR.attr.textInputOutlinedStyle).apply {
-            boxBackgroundMode = TextInputLayout.BOX_BACKGROUND_OUTLINE
-            placeholderText = hint
-        }
-        input = TextInputEditText(layout.context).apply {
-            inputType = InputType.TYPE_CLASS_TEXT
-            setText(value)
-        }
-        layout.addView(input)
-        view = LinearLayout(context).apply {
-            orientation = LinearLayout.VERTICAL
-            addView(
-                context.text(label, MR.attr.textAppearanceBodyLarge, MR.attr.colorOnSurfaceVariant).apply {
-                    setPadding(0, 0, 0, context.dp(8))
-                },
-            )
-            addView(layout)
-        }
+        view.addView(input)
     }
 }
 

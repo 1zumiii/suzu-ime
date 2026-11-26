@@ -6,10 +6,10 @@
 package com.osfans.trime.ui.main
 
 import android.content.Intent
-import com.osfans.trime.ui.common.materialDialog
 import android.net.Uri
 import android.os.Bundle
-import androidx.appcompat.app.AlertDialog
+import com.osfans.trime.ui.common.SheetAction
+import com.osfans.trime.ui.common.actionSheet
 import androidx.fragment.app.activityViewModels
 import androidx.lifecycle.lifecycleScope
 import androidx.preference.Preference
@@ -70,14 +70,14 @@ class LicenseFragment : PaddingPreferenceFragment() {
             1 -> showLicenseContent(licenses.first())
 
             else -> {
-                val licenseArray = licenses.toTypedArray()
-                val licenseNames = licenseArray.map { it.spdxId ?: it.name }.toTypedArray()
-                materialDialog(requireContext())
-                    .setTitle(uniqueId)
-                    .setItems(licenseNames) { _, idx ->
-                        showLicenseContent(licenseArray[idx])
-                    }.setPositiveButton(android.R.string.cancel, null)
-                    .show()
+                requireContext().actionSheet(
+                    icon = "file_document_outline",
+                    title = uniqueId,
+                    actions = licenses.map { license ->
+                        SheetAction(license.spdxId ?: license.name) { showLicenseContent(license) }
+                    },
+                    closeLabel = getString(android.R.string.cancel),
+                )
             }
         }
         return true

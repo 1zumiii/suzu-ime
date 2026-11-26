@@ -66,8 +66,8 @@ enum class SetupPage(val required: Boolean) {
     fun getHintText(context: Context, model: SuzuModel): CharSequence = when (this) {
         Enable -> context.getText(R.string.setup__enable_ime_hint)
         Select -> context.getText(R.string.setup__select_ime_hint)
-        Model -> context.getString(R.string.suzu_setup_model_hint, model.sizeMb) + stateText(context, SuzuAsset.Model, context.getString(R.string.suzu_setup_model_skip))
-        Grammar -> context.getString(R.string.suzu_setup_grammar_hint, SuzuAsset.Grammar.sizeMb) + stateText(context, SuzuAsset.Grammar, context.getString(R.string.suzu_setup_grammar_skip))
+        Model -> context.getString(R.string.suzu_setup_model_hint, model.sizeMb) + stateText(context, SuzuAsset.Model)
+        Grammar -> context.getString(R.string.suzu_setup_grammar_hint, SuzuAsset.Grammar.sizeMb) + stateText(context, SuzuAsset.Grammar)
         Ai -> when {
             !SuzuAssets.isInstalled(SuzuAsset.Model) -> context.getString(R.string.suzu_setup_ai_needs_model)
             else -> when (AiDaemonLauncher.availability()) {
@@ -78,10 +78,10 @@ enum class SetupPage(val required: Boolean) {
         }
     }
 
-    private fun stateText(context: Context, asset: SuzuAsset, idle: String): String = when (val state = SuzuAssets.state(asset)) {
+    private fun stateText(context: Context, asset: SuzuAsset): String = when (val state = SuzuAssets.state(asset)) {
         is SuzuAssets.State.Downloading -> "\n\n" + context.getString(R.string.suzu_setup_downloading, state.percent, state.doneMb, state.totalMb)
         is SuzuAssets.State.Failed -> "\n\n" + context.getString(R.string.suzu_setup_download_failed, state.message)
-        SuzuAssets.State.Idle -> "\n\n" + if (SuzuAssets.isInstalled(asset)) context.getString(R.string.suzu_setup_installed) else idle
+        SuzuAssets.State.Idle -> if (SuzuAssets.isInstalled(asset)) "\n\n" + context.getString(R.string.suzu_setup_installed) else ""
     }
 
     fun getButtonText(context: Context): CharSequence = when (this) {

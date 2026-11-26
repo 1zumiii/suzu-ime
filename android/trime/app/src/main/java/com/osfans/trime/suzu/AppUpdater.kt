@@ -19,9 +19,13 @@ import androidx.lifecycle.LifecycleCoroutineScope
 import androidx.preference.PreferenceManager
 import com.osfans.trime.BuildConfig
 import com.osfans.trime.R
-import com.osfans.trime.ui.common.materialDialog
+import com.osfans.trime.ui.common.SheetButton
+import com.osfans.trime.ui.common.settingsSheet
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.sync.Mutex
+import kotlinx.coroutines.sync.withLock
 import kotlinx.coroutines.withContext
 import kotlinx.serialization.json.Json
 import kotlinx.serialization.json.JsonArray
@@ -51,6 +55,10 @@ object AppUpdater {
     const val PREF_AUTO_CHECK = "suzu_update_auto_check"
     private const val PREF_LAST_CHECK = "suzu_update_last_check"
     private const val PREF_SKIPPED = "suzu_update_skipped_version"
+    private const val PREF_AVAILABLE = "suzu_update_available_version"
+    private val checkLock = Mutex()
+    private var latestRelease: Release? = null
+    private var manualCheckInProgress = false
 
     class Release(val version: String, val notes: String, val page: String, val apk: RemoteFile)
 
@@ -65,6 +73,12 @@ object AppUpdater {
     private fun prefs(context: Context) = PreferenceManager.getDefaultSharedPreferences(context)
 
     fun autoCheckEnabled(context: Context) = prefs(context).getBoolean(PREF_AUTO_CHECK, true)
+
+    fun availableVersion(context: Context): String? = prefs(context).run {
+        getString(PREF_AVAILABLE, null)?.takeIf {
+            compareVersions(it, currentVersion) > 0 && it != getString(PREF_SKIPPED, null)
+        }
+    }
 
     /** 读 /proc/cpuinfo 的 Features；i8mm 版在不支持的芯片上会直接崩溃，读不到就当不支持 */
     fun supportsI8mm(): Boolean =
@@ -95,6 +109,7 @@ object AppUpdater {
                     Result.UpToDate
                 }
             }.getOrElse {
+                if (it is CancellationException) throw it
                 Timber.w(it, "update check failed")
                 Result.Failed(it.message ?: it.javaClass.simpleName)
             }
@@ -148,45 +163,70 @@ object AppUpdater {
     private fun JsonObject.str(key: String): String? =
         this[key]?.jsonPrimitive?.takeIf { it.isString }?.content
 
-    /** 打开设置 App 时调用：开着自动检查、距上次超过一天才联网，有新版本且没被跳过才弹窗 */
-    fun autoCheck(activity: Activity, scope: LifecycleCoroutineScope) {
-        val p = prefs(activity)
-        if (!autoCheckEnabled(activity)) return
-        if (System.currentTimeMillis() - p.getLong(PREF_LAST_CHECK, 0L) < CHECK_INTERVAL_MS) return
-        scope.launch {
-            val result = check(activity)
-            if (result is Result.Available &&
-                p.getString(PREF_SKIPPED, null) != result.release.version &&
-                !activity.isFinishing
-            ) {
-                showAvailable(activity, scope, result.release, allowSkip = true)
+    private suspend fun refresh(context: Context): Result = check(context).also { result ->
+        when (result) {
+            is Result.Available -> {
+                latestRelease = result.release
+                prefs(context).edit { putString(PREF_AVAILABLE, result.release.version) }
             }
+            Result.UpToDate -> {
+                latestRelease = null
+                prefs(context).edit { remove(PREF_AVAILABLE) }
+            }
+            is Result.Failed -> Unit
         }
     }
 
-    /** 关于页的“检查更新”：结果总要告诉用户 */
-    fun manualCheck(activity: Activity, scope: LifecycleCoroutineScope) {
+    /** 自动检查只记录结果，主页工具栏据此显示红点。 */
+    suspend fun autoCheck(context: Context) = checkLock.withLock {
+        if (autoCheckEnabled(context) &&
+            System.currentTimeMillis() - prefs(context).getLong(PREF_LAST_CHECK, 0L) >= CHECK_INTERVAL_MS
+        ) {
+            refresh(context)
+        }
+    }
+
+    fun manualCheck(
+        activity: Activity,
+        scope: LifecycleCoroutineScope,
+        allowSkip: Boolean,
+        onStatusChanged: () -> Unit,
+    ) {
+        if (manualCheckInProgress) return
+        val cached = latestRelease
+        if (allowSkip && cached != null && availableVersion(activity) == cached.version) {
+            showAvailable(activity, scope, cached, true, onStatusChanged)
+            return
+        }
         scope.launch {
+            manualCheckInProgress = true
             val dialog = ProgressDialog(activity, activity.getString(R.string.suzu_update_checking))
-            dialog.update(activity.getString(R.string.suzu_update_checking), null)
-            val result = check(activity)
-            dialog.dismiss()
-            if (activity.isFinishing) return@launch
+            val result = try {
+                checkLock.withLock { refresh(activity) }
+            } finally {
+                dialog.dismiss()
+                manualCheckInProgress = false
+            }
+            if (activity.isFinishing || activity.isDestroyed) return@launch
+            onStatusChanged()
+            val ok = SheetButton(activity.getString(android.R.string.ok))
             when (result) {
-                is Result.Available -> showAvailable(activity, scope, result.release, allowSkip = false)
+                is Result.Available -> showAvailable(activity, scope, result.release, allowSkip, onStatusChanged)
                 Result.UpToDate ->
-                    materialDialog(activity)
-                        .setTitle(R.string.suzu_update_up_to_date)
-                        .setMessage(activity.getString(R.string.suzu_update_current_version, currentVersion))
-                        .setPositiveButton(android.R.string.ok, null)
-                        .show()
+                    activity.settingsSheet(
+                        icon = "check_circle_outline",
+                        title = activity.getString(R.string.suzu_update_up_to_date),
+                        message = activity.getString(R.string.suzu_update_current_version, currentVersion),
+                        confirm = ok,
+                    ).show()
                 is Result.Failed ->
-                    materialDialog(activity)
-                        .setTitle(R.string.suzu_update_check_failed)
-                        .setMessage(activity.getString(R.string.suzu_update_check_failed_message, result.message))
-                        .setPositiveButton(android.R.string.ok, null)
-                        .setNeutralButton(R.string.suzu_update_open_page) { _, _ -> openPage(activity, RELEASES_PAGE) }
-                        .show()
+                    activity.settingsSheet(
+                        icon = "alert_circle_outline",
+                        title = activity.getString(R.string.suzu_update_check_failed),
+                        message = activity.getString(R.string.suzu_update_check_failed_message, result.message),
+                        confirm = ok,
+                        extra = SheetButton(activity.getString(R.string.suzu_update_open_page)) { openPage(activity, RELEASES_PAGE) },
+                    ).show()
             }
         }
     }
@@ -196,30 +236,31 @@ object AppUpdater {
         scope: LifecycleCoroutineScope,
         release: Release,
         allowSkip: Boolean,
+        onStatusChanged: () -> Unit,
     ) {
         val sizeMb = "%.1f".format(release.apk.size / 1048576.0)
         val notes = plainNotes(release.notes).let { if (it.length > 1200) it.take(1200) + "…" else it }
         val message = activity.getString(
             R.string.suzu_update_available_message,
             currentVersion,
-            release.version,
-            release.apk.name,
             sizeMb,
         ) + if (notes.isNotEmpty()) "\n\n$notes" else ""
-        materialDialog(activity)
-            .setTitle(activity.getString(R.string.suzu_update_available, release.version))
-            .setMessage(message)
-            .setPositiveButton(R.string.suzu_update_install) { _, _ -> downloadAndInstall(activity, scope, release) }
-            .setNegativeButton(R.string.suzu_update_later, null)
-            .apply {
-                if (allowSkip) {
-                    setNeutralButton(R.string.suzu_update_skip) { _, _ ->
-                        prefs(activity).edit { putString(PREF_SKIPPED, release.version) }
-                    }
-                } else {
-                    setNeutralButton(R.string.suzu_update_open_page) { _, _ -> openPage(activity, release.page) }
-                }
-            }.show()
+        val extra = if (allowSkip && availableVersion(activity) == release.version) {
+            SheetButton(activity.getString(R.string.suzu_update_skip)) {
+                prefs(activity).edit { putString(PREF_SKIPPED, release.version) }
+                onStatusChanged()
+            }
+        } else {
+            SheetButton(activity.getString(R.string.suzu_update_open_page)) { openPage(activity, release.page) }
+        }
+        activity.settingsSheet(
+            icon = "download_outline",
+            title = activity.getString(R.string.suzu_update_available, release.version),
+            message = message,
+            confirm = SheetButton(activity.getString(R.string.suzu_update_install)) { downloadAndInstall(activity, scope, release) },
+            cancel = activity.getString(R.string.suzu_update_later),
+            extra = extra,
+        ).show()
     }
 
     private fun downloadAndInstall(
@@ -228,17 +269,19 @@ object AppUpdater {
         release: Release,
     ) {
         if (!canInstall(activity)) {
-            materialDialog(activity)
-                .setTitle(R.string.suzu_update_need_permission)
-                .setMessage(R.string.suzu_update_need_permission_message)
-                .setPositiveButton(R.string.grant_permission) { _, _ ->
+            activity.settingsSheet(
+                icon = "shield_outline",
+                title = activity.getString(R.string.suzu_update_need_permission),
+                message = activity.getString(R.string.suzu_update_need_permission_message),
+                confirm = SheetButton(activity.getString(R.string.grant_permission)) {
                     if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
                         activity.startActivity(
                             Intent(Settings.ACTION_MANAGE_UNKNOWN_APP_SOURCES, Uri.parse("package:${activity.packageName}")),
                         )
                     }
-                }.setNegativeButton(android.R.string.cancel, null)
-                .show()
+                },
+                cancel = activity.getString(android.R.string.cancel),
+            ).show()
             return
         }
         val dir = File(activity.cacheDir, "updates").apply { mkdirs() }
@@ -264,13 +307,14 @@ object AppUpdater {
             dialog.dismiss()
             result.onSuccess { install(activity, target) }.onFailure {
                 Timber.w(it, "update download failed")
-                if (activity.isFinishing) return@onFailure
-                materialDialog(activity)
-                    .setTitle(R.string.suzu_update_download_failed)
-                    .setMessage(it.message ?: it.javaClass.simpleName)
-                    .setPositiveButton(android.R.string.ok, null)
-                    .setNeutralButton(R.string.suzu_update_open_page) { _, _ -> openPage(activity, release.page) }
-                    .show()
+                if (activity.isFinishing || activity.isDestroyed) return@onFailure
+                activity.settingsSheet(
+                    icon = "alert_circle_outline",
+                    title = activity.getString(R.string.suzu_update_download_failed),
+                    message = it.message ?: it.javaClass.simpleName,
+                    confirm = SheetButton(activity.getString(android.R.string.ok)),
+                    extra = SheetButton(activity.getString(R.string.suzu_update_open_page)) { openPage(activity, release.page) },
+                ).show()
             }
         }
     }

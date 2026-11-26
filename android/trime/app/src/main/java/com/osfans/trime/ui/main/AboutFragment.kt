@@ -10,7 +10,6 @@ import android.content.Intent
 import android.net.Uri
 import android.os.Bundle
 import androidx.navigation.fragment.findNavController
-import androidx.lifecycle.lifecycleScope
 import androidx.preference.Preference
 import androidx.preference.SwitchPreferenceCompat
 import com.osfans.trime.BuildConfig
@@ -34,9 +33,8 @@ class AboutFragment : PaddingPreferenceFragment() {
                 Preference(requireContext()).apply {
                     isIconSpaceReserved = false
                     setTitle(R.string.suzu_update_check)
-                    summary = getString(R.string.suzu_update_check_summary, AppUpdater.currentVersion)
                     setOnPreferenceClickListener {
-                        AppUpdater.manualCheck(requireActivity(), viewLifecycleOwner.lifecycleScope)
+                        (requireActivity() as MainActivity).showAppUpdates()
                         true
                     }
                 },

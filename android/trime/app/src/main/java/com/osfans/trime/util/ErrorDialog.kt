@@ -6,19 +6,20 @@
 package com.osfans.trime.util
 
 import android.content.Context
-import androidx.appcompat.app.AlertDialog
 import com.osfans.trime.R
+import com.osfans.trime.ui.common.SheetButton
+import com.osfans.trime.ui.common.settingsSheet
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 
 suspend fun Context.importErrorDialog(message: String) {
     withContext(Dispatchers.Main.immediate) {
-        AlertDialog.Builder(this@importErrorDialog)
-            .setTitle(R.string.import_error)
-            .setMessage(message)
-            .setPositiveButton(android.R.string.ok, null)
-            .setIconAttribute(android.R.attr.alertDialogIcon)
-            .show()
+        settingsSheet(
+            icon = "alert_circle_outline",
+            title = getString(R.string.import_error),
+            message = message,
+            confirm = SheetButton(getString(android.R.string.ok)),
+        ).show()
     }
 }
 

@@ -28,7 +28,7 @@ object SuzuFeatures {
         val summary: String,
         val needsAi: Boolean,
     ) {
-        Stage2("suzu_feature_stage2", "两段推理", "四个字以上的输入，先拼出第一段，再对剩下的拼音打分，拼成整句", true),
+        Stage2("suzu_feature_stage2", "两段推理", "长输入分段生成整句候选", true),
         Generate("suzu_feature_generate", "候选生成", "简拼时补充 Rime 没给出的词", true),
         FixHint("suzu_feature_fix_hint", "选错修正提示", "停顿后在工具栏提示“A → B”，点按才替换", true),
         CursorSwap("suzu_feature_cursor_swap", "光标换词", "光标点到文字上时，在候选栏列出同音候选", true),

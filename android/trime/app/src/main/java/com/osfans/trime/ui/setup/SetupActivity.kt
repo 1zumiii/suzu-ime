@@ -9,13 +9,13 @@ import com.osfans.trime.ui.common.themeColor
 import android.widget.LinearLayout
 import android.graphics.drawable.GradientDrawable
 import android.app.PendingIntent
-import com.osfans.trime.ui.common.materialDialog
 import android.content.Intent
 import android.os.Bundle
 import android.view.View
 import android.widget.Button
 import androidx.activity.enableEdgeToEdge
-import androidx.appcompat.app.AlertDialog
+import com.osfans.trime.ui.common.SheetButton
+import com.osfans.trime.ui.common.settingsSheet
 import androidx.core.app.NotificationCompat
 import androidx.core.os.bundleOf
 import androidx.core.view.ViewCompat
@@ -86,12 +86,13 @@ class SetupActivity : AppCompatActivity() {
         skipButton = binding.skipButton.apply {
             text = getString(R.string.setup__skip)
             setOnClickListener {
-                materialDialog(this@SetupActivity)
-                    .setMessage(R.string.setup__skip_hint)
-                    .setPositiveButton(R.string.setup__skip_hint_yes) { _, _ ->
-                        completeSetup()
-                    }.setNegativeButton(R.string.setup__skip_hint_no, null)
-                    .show()
+                settingsSheet(
+                    icon = "alert_circle_outline",
+                    title = getString(R.string.setup__skip),
+                    message = getString(R.string.setup__skip_hint),
+                    confirm = SheetButton(getString(R.string.setup__skip_hint_yes), ::completeSetup),
+                    cancel = getString(R.string.setup__skip_hint_no),
+                ).show()
             }
         }
         prevButton =

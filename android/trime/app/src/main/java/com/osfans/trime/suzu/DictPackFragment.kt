@@ -6,26 +6,25 @@
 package com.osfans.trime.suzu
 
 import android.content.Context
-import com.osfans.trime.ui.common.materialDialog
 import android.os.Bundle
 import android.view.View
 import android.widget.LinearLayout
-import android.widget.ProgressBar
 import android.widget.TextView
-import androidx.appcompat.app.AlertDialog
+import androidx.core.view.isVisible
 import androidx.fragment.app.activityViewModels
 import androidx.lifecycle.lifecycleScope
 import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.repeatOnLifecycle
 import androidx.preference.Preference
 import androidx.preference.SwitchPreferenceCompat
+import com.google.android.material.progressindicator.LinearProgressIndicator
 import com.osfans.trime.R
-import com.osfans.trime.ui.common.FooterPreference
+import com.osfans.trime.ui.common.SheetButton
 import com.osfans.trime.ui.common.PaddingPreferenceFragment
 import com.osfans.trime.ui.common.SheetAction
 import com.osfans.trime.ui.common.SheetOption
 import com.osfans.trime.ui.common.actionSheet
-import com.osfans.trime.ui.common.showDestructive
+import com.osfans.trime.ui.common.settingsSheet
 import com.osfans.trime.ui.common.choiceSheet
 import com.osfans.trime.ui.common.mdiIcon
 import com.osfans.trime.ui.main.MainViewModel
@@ -90,7 +89,7 @@ class DictPackFragment : PaddingPreferenceFragment() {
                             title = addon.title
                             isChecked = on
                             if (!on) {
-                                summary = if (DictAddons.isDownloaded(addon)) "已下载，开启不用重新下载"
+                                summary = if (DictAddons.isDownloaded(addon)) "已下载"
                                     else addon.remote?.let { "开启需下载约 ${mb(it.size)} MB" }
                             }
                             // 开关只发起确认，真正改完后整页重建
@@ -101,9 +100,6 @@ class DictPackFragment : PaddingPreferenceFragment() {
                         },
                     )
                 }
-            }
-            for (addon in addons) if (addon.source.isNotBlank()) {
-                addPreference(FooterPreference(ctx, "${addon.source}。"))
             }
             addCategory("存储") {
                 addPreference(
@@ -145,7 +141,7 @@ class DictPackFragment : PaddingPreferenceFragment() {
         requireContext().choiceSheet(
             icon = "bookshelf",
             title = "切换词库",
-            message = "切换时需重新编译词库，期间暂时无法打字。已学习的词会保留，下载过的词库包可以直接切回。",
+            message = "编译期间暂停输入。已学习的词会保留。",
             options = names.mapIndexed { i, n ->
                 val entry = entries[i]
                 SheetOption(
@@ -201,17 +197,20 @@ class DictPackFragment : PaddingPreferenceFragment() {
         title: String,
         delete: () -> Boolean,
     ) {
-        materialDialog(requireContext())
-            .setTitle("删除$title？")
-            .setMessage("删除后要用时需重新下载。")
-            .setNegativeButton(android.R.string.cancel, null)
-            .setPositiveButton("删除") { _, _ ->
+        requireContext().settingsSheet(
+            icon = "delete_outline",
+            title = "删除$title？",
+            message = "再次使用时需重新下载。",
+            cancel = getString(android.R.string.cancel),
+            destructive = true,
+            confirm = SheetButton("删除") {
                 lifecycleScope.launch {
                     val ok = withContext(Dispatchers.IO) { runCatching(delete).getOrDefault(false) }
                     if (!ok) requireContext().toast("删除失败")
                     if (isAdded) build()
                 }
-            }.showDestructive()
+            },
+        ).show()
     }
 
     private fun showPackInfo(
@@ -224,20 +223,27 @@ class DictPackFragment : PaddingPreferenceFragment() {
             entry?.license?.let { "许可：$it" },
             commit?.let { "来源提交：${it.take(7)}" },
         )
-        materialDialog(requireContext())
-            .setTitle("版本与许可")
-            .setMessage(lines.joinToString("\n").ifEmpty { "没有词库包信息。" })
-            .setPositiveButton(android.R.string.ok, null)
-            .show()
+        val sources = DictAddons.options().mapNotNull { addon ->
+            listOf(addon.source, addon.license).filter(String::isNotBlank).takeIf { it.isNotEmpty() }?.let {
+                (listOf(addon.title) + it).joinToString("\n")
+            }
+        }
+        requireContext().settingsSheet(
+            icon = "information_outline",
+            title = "版本与许可",
+            message = (listOf(lines.joinToString("\n").ifEmpty { "没有词库包信息。" }) + sources).joinToString("\n\n"),
+            confirm = SheetButton(getString(android.R.string.ok)),
+        ).show()
     }
 
     private fun confirmAddon(addon: DictAddon, enable: Boolean) {
         val ctx = requireContext()
-        materialDialog(ctx)
-            .setTitle(if (enable) "启用${addon.title}词库？" else "关闭${addon.title}词库？")
-            .setMessage("需要重新编译词库，期间暂时无法打字。耗时取决于词库大小和设备性能。AI 简拼补全将在下次启动 AI 服务后更新。")
-            .setNegativeButton(android.R.string.cancel, null)
-            .setPositiveButton(android.R.string.ok) { _, _ ->
+        ctx.settingsSheet(
+            icon = "bookshelf",
+            title = if (enable) "启用 ${addon.title}？" else "关闭 ${addon.title}？",
+            message = "编译期间暂停输入。简拼补全将在 AI 服务下次启动后更新。",
+            cancel = getString(android.R.string.cancel),
+            confirm = SheetButton(if (enable) "启用" else "关闭") {
                 val dialog = ProgressDialog(ctx, addon.title)
                 lifecycleScope.launch {
                     val result = runCatching {
@@ -250,16 +256,18 @@ class DictPackFragment : PaddingPreferenceFragment() {
                     withContext(Dispatchers.Main) {
                         dialog.dismiss()
                         result.onFailure {
-                            materialDialog(ctx)
-                                .setTitle("词库更新失败")
-                                .setMessage(it.message ?: it.toString())
-                                .setPositiveButton(android.R.string.ok, null)
-                                .show()
+                            ctx.settingsSheet(
+                                icon = "alert_circle_outline",
+                                title = "词库更新失败",
+                                message = it.message ?: it.toString(),
+                                confirm = SheetButton(getString(android.R.string.ok)),
+                            ).show()
                         }
                         if (isAdded) build()
                     }
                 }
-            }.show()
+            },
+        ).show()
     }
 
     private fun switch(name: String) {
@@ -278,11 +286,12 @@ class DictPackFragment : PaddingPreferenceFragment() {
                 result
                     .onSuccess { ctx.toast("已切换到${PackInstaller.title(name)}") }
                     .onFailure {
-                        materialDialog(ctx)
-                            .setTitle("词库切换失败")
-                            .setMessage(it.message ?: it.toString())
-                            .setPositiveButton(android.R.string.ok, null)
-                            .show()
+                        ctx.settingsSheet(
+                            icon = "alert_circle_outline",
+                            title = "词库切换失败",
+                            message = it.message ?: it.toString(),
+                            confirm = SheetButton(getString(android.R.string.ok)),
+                        ).show()
                     }
                 if (isAdded) build()
             }
@@ -292,33 +301,29 @@ class DictPackFragment : PaddingPreferenceFragment() {
 
 /** 词库下载和编译时的弹窗：知道进度时显示百分比，不知道时显示滚动的进度条 */
 internal class ProgressDialog(context: Context, title: String) {
-    private val text = TextView(context)
-    private val bar = ProgressBar(context, null, android.R.attr.progressBarStyleHorizontal).apply {
+    private val text = TextView(context).apply { text = "准备中" }
+    private val waiting = LinearProgressIndicator(context).apply { isIndeterminate = true }
+    private val progress = LinearProgressIndicator(context).apply {
         max = 100
-        isIndeterminate = true
+        isVisible = false
     }
-    private val dialog = materialDialog(context)
-        .setTitle(title)
-        .setView(
-            LinearLayout(context).apply {
-                orientation = LinearLayout.VERTICAL
-                val pad = (24 * context.resources.displayMetrics.density).toInt()
-                setPadding(pad, pad / 2, pad, pad / 2)
-                addView(text)
-                addView(bar)
-            },
-        )
-        .setCancelable(false)
-        .show()
-
-    init {
-        text.text = "准备中"
-    }
+    private val dialog = context.settingsSheet(
+        icon = "download_outline",
+        title = title,
+        body = LinearLayout(context).apply {
+            orientation = LinearLayout.VERTICAL
+            addView(text)
+            addView(waiting)
+            addView(progress)
+        },
+        cancelable = false,
+    ).apply { show() }
 
     fun update(message: String, percent: Int?) {
         text.text = if (percent != null) "$message（$percent%）" else message
-        bar.isIndeterminate = percent == null
-        if (percent != null) bar.progress = percent
+        waiting.isVisible = percent == null
+        progress.isVisible = percent != null
+        if (percent != null) progress.setProgressCompat(percent, false)
     }
 
     fun dismiss() = dialog.dismiss()

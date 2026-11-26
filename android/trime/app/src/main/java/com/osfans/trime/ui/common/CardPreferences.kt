@@ -33,7 +33,7 @@ import com.osfans.trime.R
 
 /**
  * 设置页的卡片样式：同一分组里的项连成一张圆角卡片，项与项之间画内缩的分隔线。
- * 分组标题（PreferenceCategory）和实现了 [FullBleed] 的项（主页大标题、模型卡片、说明文字等）不套卡片。
+ * 分组标题（PreferenceCategory）和实现了 [FullBleed] 的项（主页大标题、模型卡片等）不套卡片。
  */
 interface FullBleed
 
@@ -157,19 +157,5 @@ fun decorateForCards(group: PreferenceGroup) {
         val navigates = p.onPreferenceClickListener != null || p is DialogPreference || p is ListPreference ||
             p.intent != null || p.fragment != null
         if (navigates) p.widgetLayoutResource = R.layout.preference_widget_chevron
-    }
-}
-
-/** 卡片下方的灰色说明文字 */
-class FooterPreference(
-    context: Context,
-    text: CharSequence,
-) : Preference(context),
-    FullBleed {
-    init {
-        layoutResource = R.layout.preference_footer
-        summary = text
-        isSelectable = false
-        isIconSpaceReserved = false
     }
 }

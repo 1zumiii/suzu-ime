@@ -6,25 +6,16 @@
 package com.osfans.trime.ui.main.settings
 
 import android.content.Context
-import com.osfans.trime.ui.common.materialDialog
 import android.content.res.TypedArray
 import android.util.AttributeSet
-import android.widget.SeekBar
-import androidx.appcompat.app.AlertDialog
+import android.view.Gravity
+import android.widget.LinearLayout
+import android.widget.TextView
 import androidx.preference.DialogPreference
+import com.google.android.material.slider.Slider
 import com.osfans.trime.R
-import splitties.dimensions.dp
-import splitties.resources.resolveThemeAttribute
-import splitties.views.dsl.core.add
-import splitties.views.dsl.core.horizontalMargin
-import splitties.views.dsl.core.lParams
-import splitties.views.dsl.core.matchParent
-import splitties.views.dsl.core.seekBar
-import splitties.views.dsl.core.textView
-import splitties.views.dsl.core.verticalLayout
-import splitties.views.dsl.core.verticalMargin
-import splitties.views.gravityHorizontalCenter
-import splitties.views.textAppearance
+import com.osfans.trime.ui.common.SheetButton
+import com.osfans.trime.ui.common.settingsSheet
 
 /**
  * Custom preference which represents a seek bar which shows the current value in the summary. The
@@ -111,68 +102,43 @@ class DialogSeekBarPreference : DialogPreference {
      * Shows the seek bar dialog.
      */
     private fun showSeekBarDialog() = with(context) {
-        val textView = textView {
+        val reading = TextView(this).apply {
             text = getTextForValue(value)
-            textAppearance = resolveThemeAttribute(android.R.attr.textAppearanceListItem)
+            gravity = Gravity.CENTER
         }
-        val seekBar = seekBar {
-            max = getProgressForValue(this@DialogSeekBarPreference.max)
-            progress = getProgressForValue(value)
-            setOnSeekBarChangeListener(
-                object : SeekBar.OnSeekBarChangeListener {
-                    override fun onProgressChanged(
-                        seekBar: SeekBar?,
-                        progress: Int,
-                        fromUser: Boolean,
-                    ) {
-                        textView.text = getTextForValue(getValueForProgress(progress))
-                    }
-                    override fun onStartTrackingTouch(seekBar: SeekBar?) {}
-                    override fun onStopTrackingTouch(seekBar: SeekBar?) {}
-                },
-            )
+        val maxProgress = getProgressForValue(max)
+        val slider = Slider(this).apply {
+            valueTo = maxProgress.coerceAtLeast(1).toFloat()
+            stepSize = 1f
+            value = getProgressForValue(this@DialogSeekBarPreference.value).coerceIn(0, maxProgress).toFloat()
+            isEnabled = maxProgress > 0
+            contentDescription = this@DialogSeekBarPreference.title
+            setLabelFormatter { getTextForValue(getValueForProgress(it.toInt())) }
+            addOnChangeListener { _, selected, _ -> reading.text = getTextForValue(getValueForProgress(selected.toInt())) }
         }
-        val dialogView = verticalLayout {
-            gravity = gravityHorizontalCenter
-            if (dialogMessage != null) {
-                val messageText = textView { text = dialogMessage }
-                add(
-                    messageText,
-                    lParams {
-                        verticalMargin = dp(8)
-                        horizontalMargin = dp(24)
-                    },
-                )
-            }
-            add(
-                textView,
-                lParams {
-                    verticalMargin = dp(24)
-                },
-            )
-            add(
-                seekBar,
-                lParams {
-                    width = matchParent
-                    horizontalMargin = dp(10)
-                    bottomMargin = dp(10)
-                },
-            )
+        val dialogView = LinearLayout(this).apply {
+            orientation = LinearLayout.VERTICAL
+            addView(reading)
+            addView(slider, LinearLayout.LayoutParams(LinearLayout.LayoutParams.MATCH_PARENT, LinearLayout.LayoutParams.WRAP_CONTENT))
         }
-        materialDialog(this)
-            .setTitle(this@DialogSeekBarPreference.title)
-            .setView(dialogView)
-            .setPositiveButton(android.R.string.ok) { _, _ ->
-                val actualValue = getValueForProgress(seekBar.progress)
+        settingsSheet(
+            icon = "tune",
+            title = title ?: "",
+            message = dialogMessage,
+            body = dialogView,
+            confirm = SheetButton(getString(android.R.string.ok)) {
+                val actualValue = getValueForProgress(slider.value.toInt())
                 if (callChangeListener(actualValue)) {
                     persistInt(actualValue)
                     notifyChanged()
                 }
-            }.setNeutralButton(R.string.default_) { _, _ ->
+            },
+            extra = SheetButton(getString(R.string.default_)) {
                 persistInt(default)
                 notifyChanged()
-            }.setNegativeButton(android.R.string.cancel, null)
-            .show()
+            },
+            cancel = getString(android.R.string.cancel),
+        ).show()
     }
 
     /**

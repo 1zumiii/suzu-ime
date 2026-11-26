@@ -4,41 +4,37 @@
 
 package com.osfans.trime.ui.main.settings
 
-import androidx.appcompat.app.AlertDialog
-import com.osfans.trime.ui.common.materialDialog
 import android.content.Context
 import androidx.lifecycle.LifecycleCoroutineScope
 import com.osfans.trime.R
 import com.osfans.trime.data.soundeffect.SoundEffectManager
+import com.osfans.trime.ui.common.SheetButton
+import com.osfans.trime.ui.common.pickSheet
+import com.osfans.trime.ui.common.settingsSheet
 import kotlinx.coroutines.launch
 
 object SoundEffectPickerDialog {
-    fun build(
+    fun show(
         scope: LifecycleCoroutineScope,
         context: Context,
-    ): AlertDialog {
+    ) {
         val all = SoundEffectManager.getAllSoundEffects().map { it.name }
         val current = SoundEffectManager.activeSoundEffect?.name ?: ""
         val currentIndex = all.indexOfFirst { it == current }
-        return materialDialog(context)
-            .apply {
-                setTitle(R.string.custom_sound_effect_name)
-                if (all.isEmpty()) {
-                    setMessage(R.string.no_effect_to_select)
-                } else {
-                    setSingleChoiceItems(
-                        all.toTypedArray(),
-                        currentIndex,
-                    ) { dialog, which ->
-                        scope.launch {
-                            if (which != currentIndex) {
-                                SoundEffectManager.switchEffect(all[which])
-                            }
-                            dialog.dismiss()
-                        }
-                    }
+        with(context) {
+            val title = getString(R.string.custom_sound_effect_name)
+            if (all.isEmpty()) {
+                settingsSheet(
+                    icon = "volume_high",
+                    title = title,
+                    message = getString(R.string.no_effect_to_select),
+                    confirm = SheetButton(getString(android.R.string.ok)),
+                ).show()
+            } else {
+                pickSheet("volume_high", title, all, currentIndex) { which ->
+                    if (which != currentIndex) scope.launch { SoundEffectManager.switchEffect(all[which]) }
                 }
-                setNegativeButton(android.R.string.cancel, null)
-            }.create()
+            }
+        }
     }
 }

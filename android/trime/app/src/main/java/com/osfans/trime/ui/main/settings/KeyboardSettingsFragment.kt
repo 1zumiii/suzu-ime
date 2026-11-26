@@ -10,7 +10,6 @@ import androidx.preference.Preference
 import androidx.preference.PreferenceScreen
 import com.osfans.trime.data.prefs.AppPrefs
 import com.osfans.trime.data.prefs.PreferenceDelegateFragment
-import kotlinx.coroutines.launch
 
 class KeyboardSettingsFragment : PreferenceDelegateFragment(AppPrefs.defaultInstance().keyboard) {
 
@@ -19,10 +18,7 @@ class KeyboardSettingsFragment : PreferenceDelegateFragment(AppPrefs.defaultInst
     override fun onPreferenceUiCreated(screen: PreferenceScreen) {
         screen.findPreference<Preference>("custom_sound_effect_name")?.apply {
             setOnPreferenceClickListener {
-                lifecycleScope.launch {
-                    SoundEffectPickerDialog.build(lifecycleScope, requireContext())
-                        .show()
-                }
+                SoundEffectPickerDialog.show(viewLifecycleOwner.lifecycleScope, requireContext())
                 true
             }
         }

@@ -6,7 +6,6 @@
 package com.osfans.trime.suzu
 
 import android.os.Bundle
-import com.osfans.trime.ui.common.materialDialog
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.fragment.app.activityViewModels
 import androidx.lifecycle.lifecycleScope
@@ -18,7 +17,8 @@ import com.osfans.trime.ui.common.SheetOption
 import com.osfans.trime.ui.common.actionSheet
 import com.osfans.trime.ui.common.choiceSheet
 import com.osfans.trime.ui.common.mdiIcon
-import com.osfans.trime.ui.common.showDestructive
+import com.osfans.trime.ui.common.SheetButton
+import com.osfans.trime.ui.common.settingsSheet
 import com.osfans.trime.util.addCategory
 import com.osfans.trime.ui.main.MainViewModel
 import kotlinx.coroutines.Dispatchers
@@ -141,12 +141,20 @@ class ModelFragment : PaddingPreferenceFragment() {
             SuzuAssets.state(asset) is SuzuAssets.State.Downloading -> SuzuAssets.cancel(asset)
             SuzuAssets.isInstalled(asset) -> confirmDelete(asset)
             else ->
-                materialDialog(requireContext())
-                    .setTitle("万象语法模型")
-                    .setItems(arrayOf(getString(R.string.suzu_grammar_download_lts, asset.sizeMb), getString(R.string.suzu_choose_downloaded_file))) { _, which ->
-                        if (which == 0) SuzuAssets.start(asset) else pickGrammar.launch(arrayOf("*/*"))
-                        render()
-                    }.show()
+                requireContext().actionSheet(
+                    icon = "file_document_outline",
+                    title = "万象语法模型",
+                    actions = listOf(
+                        SheetAction(getString(R.string.suzu_grammar_download_lts, asset.sizeMb), leadingIcon = "download_outline") {
+                            SuzuAssets.start(asset)
+                            render()
+                        },
+                        SheetAction(getString(R.string.suzu_choose_downloaded_file), leadingIcon = "folder_open_outline") {
+                            pickGrammar.launch(arrayOf("*/*"))
+                        },
+                    ),
+                    closeLabel = getString(android.R.string.cancel),
+                )
         }
         render()
     }
@@ -220,22 +228,19 @@ class ModelFragment : PaddingPreferenceFragment() {
     private fun confirmDelete(asset: SuzuAsset) {
         val ctx = requireContext()
         val name = if (asset == SuzuAsset.Model) SuzuAssets.installedModelTitle() ?: asset.title else "万象语法模型"
-        materialDialog(ctx)
-            .setTitle("删除$name？")
-            .setMessage(
-                if (asset == SuzuAsset.Model) {
-                    "删除后关闭 AI 重排，仍可正常打字。之后可在此页重新下载。"
-                } else {
-                    "删除后，整句输入不再使用语法模型辅助选字，其他功能不受影响。之后可在此页重新下载。"
-                },
-            )
-            .setNegativeButton(android.R.string.cancel, null)
-            .setPositiveButton("删除") { _, _ ->
+        ctx.settingsSheet(
+            icon = "delete_outline",
+            title = "删除 $name？",
+            message = if (asset == SuzuAsset.Model) "删除后将关闭 AI 重排。" else "删除后，整句选字将停用语法模型。",
+            cancel = getString(android.R.string.cancel),
+            destructive = true,
+            confirm = SheetButton("删除") {
                 if (asset == SuzuAsset.Model) {
                     lifecycleScope.launch { viewModel.rime.runOnReady { setRuntimeOption("ai_rerank", false) } }
                 }
                 SuzuAssets.delete(asset)
                 if (isAdded) render()
-            }.showDestructive()
+            },
+        ).show()
     }
 }

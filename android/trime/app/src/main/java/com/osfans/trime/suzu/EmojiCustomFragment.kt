@@ -6,16 +6,16 @@
 package com.osfans.trime.suzu
 
 import android.os.Bundle
-import com.osfans.trime.ui.common.materialDialog
 import android.widget.LinearLayout
-import androidx.appcompat.app.AlertDialog
+import com.google.android.material.bottomsheet.BottomSheetDialog
 import com.osfans.trime.data.base.DataManager
-import com.osfans.trime.ui.common.FooterPreference
 import com.osfans.trime.ui.common.LabeledField
 import com.osfans.trime.ui.common.PaddingPreferenceFragment
+import com.osfans.trime.ui.common.SheetButton
 import com.osfans.trime.ui.common.dialogActionRow
 import com.osfans.trime.ui.common.mdiIcon
 import com.osfans.trime.ui.common.onTextChanged
+import com.osfans.trime.ui.common.settingsSheet
 import com.osfans.trime.util.addCategory
 import com.osfans.trime.util.addPreference
 import com.osfans.trime.util.toast
@@ -86,25 +86,18 @@ class EmojiCustomFragment : PaddingPreferenceFragment() {
                 addPreference("添加映射") { edit(list, null) }
                 getPreference(preferenceCount - 1).mdiIcon("plus")
             }
-            addPreference(
-                FooterPreference(
-                    ctx,
-                    "键全是字母时按拼音匹配：输入恰好是这串拼音，候选排在首位之后。键是词时按候选匹配：候选里出现这个词，就紧跟在它后面。一个键可映射多个候选，用空格隔开，保存后几秒内生效。",
-                ),
-            )
         }
     }
 
     private fun edit(list: List<EmojiCustom.Entry>, index: Int?) {
         val ctx = requireContext()
         val old = index?.let { list[it] }
-        val key = LabeledField(ctx, "输入的拼音或词", old?.key.orEmpty(), "如 shang 或 尴尬")
-        val emoji = LabeledField(ctx, "候选内容（多个候选用空格分隔）", old?.emoji.orEmpty(), "如 ☝️ 或 张三")
+        val key = LabeledField(ctx, "拼音或词", old?.key.orEmpty(), "如 shang 或 尴尬")
+        val emoji = LabeledField(ctx, "候选内容", old?.emoji.orEmpty(), helper = "多个候选用空格分隔")
         val pad = (24 * ctx.resources.displayMetrics.density).toInt()
-        lateinit var dialog: AlertDialog
+        lateinit var dialog: BottomSheetDialog
         val box = LinearLayout(ctx).apply {
             orientation = LinearLayout.VERTICAL
-            setPadding(pad, pad / 2, pad, 0)
             addView(key.view)
             addView(
                 emoji.view,
@@ -124,31 +117,32 @@ class EmojiCustomFragment : PaddingPreferenceFragment() {
                 )
             }
         }
-        dialog = materialDialog(ctx)
-            .setTitle(if (old == null) "添加映射" else "编辑映射")
-            .setView(box)
-            .setPositiveButton("保存") { _, _ ->
-                val k = EmojiCustom.normalizeKey(key.input.text.toString())
-                val e = EmojiCustom.normalizeEmoji(emoji.input.text.toString())
-                if (k == null || e == null) {
-                    ctx.toast("键和候选都不能为空")
-                    return@setPositiveButton
-                }
+        fun keyValue() = EmojiCustom.normalizeKey(key.input.text.toString())
+        fun candidateValue() = EmojiCustom.normalizeEmoji(emoji.input.text.toString())
+        dialog = ctx.settingsSheet(
+            icon = "emoticon_outline",
+            title = if (old == null) "添加映射" else "编辑映射",
+            message = "拼音匹配时插在首选后，词匹配时插在该词后。",
+            body = box,
+            confirm = SheetButton("保存") {
+                val k = keyValue() ?: return@SheetButton
+                val e = candidateValue() ?: return@SheetButton
                 val next = list.toMutableList()
                 val entry = EmojiCustom.Entry(k, e)
                 if (index == null) next += entry else next[index] = entry
                 save(next)
-            }
-            .setNegativeButton(android.R.string.cancel, null)
-            .show()
-        // 两项都填了才能保存
-        val positive = dialog.getButton(AlertDialog.BUTTON_POSITIVE)
-        fun refresh() {
-            positive.isEnabled = key.input.text?.isNotBlank() == true && emoji.input.text?.isNotBlank() == true
-        }
-        key.input.onTextChanged(::refresh)
-        emoji.input.onTextChanged(::refresh)
-        refresh()
+            },
+            cancel = getString(android.R.string.cancel),
+            configureConfirm = { button ->
+                fun refresh() {
+                    button.isEnabled = keyValue() != null && candidateValue() != null
+                }
+                key.input.onTextChanged(::refresh)
+                emoji.input.onTextChanged(::refresh)
+                refresh()
+            },
+        )
+        dialog.show()
     }
 
     private fun save(list: List<EmojiCustom.Entry>) {

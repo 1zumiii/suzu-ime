@@ -6,12 +6,12 @@
 package com.osfans.trime.ui.main
 
 import android.content.ClipData
-import com.osfans.trime.ui.common.materialDialog
 import android.os.Bundle
 import android.view.View
 import android.view.ViewGroup
 import androidx.activity.enableEdgeToEdge
-import androidx.appcompat.app.AlertDialog
+import com.osfans.trime.ui.common.SheetButton
+import com.osfans.trime.ui.common.settingsSheet
 import androidx.appcompat.app.AppCompatActivity
 import androidx.core.view.ViewCompat
 import androidx.core.view.WindowCompat
@@ -76,11 +76,12 @@ class LogActivity : AppCompatActivity() {
                 supportActionBar!!.setTitle(R.string.crash_logs)
                 clearButton.visibility = View.GONE
                 copyButton.visibility = View.GONE
-                materialDialog(this@LogActivity)
-                    .setTitle(R.string.app_crash)
-                    .setMessage(R.string.app_crash_message)
-                    .setPositiveButton(android.R.string.ok, null)
-                    .show()
+                settingsSheet(
+                    icon = "alert_circle_outline",
+                    title = getString(R.string.app_crash),
+                    message = getString(R.string.app_crash_message),
+                    confirm = SheetButton(getString(android.R.string.ok)),
+                ).show()
                 logView.append("--------- Crash stacktrace")
                 logView.append(intent.getStringExtra(CRASH_STACK_TRACE) ?: "<empty>")
                 logView.setLogcat(Logcat(TrimeApplication.getLastPid()))

@@ -7,9 +7,9 @@ package com.osfans.trime.suzu
 
 import android.content.Context
 import android.view.View
-import android.widget.ProgressBar
 import androidx.preference.Preference
 import androidx.preference.PreferenceViewHolder
+import com.google.android.material.progressindicator.LinearProgressIndicator
 import com.osfans.trime.R
 
 /** 右侧带进度条的设置项；[percent] 为 null 时不显示进度条 */
@@ -29,8 +29,8 @@ class AssetPreference(context: Context) : Preference(context) {
 
     override fun onBindViewHolder(holder: PreferenceViewHolder) {
         super.onBindViewHolder(holder)
-        val bar = holder.findViewById(R.id.asset_progress) as ProgressBar
+        val bar = holder.findViewById(R.id.asset_progress) as LinearProgressIndicator
         bar.visibility = if (percent != null) View.VISIBLE else View.GONE
-        bar.progress = percent ?: 0
+        bar.setProgressCompat(percent ?: 0, false)
     }
 }

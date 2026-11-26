@@ -6,21 +6,20 @@
 package com.osfans.trime.ui.common
 
 import android.os.Bundle
+import android.text.InputType
 import android.view.LayoutInflater
 import android.view.ViewGroup
-import android.text.InputType
-import android.widget.FrameLayout
-import com.osfans.trime.ui.main.settings.EditTextIntPreference
+import androidx.core.view.ViewCompat
+import androidx.core.view.WindowInsetsCompat
 import androidx.preference.EditTextPreference
 import androidx.preference.ListPreference
 import androidx.preference.Preference
 import androidx.preference.PreferenceFragmentCompat
-import com.google.android.material.textfield.TextInputEditText
-import com.google.android.material.textfield.TextInputLayout
 import androidx.preference.PreferenceScreen
 import androidx.recyclerview.widget.RecyclerView
-import androidx.core.view.ViewCompat
-import androidx.core.view.WindowInsetsCompat
+import com.google.android.material.textfield.TextInputEditText
+import com.google.android.material.textfield.TextInputLayout
+import com.osfans.trime.ui.main.settings.EditTextIntPreference
 
 /**
  * A fragment template that apply navigation bar window insets bottom padding
@@ -52,46 +51,42 @@ abstract class PaddingPreferenceFragment : PreferenceFragmentCompat() {
     override fun onCreateAdapter(preferenceScreen: PreferenceScreen): RecyclerView.Adapter<*> =
         CardPreferenceAdapter(preferenceScreen)
 
-    /** 列表选择和文字输入的对话框改用 Material 3 样式，和其他弹窗一致 */
     override fun onDisplayPreferenceDialog(preference: Preference) {
         val ctx = requireContext()
+        val title = preference.title ?: ""
+        val cancel = getString(android.R.string.cancel)
         when (preference) {
             is ListPreference -> {
                 val entries = preference.entries ?: return
                 val values = preference.entryValues ?: return
-                materialDialog(ctx)
-                    .setTitle(preference.dialogTitle ?: preference.title)
-                    .setSingleChoiceItems(entries, preference.findIndexOfValue(preference.value)) { d, i ->
-                        val v = values[i].toString()
-                        if (preference.callChangeListener(v)) preference.value = v
-                        d.dismiss()
-                    }.setNegativeButton(android.R.string.cancel, null)
-                    .show()
+                ctx.pickSheet("format_list_bulleted", preference.dialogTitle ?: title, entries.toList(), preference.findIndexOfValue(preference.value)) { i ->
+                    val value = values[i].toString()
+                    if (preference.callChangeListener(value)) preference.value = value
+                }
             }
             is EditTextPreference -> {
                 val layout = TextInputLayout(ctx, null, com.google.android.material.R.attr.textInputOutlinedStyle)
-                val edit = TextInputEditText(layout.context).apply { setText(preference.text) }
+                val edit = TextInputEditText(layout.context)
                 layout.addView(edit)
                 if (preference is EditTextIntPreference) {
                     preference.bindEditText(edit)
                 } else {
                     // 剪贴板规则等：每行一条，允许多行
                     edit.inputType = InputType.TYPE_CLASS_TEXT or InputType.TYPE_TEXT_FLAG_MULTI_LINE
+                    edit.maxLines = 6
+                    edit.setText(preference.text)
                 }
-                val pad = (24 * resources.displayMetrics.density).toInt()
-                val box = FrameLayout(ctx).apply {
-                    setPadding(pad, pad / 3, pad, 0)
-                    addView(layout)
-                }
-                materialDialog(ctx)
-                    .setTitle(preference.dialogTitle ?: preference.title)
-                    .setMessage(preference.dialogMessage)
-                    .setView(box)
-                    .setPositiveButton(android.R.string.ok) { _, _ ->
+                ctx.settingsSheet(
+                    icon = "pencil_outline",
+                    title = preference.dialogTitle ?: title,
+                    message = preference.dialogMessage,
+                    body = layout,
+                    confirm = SheetButton(getString(android.R.string.ok)) {
                         val v = edit.text?.toString().orEmpty()
                         if (preference.callChangeListener(v)) preference.text = v
-                    }.setNegativeButton(android.R.string.cancel, null)
-                    .show()
+                    },
+                    cancel = cancel,
+                ).show()
             }
             else -> super.onDisplayPreferenceDialog(preference)
         }

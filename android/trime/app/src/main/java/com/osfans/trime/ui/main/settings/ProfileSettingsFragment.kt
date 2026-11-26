@@ -6,14 +6,16 @@
 package com.osfans.trime.ui.main.settings
 
 import android.os.Bundle
-import com.osfans.trime.ui.common.materialDialog
-import androidx.appcompat.app.AlertDialog
+import android.widget.LinearLayout
 import androidx.fragment.app.activityViewModels
 import androidx.lifecycle.lifecycleScope
+import com.google.android.material.checkbox.MaterialCheckBox
 import com.osfans.trime.R
 import com.osfans.trime.data.base.DataManager
 import com.osfans.trime.ui.common.PaddingPreferenceFragment
+import com.osfans.trime.ui.common.SheetButton
 import com.osfans.trime.ui.common.mdiIcon
+import com.osfans.trime.ui.common.settingsSheet
 import com.osfans.trime.ui.common.withLoadingDialog
 import com.osfans.trime.ui.main.MainViewModel
 import com.osfans.trime.util.ResourceUtils
@@ -54,20 +56,23 @@ class ProfileSettingsFragment : PaddingPreferenceFragment() {
                 isIconSpaceReserved = false
                 addPreference(R.string.reset, R.string.reset_hint) {
                     val items = ctx.assets.list("shared") ?: return@addPreference
-                    val checked = BooleanArray(items.size) { false }
-                    materialDialog(ctx)
-                        .setTitle(R.string.reset)
-                        .setMultiChoiceItems(items, checked) { _, id, isChecked ->
-                            checked[id] = isChecked
-                        }.setNegativeButton(android.R.string.cancel, null)
-                        .setPositiveButton(android.R.string.ok) { _, _ ->
+                    val choices = items.map { item -> MaterialCheckBox(ctx).apply { text = item } }
+                    ctx.settingsSheet(
+                        icon = "restore",
+                        title = getString(R.string.reset),
+                        body = LinearLayout(ctx).apply {
+                            orientation = LinearLayout.VERTICAL
+                            choices.forEach { addView(it, LinearLayout.LayoutParams(LinearLayout.LayoutParams.MATCH_PARENT, LinearLayout.LayoutParams.WRAP_CONTENT)) }
+                        },
+                        cancel = getString(android.R.string.cancel),
+                        confirm = SheetButton(getString(android.R.string.ok)) {
+                            val selected = items.filterIndexed { index, _ -> choices[index].isChecked }
                             lifecycleScope.launch {
                                 var res = true
                                 withLoadingDialog(ctx) {
                                     withContext(Dispatchers.IO) {
                                         res =
-                                            items
-                                                .filterIndexed { index, _ -> checked[index] }
+                                            selected
                                                 .fold(true) { acc, asset ->
                                                     val destPath =
                                                         DataManager.sharedDataDir.resolve(asset).absolutePath
@@ -79,7 +84,8 @@ class ProfileSettingsFragment : PaddingPreferenceFragment() {
                                 }
                                 ctx.toast((if (res) R.string.reset_success else R.string.reset_failure))
                             }
-                        }.show()
+                        },
+                    ).show()
                 }
                 getPreference(preferenceCount - 1).mdiIcon("restore")
             }

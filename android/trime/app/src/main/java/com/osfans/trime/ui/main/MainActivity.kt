@@ -7,28 +7,31 @@ package com.osfans.trime.ui.main
 
 import android.content.Intent
 import android.content.res.Configuration
+import android.graphics.Color
+import android.graphics.drawable.GradientDrawable
+import android.graphics.drawable.LayerDrawable
 import android.os.Bundle
 import android.view.Menu
+import android.view.MenuItem
 import android.view.ViewGroup
-import androidx.activity.addCallback
 import androidx.activity.enableEdgeToEdge
 import androidx.activity.viewModels
 import androidx.appcompat.app.AppCompatActivity
 import androidx.appcompat.app.AppCompatDelegate
 import androidx.appcompat.graphics.drawable.DrawerArrowDrawable
+import androidx.core.view.MenuItemCompat
 import androidx.core.view.ViewCompat
 import androidx.core.view.WindowCompat
 import androidx.core.view.WindowInsetsAnimationCompat
 import androidx.core.view.WindowInsetsCompat
 import androidx.core.view.forEach
-import androidx.core.view.isVisible
 import androidx.core.view.updateLayoutParams
 import androidx.lifecycle.lifecycleScope
 import androidx.navigation.NavController
 import androidx.navigation.NavDestination.Companion.hasRoute
 import androidx.navigation.fragment.NavHostFragment
+import com.google.android.material.bottomsheet.BottomSheetDialog
 import com.google.android.material.color.MaterialColors
-import com.google.android.material.dialog.MaterialAlertDialogBuilder
 import com.hjq.permissions.Permission
 import com.hjq.permissions.XXPermissions
 import com.osfans.trime.BuildConfig
@@ -38,12 +41,16 @@ import com.osfans.trime.data.prefs.AppPrefs
 import com.osfans.trime.data.soundeffect.SoundEffectManager
 import com.osfans.trime.databinding.ActivityMainBinding
 import com.osfans.trime.suzu.AppUpdater
+import com.osfans.trime.ui.common.SheetButton
 import com.osfans.trime.ui.common.mdi
+import com.osfans.trime.ui.common.settingsSheet
 import com.osfans.trime.ui.common.themeColor
 import com.osfans.trime.ui.setup.SetupActivity
 import com.osfans.trime.util.item
 import com.osfans.trime.util.parcelable
 import com.osfans.trime.util.startActivity
+import kotlinx.coroutines.launch
+import splitties.dimensions.dp
 import splitties.views.topPadding
 
 class MainActivity : AppCompatActivity() {
@@ -52,7 +59,9 @@ class MainActivity : AppCompatActivity() {
     private val uiMode by AppPrefs.defaultInstance().advanced.uiMode
 
     private lateinit var navController: NavController
-    private var testInputPanel: TestInputPanel? = null
+    private lateinit var updateItem: MenuItem
+    private var testInputMode = 0
+    private var testInputSheet: BottomSheetDialog? = null
 
     override fun onCreate(savedInstanceState: Bundle?) {
         val uiMode =
@@ -127,15 +136,6 @@ class MainActivity : AppCompatActivity() {
             // "minimize" the activity if we can't go back
             navController.navigateUp() || onSupportNavigateUp() || moveTaskToBack(false)
         }
-        onBackPressedDispatcher.addCallback {
-            if (binding.testInputPanel.isVisible) {
-                binding.testInputPanel.dismiss()
-            } else {
-                isEnabled = false
-                onBackPressedDispatcher.onBackPressed()
-            }
-        }
-        testInputPanel = binding.testInputPanel
         viewModel.toolbarTitle.observe(this) {
             binding.mainToolbar.toolbar.title = it
         }
@@ -149,7 +149,10 @@ class MainActivity : AppCompatActivity() {
         supportActionBar?.setDisplayHomeAsUpEnabled(true)
         processIntent(intent)
         checkNotificationPermission()
-        AppUpdater.autoCheck(this, lifecycleScope)
+        lifecycleScope.launch {
+            AppUpdater.autoCheck(this@MainActivity)
+            refreshUpdateItem()
+        }
     }
 
     override fun onNewIntent(intent: Intent) {
@@ -173,13 +176,22 @@ class MainActivity : AppCompatActivity() {
     }
 
     private fun setupToolbarMenu(menu: Menu) {
+        val deploy = menu.item(R.string.deploy, showAsAction = true) {
+            viewModel.rime.launchOnReady { it.deploy() }
+        }.apply { icon = mdi("refresh", toolbarIconColor()) }
+        updateItem = menu.item(R.string.suzu_update_check, showAsAction = true) {
+            showAppUpdates(allowSkip = true)
+        }
+        refreshUpdateItem()
         val optionMenuItems = listOf(
-            menu.item(R.string.deploy, showAsAction = true) {
-                viewModel.rime.launchOnReady { it.deploy() }
-            }.apply { icon = mdi("refresh", toolbarIconColor()) },
-            menu.item(R.string.test_input, showAsAction = true) {
-                testInputPanel?.show(window)
-            }.apply { icon = mdi("keyboard_outline", toolbarIconColor()) },
+            deploy,
+            updateItem,
+            menu.item(R.string.test_input) {
+                if (testInputSheet?.isShowing != true) {
+                    testInputSheet = showTestInputSheet(testInputMode) { testInputMode = it }
+                        .apply { setOnDismissListener { testInputSheet = null } }
+                }
+            },
             menu.item(R.string.developer) {
                 navController.navigate(NavigationRoute.Developer)
             },
@@ -216,6 +228,30 @@ class MainActivity : AppCompatActivity() {
 
     private fun toolbarIconColor() = themeColor(com.google.android.material.R.attr.colorOnSurfaceVariant)
 
+    private fun refreshUpdateItem() {
+        val version = AppUpdater.availableVersion(this)
+        val download = mdi("download_outline", toolbarIconColor())
+        updateItem.icon = if (version == null) {
+            download
+        } else {
+            val dot = GradientDrawable().apply {
+                shape = GradientDrawable.OVAL
+                setColor(Color.rgb(233, 51, 62))
+            }
+            LayerDrawable(arrayOf(download, dot)).apply {
+                setLayerInset(1, dp(17), dp(17), 0, 0)
+            }
+        }
+        MenuItemCompat.setContentDescription(
+            updateItem,
+            if (version == null) getString(R.string.suzu_update_check) else getString(R.string.suzu_update_available, version),
+        )
+    }
+
+    fun showAppUpdates(allowSkip: Boolean = false) {
+        AppUpdater.manualCheck(this, lifecycleScope, allowSkip, ::refreshUpdateItem)
+    }
+
     override fun onResume() {
         super.onResume()
         SoundEffectManager.init()
@@ -223,29 +259,25 @@ class MainActivity : AppCompatActivity() {
 
     override fun onStop() {
         super.onStop()
-        testInputPanel?.dismiss()
-    }
-
-    override fun onDestroy() {
-        testInputPanel = null
-        super.onDestroy()
+        testInputSheet?.dismiss()
     }
 
     private fun checkNotificationPermission() {
         if (XXPermissions.isGranted(this, Permission.POST_NOTIFICATIONS)) {
             return
         } else {
-            MaterialAlertDialogBuilder(this)
-                .setIconAttribute(android.R.attr.alertDialogIcon)
-                .setTitle(R.string.notification_permission_title)
-                .setMessage(R.string.notification_permission_message)
-                .setPositiveButton(R.string.grant_permission) { _, _ ->
+            settingsSheet(
+                icon = "bell_outline",
+                title = getString(R.string.notification_permission_title),
+                message = getString(R.string.notification_permission_message),
+                cancel = getString(android.R.string.cancel),
+                confirm = SheetButton(getString(R.string.grant_permission)) {
                     XXPermissions
                         .with(this)
                         .permission(Permission.POST_NOTIFICATIONS)
                         .request(null)
-                }.setNegativeButton(android.R.string.cancel, null)
-                .show()
+                },
+            ).show()
         }
     }
 
