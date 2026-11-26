@@ -40,6 +40,16 @@
       "sha256": "f7ed0e76e6bab529c43ff1fb59252e003267c4a339d83972b5b112d025e1b314",
       "size": 4121164,
       "weight": "uniform"
+    },
+    {
+      "id": "neg_phrase",
+      "title": "口语正反问",
+      "source": "“解没解决”“同不同意”这类正反问说法，由 Suzu 从 MNBVC 公开口语语料（知乎、天涯、树洞）统计，只收出现 5 次以上的组合",
+      "license": "GPL-3.0",
+      "url": "https://github.com/1zumiii/rime-suzu/releases/download/dict-packs/neg-phrase-409dc9c.dict.yaml",
+      "sha256": "1e02865005eb3c6f41388a0444d6457b89386e67f9fdbeb9cee31d458cd3e150",
+      "size": 24076,
+      "weight": "preserve"
     }
   ]
 }
