@@ -46,7 +46,7 @@ object SuzuFeatures {
 
     // ---- 设置页的 AI 重排开关 ----
     // 关闭时：AI 重排关闭，工具栏不显示 AI 徽标，三个点面板也不显示 AI 项，键盘弹出时不自动启动 AI 服务
-    private const val AI_MASTER = "suzu_ai_master"
+    internal const val AI_MASTER = "suzu_ai_master"
 
     var aiMaster: Boolean
         get() = prefs.getBoolean(AI_MASTER, true)

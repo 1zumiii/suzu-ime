@@ -9,6 +9,8 @@
 
 Android 版可从 [发布页](https://github.com/1zumiii/suzu-ime/releases/latest) 下载。其他平台的配置和安装包见 [rime-suzu](https://github.com/1zumiii/rime-suzu)，模型说明与训练见 [Suzu](https://github.com/1zumiii/Suzu)。
 
+Android v0.5.2 是旧包名的过渡版。覆盖安装后，可在“配置与迁移”导出设置和 Rime 数据。请保留过渡版，直到确认新包名版本已完成迁移。[迁移说明](android/README.md#配置与迁移)
+
 本项目默认使用字符级模型 Suzu-UER6-PG200，根据光标前的文字为同音候选打分，并补充 Rime 未给出的简拼候选。模型文件约 52.8 MB，三端均在本机推理，输入内容不出设备。电脑和性能较好的手机可以换用准确率更高的 Suzu-UER12-PG100（约 98.2 MB），每次打分的耗时约为前者的两倍。
 
 ## 效果

@@ -34,6 +34,7 @@ class AppUpdaterTest :
             r.map { it.version } shouldBe listOf("0.4.0")
             r[0].apk.url shouldBe "https://x/i8mm.apk"
             r[0].apk.sha256 shouldBe "aa"
+            r[0].requiresMigration shouldBe false
         }
 
         "picks the universal package otherwise and skips prereleases and desktop tags" {
@@ -45,6 +46,19 @@ class AppUpdaterTest :
 
         "release without a matching package is ignored" {
             AppUpdater.parseReleases("""[{"tag_name":"android-v1.0.0","assets":[]}]""", i8mm = false).shouldBeEmpty()
+        }
+
+        "new package releases open the migration page after the old package transition" {
+            val releases = AppUpdater.parseReleases(
+                """
+                [{"tag_name":"android-v0.5.2","assets":[{"name":"suzu-arm64.apk","digest":"sha256:aa","browser_download_url":"https://x/bridge.apk"}]},
+                 {"tag_name":"suzu-android-v0.6.0","html_url":"https://x/migrate","assets":[{"name":"suzu-arm64.apk","digest":"sha256:bb","browser_download_url":"https://x/new.apk"}]},
+                 {"tag_name":"suzu-android-v0.7.0","draft":true,"assets":[]}]
+                """.trimIndent(),
+                i8mm = false,
+            )
+            releases.map { it.version to it.requiresMigration } shouldBe listOf("0.5.2" to false, "0.6.0" to true)
+            releases.last().page shouldBe "https://x/migrate"
         }
 
         "compares versions numerically" {

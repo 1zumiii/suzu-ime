@@ -46,13 +46,14 @@ object AppUpdater {
     private const val RELEASES_API = "https://api.github.com/repos/1zumiii/suzu-ime/releases?per_page=20"
     const val RELEASES_PAGE = "https://github.com/1zumiii/suzu-ime/releases"
     private const val TAG_PREFIX = "android-v"
+    private const val MIGRATION_TAG_PREFIX = "suzu-android-v"
     private const val CHECK_INTERVAL_MS = 24 * 60 * 60 * 1000L
 
     const val PREF_AUTO_CHECK = "suzu_update_auto_check"
     private const val PREF_LAST_CHECK = "suzu_update_last_check"
     private const val PREF_SKIPPED = "suzu_update_skipped_version"
 
-    class Release(val version: String, val notes: String, val page: String, val apk: RemoteFile)
+    class Release(val version: String, val notes: String, val page: String, val apk: RemoteFile, val requiresMigration: Boolean)
 
     sealed interface Result {
         class Available(val release: Release) : Result
@@ -117,12 +118,16 @@ object AppUpdater {
             .maxWithOrNull { x, y -> compareVersions(x.version, y.version) }
     }
 
-    /** 从 Releases API 的 JSON 里挑出 android-v* 的正式版，以及适合本机的 APK */
+    /** 旧包名更新可覆盖安装，新包名更新须从发布页迁移。 */
     fun parseReleases(json: String, i8mm: Boolean): List<Release> =
         (Json.parseToJsonElement(json) as JsonArray).mapNotNull { el ->
             val r = el.jsonObject
             val tag = r.str("tag_name") ?: return@mapNotNull null
-            if (!tag.startsWith(TAG_PREFIX)) return@mapNotNull null
+            val prefix = when {
+                tag.startsWith(TAG_PREFIX) -> TAG_PREFIX
+                tag.startsWith(MIGRATION_TAG_PREFIX) -> MIGRATION_TAG_PREFIX
+                else -> return@mapNotNull null
+            }
             if (r["draft"]?.jsonPrimitive?.boolean == true || r["prerelease"]?.jsonPrimitive?.boolean == true) {
                 return@mapNotNull null
             }
@@ -133,9 +138,10 @@ object AppUpdater {
                 ?: return@mapNotNull null
             val digest = wanted.str("digest")?.removePrefix("sha256:") ?: return@mapNotNull null
             Release(
-                version = tag.removePrefix(TAG_PREFIX),
+                version = tag.removePrefix(prefix),
                 notes = r.str("body").orEmpty(),
                 page = r.str("html_url") ?: RELEASES_PAGE,
+                requiresMigration = prefix == MIGRATION_TAG_PREFIX,
                 apk = RemoteFile(
                     name = wanted.str("name")!!,
                     url = wanted.str("browser_download_url") ?: return@mapNotNull null,
@@ -197,6 +203,15 @@ object AppUpdater {
         release: Release,
         allowSkip: Boolean,
     ) {
+        if (release.requiresMigration) {
+            materialDialog(activity)
+                .setTitle(activity.getString(R.string.suzu_update_available, release.version))
+                .setMessage(R.string.suzu_update_migration_message)
+                .setPositiveButton(R.string.suzu_update_open_page) { _, _ -> openPage(activity, release.page) }
+                .setNegativeButton(R.string.suzu_update_later, null)
+                .show()
+            return
+        }
         val sizeMb = "%.1f".format(release.apk.size / 1048576.0)
         val notes = plainNotes(release.notes).let { if (it.length > 1200) it.take(1200) + "…" else it }
         val message = activity.getString(
@@ -299,7 +314,9 @@ object AppUpdater {
         }
         val pm = context.packageManager
         val installed = signatures(pm.getPackageInfo(context.packageName, flags))
-        val downloaded = signatures(pm.getPackageArchiveInfo(apk.path, flags))
+        val archive = pm.getPackageArchiveInfo(apk.path, flags)
+        if (archive?.packageName != context.packageName) return false
+        val downloaded = signatures(archive)
         return installed.isNotEmpty() && downloaded.isNotEmpty() && downloaded.any { it in installed }
     }
 
