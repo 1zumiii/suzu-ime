@@ -9,13 +9,13 @@
 
 Android 版可从 [发布页](https://github.com/1zumiii/suzu-ime/releases/latest) 下载。其他平台的配置和安装包见 [rime-suzu](https://github.com/1zumiii/rime-suzu)，模型说明与训练见 [Suzu](https://github.com/1zumiii/Suzu)。
 
-本项目默认使用字符级模型 Suzu-UER6-PG200，根据光标前的文字为同音候选打分，并补充 Rime 未给出的简拼候选。模型文件约 52.8 MB，三端均在本机推理，输入内容不出设备。电脑和性能较好的手机可以换用准确率更高的 Suzu-UER12-PG100（约 98.2 MB），每次打分的耗时约为前者的两倍。
+Suzu 根据光标前的文字为同音候选打分，也会补充 Rime 未给出的简拼候选。Android 默认使用 6 层的 Suzu-UER6-PG200（约 52.8 MB），桌面默认使用 12 层的 Suzu-UER12-PG100（约 98.2 MB）。PG100 的首选准确率较高，单次打分耗时约为 PG200 的两倍。三端均在本机推理，输入内容不出设备。
 
 ## 效果
 
 同一批固定候选只按模型分排序，首选准确率为正确答案排在第一位的题目占比：
 
-| 评测 | 题数 | Suzu-UER6-PG200（默认） | Suzu-UER12-PG100（可选） | Suzu-UER6-KD500（上一版） |
+| 评测 | 题数 | Suzu-UER6-PG200（Android 默认） | Suzu-UER12-PG100（桌面默认） | Suzu-UER6-KD500（上一版） |
 |---|---:|---:|---:|---:|
 | 两字母简拼，每题 48 个候选 | 2,400 | 61.9% | 63.7% | 59.5% |
 | 全拼同音词，每题最多 5 个候选 | 1,293 | 93.43% | 93.50% | 92.81% |
@@ -26,8 +26,8 @@ Android 版可从 [发布页](https://github.com/1zumiii/suzu-ime/releases/lates
 |---|---:|---:|
 | 不用模型分（同一批候选按 Rime 原名次排序） | 1,195 | 28.5% |
 | Suzu-UER6-KD500（上一版） | 1,190 | 54.0% |
-| Suzu-UER6-PG200（默认） | 1,195 | **56.4%** |
-| Suzu-UER12-PG100（可选） | 1,190 | **58.2%** |
+| Suzu-UER6-PG200（Android 默认） | 1,195 | **56.4%** |
+| Suzu-UER12-PG100（桌面默认） | 1,190 | **58.2%** |
 
 三个模型的验证集按同一规则划分，题数略有差别，不是逐题配对。评测条件见模型卡：[PG200](https://huggingface.co/IzumiThe3rd/Suzu-UER6-PG200)、[PG100](https://huggingface.co/IzumiThe3rd/Suzu-UER12-PG100)。
 
