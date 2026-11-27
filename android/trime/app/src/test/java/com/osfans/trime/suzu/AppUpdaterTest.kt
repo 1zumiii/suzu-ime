@@ -52,8 +52,8 @@ class AppUpdaterTest :
             val releases = AppUpdater.parseReleases(
                 """
                 [{"tag_name":"android-v0.5.2","assets":[{"name":"suzu-arm64.apk","digest":"sha256:aa","browser_download_url":"https://x/bridge.apk"}]},
-                 {"tag_name":"suzu-android-v0.6.0","html_url":"https://x/migrate","assets":[{"name":"suzu-arm64.apk","digest":"sha256:bb","browser_download_url":"https://x/new.apk"}]},
-                 {"tag_name":"suzu-android-v0.7.0","draft":true,"assets":[]}]
+                 {"tag_name":"Suzu-ime-v0.6.0","html_url":"https://x/migrate","assets":[{"name":"suzu-arm64.apk","digest":"sha256:bb","browser_download_url":"https://x/new.apk"}]},
+                 {"tag_name":"Suzu-ime-v0.7.0","draft":true,"assets":[]}]
                 """.trimIndent(),
                 i8mm = false,
             )

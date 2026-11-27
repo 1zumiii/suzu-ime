@@ -46,7 +46,7 @@ object AppUpdater {
     private const val RELEASES_API = "https://api.github.com/repos/1zumiii/suzu-ime/releases?per_page=20"
     const val RELEASES_PAGE = "https://github.com/1zumiii/suzu-ime/releases"
     private const val TAG_PREFIX = "android-v"
-    private const val MIGRATION_TAG_PREFIX = "suzu-android-v"
+    private const val MIGRATION_TAG_PREFIX = "Suzu-ime-v"
     private const val CHECK_INTERVAL_MS = 24 * 60 * 60 * 1000L
 
     const val PREF_AUTO_CHECK = "suzu_update_auto_check"
