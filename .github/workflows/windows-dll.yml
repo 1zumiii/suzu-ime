@@ -1,0 +1,59 @@
+name: Windows DLL
+
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  build:
+    runs-on: windows-2025-vs2026
+    timeout-minutes: 25
+    env:
+      IME_DEPS: ${{ github.workspace }}/ime-deps
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: 获取构建依赖
+        shell: pwsh
+        run: |
+          New-Item -ItemType Directory -Force "$env:IME_DEPS/deps" | Out-Null
+          git clone --depth 1 --branch b11632 https://github.com/ggml-org/llama.cpp.git "$env:IME_DEPS/llama.cpp"
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          $luaArchive = Join-Path $env:RUNNER_TEMP 'lua-5.4.6.tar.gz'
+          curl.exe --fail --location --retry 3 --output $luaArchive https://www.lua.org/ftp/lua-5.4.6.tar.gz
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          if ((Get-FileHash $luaArchive -Algorithm SHA256).Hash -ne '7d5ea1b9cb6aa0b59ca3dde1c6adcb57ef83a1ba8e5432c0ecd06bf439b3ad88') {
+            throw 'Lua 5.4.6 SHA-256 mismatch'
+          }
+          tar.exe -xf $luaArchive -C "$env:IME_DEPS/deps"
+
+      - name: 编译并检查 Windows x64 DLL
+        shell: cmd
+        run: |
+          for /f "usebackq delims=" %%I in (`^""%ProgramFiles(x86)%\Microsoft Visual Studio\Installer\vswhere.exe" -latest -products * -requires Microsoft.VisualStudio.Component.VC.14.44.17.14.x86.x64 -property installationPath^"`) do set "VS_DIR=%%I"
+          if not defined VS_DIR exit /b 1
+          call "%VS_DIR%\VC\Auxiliary\Build\vcvars64.bat" -vcvars_ver=14.44 || exit /b 1
+          cmake -G Ninja -S core -B core/build -DCMAKE_BUILD_TYPE=Release || exit /b 1
+          cmake --build core/build --target rime_llm --parallel || exit /b 1
+          dumpbin /headers core\build\rime_llm.dll | findstr /C:"8664 machine (x64)" || exit /b 1
+          dumpbin /exports core\build\rime_llm.dll | findstr /C:"luaopen_rime_llm" || exit /b 1
+          dumpbin /imports core\build\rime_llm.dll | findstr /C:"SysAllocStringLen" || exit /b 1
+
+      - name: 记录 DLL 校验值和源码提交
+        shell: pwsh
+        run: |
+          $dll = 'core/build/rime_llm.dll'
+          $hash = (Get-FileHash $dll -Algorithm SHA256).Hash.ToLowerInvariant()
+          "$hash  rime_llm.dll" | Set-Content -Encoding ascii 'core/build/rime_llm.dll.sha256'
+          "suzu-ime $env:GITHUB_SHA" | Set-Content -Encoding ascii 'core/build/SOURCE'
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: rime-llm-windows-x64
+          path: |
+            core/build/rime_llm.dll
+            core/build/rime_llm.dll.sha256
+            core/build/SOURCE
+          if-no-files-found: error
