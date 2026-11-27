@@ -39,7 +39,7 @@
 ```bash
 adb push dicts.json /sdcard/Android/data/izumiii.suzu.ime/files/dicts.override.json
 ```
-- 语法模型也可以用 rime-suzu 的 `llm-android/deploy_trime.sh` 从电脑推送。
+- 语法模型也可以从电脑推送。打开新版完成初始化后，将本地 `wanxiang-lts-zh-hans.gram` 放入 `/sdcard/Android/data/izumiii.suzu.ime/files/rime/`。
 
 用户目录中的同名配置文件优先于 APK 内置配置。调试时可临时推送文件，“功能状态”页会列出覆盖项；调试完成后须删除临时文件。
 
@@ -115,7 +115,7 @@ Trime（改版 APK）                              rimellmd（shell 身份，由
 3. 在过渡版中检查更新，打开发布页下载并安装新版。收起旧版键盘，打开新版，选择“迁移旧版数据”。可向新版授予 Shizuku 权限，或选择导出的 ZIP。
 4. 启用并选中新版键盘。确认词典、模型和设置可用后，再按需卸载过渡版。
 
-迁移会复制 Rime 配置、用户词典、已下载的词库和模型，并保留新版已有的同名条目。同签名的新版会读取旧版设置，也可以手动导入 JSON。来自上游同文输入法的 Rime 数据同样可以迁移，应用设置须在新版重新配置。
+迁移会复制 Rime 配置、用户词典、已下载的词库和模型，并保留新版已有的同名条目。同签名的新版会读取旧版设置，也可以手动导入 JSON。旧版仍安装时，可在新版的“配置与迁移”重新打开迁移入口。来自上游同文输入法的 Rime 数据同样可以迁移，应用设置须在新版重新配置。
 
 没有 Shizuku 且旧版无法导出时，可用 ADB 备份旧版 Rime 目录，并将目录内的文件打包成 ZIP。
 

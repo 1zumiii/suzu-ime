@@ -1,5 +1,6 @@
 package com.osfans.trime.suzu
 
+import android.content.Context
 import androidx.activity.ComponentActivity
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.core.content.edit
@@ -26,13 +27,14 @@ internal class LegacyPackageMigration(private val activity: ComponentActivity) {
         private const val COMPLETE = "suzu_legacy_package_migration_handled"
         private val migrationLock = Mutex()
 
+        fun shouldOffer(context: Context): Boolean =
+            !PreferenceManager.getDefaultSharedPreferences(context).getBoolean(COMPLETE, false) &&
+                hasLegacyPackage(context)
+
         @Suppress("DEPRECATION")
-        fun shouldOffer(activity: ComponentActivity): Boolean {
-            if (activity.packageName != SUZU_PACKAGE ||
-                PreferenceManager.getDefaultSharedPreferences(activity).getBoolean(COMPLETE, false)
-            ) return false
-            return runCatching { activity.packageManager.getApplicationInfo(LEGACY_SUZU_PACKAGE, 0) }.isSuccess
-        }
+        fun hasLegacyPackage(context: Context): Boolean =
+            context.packageName == SUZU_PACKAGE &&
+                runCatching { context.packageManager.getApplicationInfo(LEGACY_SUZU_PACKAGE, 0) }.isSuccess
     }
 
     fun show() {

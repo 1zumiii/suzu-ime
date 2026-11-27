@@ -14,12 +14,14 @@ import com.google.android.material.checkbox.MaterialCheckBox
 import com.osfans.trime.R
 import com.osfans.trime.data.base.DataManager
 import com.osfans.trime.data.prefs.SettingsBackup
+import com.osfans.trime.suzu.LegacyPackageMigration
 import com.osfans.trime.suzu.RimeMigrationArchive
 import com.osfans.trime.ui.common.PaddingPreferenceFragment
 import com.osfans.trime.ui.common.SheetButton
 import com.osfans.trime.ui.common.mdiIcon
 import com.osfans.trime.ui.common.settingsSheet
 import com.osfans.trime.ui.common.withLoadingDialog
+import com.osfans.trime.ui.main.MainActivity
 import com.osfans.trime.ui.main.MainViewModel
 import com.osfans.trime.util.ResourceUtils
 import com.osfans.trime.util.addCategory
@@ -93,6 +95,11 @@ class ProfileSettingsFragment : PaddingPreferenceFragment() {
         preferenceScreen = preferenceManager.createPreferenceScreen(ctx).apply {
             addCategory(R.string.settings_backup) {
                 isIconSpaceReserved = false
+                val host = activity as? MainActivity
+                if (host != null && LegacyPackageMigration.hasLegacyPackage(host)) {
+                    addPreference(R.string.legacy_migration_title, onClick = host::showLegacyMigration)
+                    getPreference(preferenceCount - 1).mdiIcon("archive_outline")
+                }
                 addPreference(R.string.settings_export, R.string.settings_export_summary) {
                     exportSettings.launch("suzu-settings.json")
                 }

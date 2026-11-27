@@ -65,6 +65,8 @@ class MainActivity : AppCompatActivity() {
     private var testInputSheet: BottomSheetDialog? = null
     private val legacyMigration = LegacyPackageMigration(this)
 
+    internal fun showLegacyMigration() = legacyMigration.show()
+
     override fun onCreate(savedInstanceState: Bundle?) {
         val uiMode =
             when (uiMode) {
