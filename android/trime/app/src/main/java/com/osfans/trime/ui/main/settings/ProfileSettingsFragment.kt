@@ -14,6 +14,7 @@ import com.google.android.material.checkbox.MaterialCheckBox
 import com.osfans.trime.R
 import com.osfans.trime.data.base.DataManager
 import com.osfans.trime.data.prefs.SettingsBackup
+import com.osfans.trime.suzu.RimeMigrationArchive
 import com.osfans.trime.ui.common.PaddingPreferenceFragment
 import com.osfans.trime.ui.common.SheetButton
 import com.osfans.trime.ui.common.mdiIcon
@@ -37,6 +38,17 @@ class ProfileSettingsFragment : PaddingPreferenceFragment() {
         viewLifecycleOwner.lifecycleScope.launch {
             val result = withContext(Dispatchers.IO) { runCatching { SettingsBackup.export(ctx, uri) } }
             ctx.toast(if (result.isSuccess) R.string.settings_export_success else R.string.settings_export_failure)
+        }
+    }
+
+    private val exportRimeData = registerForActivityResult(ActivityResultContracts.CreateDocument("application/zip")) { uri ->
+        if (uri == null) return@registerForActivityResult
+        val ctx = requireContext()
+        viewLifecycleOwner.lifecycleScope.launch {
+            withLoadingDialog(ctx) {
+                val result = withContext(Dispatchers.IO) { runCatching { RimeMigrationArchive.export(ctx, uri) } }
+                ctx.toast(if (result.isSuccess) R.string.rime_export_success else R.string.rime_export_failure)
+            }
         }
     }
 
@@ -89,6 +101,10 @@ class ProfileSettingsFragment : PaddingPreferenceFragment() {
                     importSettings.launch(arrayOf("application/json", "text/plain", "application/octet-stream"))
                 }
                 getPreference(preferenceCount - 1).mdiIcon("import")
+                addPreference(R.string.rime_export, R.string.rime_export_summary) {
+                    exportRimeData.launch("suzu-rime-backup.zip")
+                }
+                getPreference(preferenceCount - 1).mdiIcon("archive_outline")
             }
             addCategory(R.string.synchronization) {
                 isIconSpaceReserved = false

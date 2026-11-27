@@ -108,16 +108,16 @@ Trime（改版 APK）                              rimellmd（shell 身份，由
 
 ### 从旧包名迁移
 
-新版包名是 `izumiii.suzu.ime`。旧版 Suzu 使用 `com.osfans.trime`。Android 会将两个包名视为独立应用。
+新版显示为 `suzu-ime`，包名是 `izumiii.suzu.ime`。v0.5.2 过渡版沿用旧包名 `com.osfans.trime`。两个版本可同时安装。
 
-1. 从 [发布页](https://github.com/1zumiii/suzu-ime/releases/latest) 下载 `suzu-android-migration.zip`，解压并用其中的 APK 覆盖安装旧版 Suzu。已能使用“配置 → 设置备份”的旧版 Suzu 可跳过此步，也可以先导出一份 JSON。
-2. 收起旧版键盘。安装并打开新版，选择“迁移旧版数据”，按提示向新版授予 Shizuku 权限。
-3. 迁移会复制 Rime 配置、用户词典、已下载的词库和模型，并保留新版已有的同名条目。同签名的新版会读取旧版设置，也可以在新版手动导入 JSON。
-4. 启用并选中新版键盘。确认词典、模型和设置可用后，再按需卸载旧版。
+1. 在旧版中检查更新，覆盖安装 [v0.5.2 过渡版](https://github.com/1zumiii/suzu-ime/releases/tag/android-v0.5.2)。请保留过渡版及其数据。
+2. 若使用 Shizuku，可直接下载新版。也可以在过渡版的“配置与迁移”中导出 Rime 数据 ZIP 和设置 JSON。
+3. 在过渡版中检查更新，打开发布页下载并安装新版。收起旧版键盘，打开新版，选择“迁移旧版数据”。可向新版授予 Shizuku 权限，或选择导出的 ZIP。
+4. 启用并选中新版键盘。确认词典、模型和设置可用后，再按需卸载过渡版。
 
-若当前使用上游同文输入法，可直接迁移 Rime 数据，再在新版重新设置界面选项。
+迁移会复制 Rime 配置、用户词典、已下载的词库和模型，并保留新版已有的同名条目。同签名的新版会读取旧版设置，也可以手动导入 JSON。来自上游同文输入法的 Rime 数据同样可以迁移，应用设置须在新版重新配置。
 
-没有 Shizuku 时，可用 ADB 备份旧版 Rime 目录，并将目录内的文件打包成 ZIP。请保留旧应用，直到确认新版能正常使用。
+没有 Shizuku 且旧版无法导出时，可用 ADB 备份旧版 Rime 目录，并将目录内的文件打包成 ZIP。
 
 ```bash
 adb pull /sdcard/Android/data/com.osfans.trime/files/rime ./suzu-rime-backup
@@ -129,7 +129,7 @@ adb push ./suzu-rime-backup.zip /sdcard/Download/
 
 ### 备份应用设置
 
-从设置首页进入“配置 → 设置备份”。导出的 JSON 包含键盘外观、按键反馈、剪贴板规则和 AI 功能开关等设置。导入时会先验证备份，确认后覆写对应设置。Rime 数据（含用户词典、候选映射）和模型文件分别使用迁移和下载功能。
+从设置首页进入“配置与迁移”。设置 JSON 包含键盘外观、按键反馈、剪贴板规则和 AI 功能开关等设置。导入时先校验备份，确认后覆盖对应设置。“导出 Rime 数据”另存包含词库、用户词典、候选映射和模型的 ZIP。
 
 正常卸载并删除数据时，Android 会移除该包名下的应用数据和模型原件。保存在下载目录等共享位置的备份会保留。Shizuku 启动的 AI 服务若仍在运行，会在 Rime 目录消失约 10 分钟后退出并尝试清理副本。服务若已停止或设备在清理前重启，`/data/local/tmp/rimellm/` 可能留下模型副本或日志。卸载前可在 Shizuku 已授权时，从模型页删除 Suzu 模型以同时清理模型副本。
 

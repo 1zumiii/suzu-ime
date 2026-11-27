@@ -72,12 +72,6 @@ SPDX-License-Identifier: GPL-3.0-or-later
             android:exported="false"
             tools:node="merge" />
 
-        <provider
-            android:name=".suzu.LegacySettingsProvider"
-            android:authorities="${applicationId}.suzu.legacy-settings"
-            android:enabled="${legacyMigrationBridge}"
-            android:exported="true" />
-
         <!-- Settings activity -->
         <activity
             android:name=".ui.main.MainActivity"

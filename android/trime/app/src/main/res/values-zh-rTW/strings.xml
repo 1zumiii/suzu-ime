@@ -7,8 +7,8 @@
 
 <resources xmlns:xliff="urn:oasis:names:tc:xliff:document:1.2">
     <!-- 輸入法平臺名稱  -->
-    <string name="app_name_release">Trime-Suzu</string>
-    <string name="app_name_debug">Trime-Suzu（除錯）</string>
+    <string name="app_name_release">suzu-ime</string>
+    <string name="app_name_debug">suzu-ime（除錯）</string>
     <!-- Preference settings -->
     <string name="librime_version">RIME 版本</string>
     <string name="opencc_version">OpenCC 版本</string>
@@ -65,8 +65,8 @@
     <string name="custom_sound_effect_name">自訂按鍵音效</string>
     <string name="setup__next">下一步</string>
     <string name="done">完成</string>
-    <string name="setup__enable_ime_hint">在語言和輸入設定中啟用<b>Trime-Suzu</b></string>
-    <string name="setup__select_ime_hint">選擇<b>Trime-Suzu</b>作為預設輸入法</string>
+    <string name="setup__enable_ime_hint">在語言和輸入設定中啟用<b>suzu-ime</b></string>
+    <string name="setup__select_ime_hint">選擇<b>suzu-ime</b>作為預設輸入法</string>
     <string name="setup__enable_ime">啟用輸入法</string>
     <string name="setup__select_ime">選擇輸入法</string>
     <string name="setup__prev">上一步</string>
@@ -116,7 +116,7 @@
     <string name="theme_diagnostics_summary">檢查目前主題中執行階段忽略或無法解析的設定</string>
     <string name="theme_diagnostics_no_findings">目前主題未發現問題</string>
     <string name="theme_diagnostics_unchecked">無法對目前主題進行靜態檢查</string>
-    <string name="profile">配置</string>
+    <string name="profile">配置與遷移</string>
     <string name="virtual_keyboard">虛擬鍵盤</string>
     <string name="storage">儲存</string>
     <string name="data_storage_mode">資料儲存模式</string>
@@ -126,6 +126,10 @@
     <string name="use_app_specific_storage_desc">直接使用應用程式內部私有儲存空間，使用者需要使用支援的檔案管理器管理資料。解除安裝應用程式時，系統可能會詢問是否保留資料，請隨時做好備份。</string>
     <string name="external_sync_fallback_app_storage">資料夾選擇失敗或已取消。儲存模式將還原為使用應用程式專屬儲存空間。</string>
     <string name="external_sync_missing_tree_fallback">外部資料資料夾缺失或無法存取，已切換為應用程式專屬儲存空間。如需繼續外部同步，請在設定中重新選擇資料夾。</string>
+    <string name="rime_export">匯出 Rime 資料</string>
+    <string name="rime_export_summary">儲存詞庫、設定和模型，供未使用 Shizuku 時移轉。</string>
+    <string name="rime_export_success">已匯出 Rime 資料</string>
+    <string name="rime_export_failure">無法匯出 Rime 資料</string>
     <string name="settings_backup">設定備份</string>
     <string name="settings_export">匯出設定</string>
     <string name="settings_export_summary">儲存備份檔，供重新安裝或更換裝置時使用。</string>
@@ -336,7 +340,7 @@
     <string name="suzu_update_later">稍後</string>
     <string name="suzu_update_skip">略過此版本</string>
     <string name="suzu_update_need_permission">允許安裝更新</string>
-    <string name="suzu_update_need_permission_message">請允許 Trime-Suzu 安裝未知應用程式，再返回下載更新。</string>
+    <string name="suzu_update_need_permission_message">請允許 suzu-ime 安裝未知應用程式，再返回下載更新。</string>
     <string name="suzu_update_downloading">正在下載 %1$s</string>
     <string name="suzu_update_downloading_progress">下載中</string>
     <string name="suzu_update_download_failed">下載更新失敗</string>

@@ -113,11 +113,7 @@ internal object LegacyRimeFiles {
         if (path.isEmpty() || path == ".") return null
         val components = path.split('/')
         check(components.none { it.isEmpty() || it == "." || it == ".." }) { "Unsafe Rime backup path" }
-        val root = components.first()
-        if (root in setOf("build", "llm_token", "ai_status.json", "ai_enabled.state", "input_log.jsonl") ||
-            root.endsWith(".log") || root.startsWith(".suzu-migrate.")
-        ) return null
-        return path
+        return path.takeIf(RimeMigrationArchive::includes)
     }
 
     private fun ensureParent(file: File) {

@@ -7,8 +7,8 @@
 
 <resources xmlns:xliff="urn:oasis:names:en:xliff:document:1.2">
     <!-- Input Method Platform Tittle  -->
-    <string name="app_name_release">Trime-Suzu</string>
-    <string name="app_name_debug">Trime-Suzu (Debug)</string>
+    <string name="app_name_release">suzu-ime</string>
+    <string name="app_name_debug">suzu-ime (Debug)</string>
     <!-- Preference settings -->
     <string name="librime_version">RIME version</string>
     <string name="opencc_version">OpenCC version</string>
@@ -65,8 +65,8 @@
     <string name="custom_sound_effect_name">Custom key Sound Effect</string>
     <string name="setup__next">Next</string>
     <string name="done">Done</string>
-    <string name="setup__enable_ime_hint">Enable <b>Trime-Suzu</b> in Language and input settings</string>
-    <string name="setup__select_ime_hint">Select <b>Trime-Suzu</b> as your default input method</string>
+    <string name="setup__enable_ime_hint">Enable <b>suzu-ime</b> in Language and input settings</string>
+    <string name="setup__select_ime_hint">Select <b>suzu-ime</b> as your default input method</string>
     <string name="setup__enable_ime">Enable Input Method</string>
     <string name="setup__select_ime">Select Input Method</string>
     <string name="setup__prev">Previous</string>
@@ -110,7 +110,7 @@
     <string name="export">Export</string>
     <string name="scroll_to_bottom">Jump to Bottom</string>
     <string name="developer">Developer</string>
-    <string name="profile">Profile</string>
+    <string name="profile">Profile &amp; migration</string>
     <string name="virtual_keyboard">Virtual Keyboard</string>
     <string name="theme">Keyboard Style</string>
     <string name="theme_diagnostics">Theme diagnostics</string>
@@ -126,6 +126,10 @@
     <string name="use_app_specific_storage_desc">Use internal private storage; users need a compatible file manager to access. On uninstall, system may ask to keep data — always have backups on hand.</string>
     <string name="external_sync_fallback_app_storage">Folder selection failed or was cancelled. Storage mode will fall back to app-specific storage.</string>
     <string name="external_sync_missing_tree_fallback">External data folder is missing or inaccessible. Switched to app-specific storage. Re-select the folder in Settings if needed.</string>
+    <string name="rime_export">Export Rime data</string>
+    <string name="rime_export_summary">Save dictionaries, configuration and models for migration without Shizuku.</string>
+    <string name="rime_export_success">Rime data exported</string>
+    <string name="rime_export_failure">Couldn’t export Rime data</string>
     <string name="settings_backup">Settings backup</string>
     <string name="settings_export">Export settings</string>
     <string name="settings_export_summary">Save a backup file for reinstalling Suzu or moving to another device.</string>
@@ -336,7 +340,7 @@
     <string name="suzu_update_later">Later</string>
     <string name="suzu_update_skip">Skip this version</string>
     <string name="suzu_update_need_permission">Allow installing updates</string>
-    <string name="suzu_update_need_permission_message">Allow Trime-Suzu to install unknown apps, then return to download the update.</string>
+    <string name="suzu_update_need_permission_message">Allow suzu-ime to install unknown apps, then return to download the update.</string>
     <string name="suzu_update_downloading">Downloading %1$s</string>
     <string name="suzu_update_downloading_progress">Downloading</string>
     <string name="suzu_update_download_failed">Update download failed</string>

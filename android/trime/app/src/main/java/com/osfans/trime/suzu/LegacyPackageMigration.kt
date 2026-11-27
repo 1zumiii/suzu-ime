@@ -42,16 +42,24 @@ internal class LegacyPackageMigration(private val activity: ComponentActivity) {
             return
         }
         val needsPermission = availability == AiDaemonLauncher.Availability.NEEDS_PERMISSION
+        val guide = zipImportButton()
         activity.settingsSheet(
             icon = "archive_outline",
             title = activity.getString(R.string.legacy_migration_title),
             message = activity.getString(if (needsPermission) R.string.legacy_migration_permission else R.string.legacy_migration_message),
+            body = guide,
             confirm = SheetButton(activity.getString(if (needsPermission) R.string.grant_permission else R.string.legacy_migration_start)) {
                 start()
             },
             extra = SheetButton(activity.getString(R.string.legacy_migration_skip), ::finish),
             cancelable = false,
-        ).show()
+        ).apply {
+            guide.setOnClickListener {
+                dismiss()
+                openZipPicker()
+            }
+            show()
+        }
     }
 
     private fun start() {
@@ -100,10 +108,17 @@ internal class LegacyPackageMigration(private val activity: ComponentActivity) {
         }
     }
 
-    private fun showHelp(message: Int) {
-        val guide = MaterialButton(activity, null, androidx.appcompat.R.attr.borderlessButtonStyle).apply {
+    private fun zipImportButton() =
+        MaterialButton(activity, null, androidx.appcompat.R.attr.borderlessButtonStyle).apply {
             setText(R.string.legacy_migration_manual)
         }
+
+    private fun openZipPicker() {
+        backupPicker.launch(arrayOf("application/zip", "application/x-zip-compressed"))
+    }
+
+    private fun showHelp(message: Int) {
+        val guide = zipImportButton()
         activity.settingsSheet(
             icon = "information_outline",
             title = activity.getString(R.string.legacy_migration_title),
@@ -115,7 +130,7 @@ internal class LegacyPackageMigration(private val activity: ComponentActivity) {
         ).apply {
             guide.setOnClickListener {
                 dismiss()
-                backupPicker.launch(arrayOf("application/zip", "application/x-zip-compressed"))
+                openZipPicker()
             }
             show()
         }

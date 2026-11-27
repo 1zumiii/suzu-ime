@@ -42,14 +42,14 @@ import java.net.URL
 import java.security.MessageDigest
 
 /**
- * 检查 GitHub 上 suzu-ime 的 android-v* Release，有新版本时在应用内下载并调起系统安装器。
+ * 检查 GitHub 上 suzu-ime 的 Suzu-ime-v* Release，有新版本时在应用内下载并调起系统安装器。
  * 只在设置 App 里运行，键盘本身不联网。芯片支持 i8mm 时下 -i8mm 版，否则下通用版。
  * 安装前核对 sha256（GitHub 给出的资产摘要）和签名证书（必须与已装版本相同）。
  */
 object AppUpdater {
     private const val RELEASES_API = "https://api.github.com/repos/1zumiii/suzu-ime/releases?per_page=20"
     const val RELEASES_PAGE = "https://github.com/1zumiii/suzu-ime/releases"
-    private const val TAG_PREFIX = "android-v"
+    private const val TAG_PREFIX = "Suzu-ime-v"
     private const val CHECK_INTERVAL_MS = 24 * 60 * 60 * 1000L
 
     const val PREF_AUTO_CHECK = "suzu_update_auto_check"
@@ -132,7 +132,7 @@ object AppUpdater {
             .maxWithOrNull { x, y -> compareVersions(x.version, y.version) }
     }
 
-    /** 从 Releases API 的 JSON 里挑出 android-v* 的正式版，以及适合本机的 APK */
+    /** 从 Releases API 选择新包名的正式版和适合本机的 APK。 */
     fun parseReleases(json: String, i8mm: Boolean): List<Release> =
         (Json.parseToJsonElement(json) as JsonArray).mapNotNull { el ->
             val r = el.jsonObject
