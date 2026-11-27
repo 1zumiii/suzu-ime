@@ -39,7 +39,8 @@ jobs:
           cmake --build core/build --target rime_llm --parallel || exit /b 1
           dumpbin /headers core\build\rime_llm.dll | findstr /C:"8664 machine (x64)" || exit /b 1
           dumpbin /exports core\build\rime_llm.dll | findstr /C:"luaopen_rime_llm" || exit /b 1
-          dumpbin /imports core\build\rime_llm.dll | findstr /C:"SysAllocStringLen" || exit /b 1
+          dumpbin /symbols core\build\CMakeFiles\rime_llm.dir\platform\windows\ctxlink_win.cpp.obj | findstr /C:"__imp_SysAllocStringLen" || exit /b 1
+          dumpbin /imports:OLEAUT32.dll core\build\rime_llm.dll || exit /b 1
 
       - name: 记录 DLL 校验值和源码提交
         shell: pwsh
