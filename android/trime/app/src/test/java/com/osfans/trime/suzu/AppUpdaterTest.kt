@@ -16,16 +16,16 @@ class AppUpdaterTest :
             """
             [
               {"tag_name": "Suzu-ime-v0.4.0", "draft": false, "prerelease": false, "body": "## 变化\n- **新功能**\n- 修复 `bug`",
-               "html_url": "https://github.com/1zumiii/suzu-ime/releases/tag/suzu-android-v0.4.0",
+               "html_url": "https://github.com/1zumiii/suzu-ime/releases/tag/Suzu-ime-v0.4.0",
                "assets": [
-                 {"name": "suzu-suzu-android-v0.4.0-arm64-i8mm.apk", "size": 100, "digest": "sha256:aa", "browser_download_url": "https://x/i8mm.apk"},
-                 {"name": "suzu-suzu-android-v0.4.0-arm64-i8mm.apk.sha256", "size": 1, "digest": "sha256:bb", "browser_download_url": "https://x/i8mm.sha"},
-                 {"name": "suzu-suzu-android-v0.4.0-arm64.apk", "size": 200, "digest": "sha256:cc", "browser_download_url": "https://x/plain.apk"}
+                 {"name": "suzu-ime-v0.4.0-arm64-i8mm.apk", "size": 100, "digest": "sha256:aa", "browser_download_url": "https://x/i8mm.apk"},
+                 {"name": "suzu-ime-v0.4.0-arm64-i8mm.apk.sha256", "size": 1, "digest": "sha256:bb", "browser_download_url": "https://x/i8mm.sha"},
+                 {"name": "suzu-ime-v0.4.0-arm64.apk", "size": 200, "digest": "sha256:cc", "browser_download_url": "https://x/plain.apk"}
                ]},
               {"tag_name": "Suzu-ime-v0.5.0-rc1", "draft": false, "prerelease": true, "body": "", "assets": []},
               {"tag_name": "desktop-v0.3.1", "draft": false, "prerelease": false, "body": "", "assets": []},
-              {"tag_name": "Suzu-ime-v0.2.0", "draft": false, "prerelease": false, "body": "",
-               "assets": [{"name": "suzu-suzu-android-v0.2.0-arm64.apk", "size": 1, "digest": "sha256:dd", "browser_download_url": "https://x/old.apk"}]}
+              {"tag_name": "suzu-ime-v0.2.0", "draft": false, "prerelease": false, "body": "",
+               "assets": [{"name": "suzu-ime-v0.2.0-arm64.apk", "size": 1, "digest": "sha256:dd", "browser_download_url": "https://x/old.apk"}]}
             ]
             """.trimIndent()
 
@@ -48,7 +48,7 @@ class AppUpdaterTest :
         }
 
         "new package does not offer an old package release for installation" {
-            AppUpdater.parseReleases(json.replace("Suzu-ime-v", "android-v"), i8mm = false).shouldBeEmpty()
+            AppUpdater.parseReleases(json.replace(Regex("Suzu-ime-v", RegexOption.IGNORE_CASE), "android-v"), i8mm = false).shouldBeEmpty()
         }
 
         "compares versions numerically" {

@@ -18,9 +18,14 @@ import kotlinx.coroutines.sync.withLock
 import kotlinx.coroutines.withContext
 import timber.log.Timber
 
-internal class LegacyPackageMigration(private val activity: ComponentActivity) {
+internal class LegacyPackageMigration(
+    private val activity: ComponentActivity,
+    private val onMigrated: () -> Unit = {},
+) {
+    private var replaceExisting = false
+
     private val backupPicker = activity.registerForActivityResult(ActivityResultContracts.OpenDocument()) { uri ->
-        if (uri == null) show() else migrate { LegacyRimeFiles.fromZip(activity, uri) }
+        if (uri == null) show(replaceExisting) else migrate { LegacyRimeFiles.fromZip(activity, uri, replaceExisting) }
     }
 
     companion object {
@@ -37,7 +42,8 @@ internal class LegacyPackageMigration(private val activity: ComponentActivity) {
                 runCatching { context.packageManager.getApplicationInfo(LEGACY_SUZU_PACKAGE, 0) }.isSuccess
     }
 
-    fun show() {
+    fun show(replaceExisting: Boolean = false) {
+        this.replaceExisting = replaceExisting
         val availability = AiDaemonLauncher.availability()
         if (availability == AiDaemonLauncher.Availability.SHIZUKU_NOT_RUNNING) {
             showHelp(R.string.legacy_migration_shizuku_stopped)
@@ -66,11 +72,11 @@ internal class LegacyPackageMigration(private val activity: ComponentActivity) {
 
     private fun start() {
         when (AiDaemonLauncher.availability()) {
-            AiDaemonLauncher.Availability.READY -> migrate { LegacyRimeFiles.fromShizuku(activity) }
+            AiDaemonLauncher.Availability.READY -> migrate { LegacyRimeFiles.fromShizuku(activity, replaceExisting) }
             AiDaemonLauncher.Availability.NEEDS_PERMISSION -> AiDaemonLauncher.requestPermission(
                 onDenied = { if (!activity.isFinishing && !activity.isDestroyed) showHelp(R.string.legacy_migration_permission) },
             ) {
-                if (!activity.isFinishing && !activity.isDestroyed) show()
+                if (!activity.isFinishing && !activity.isDestroyed) show(replaceExisting)
             }
             AiDaemonLauncher.Availability.SHIZUKU_NOT_RUNNING -> showHelp(R.string.legacy_migration_shizuku_stopped)
         }
@@ -83,7 +89,7 @@ internal class LegacyPackageMigration(private val activity: ComponentActivity) {
                 withContext(Dispatchers.IO) {
                     migrationLock.withLock {
                         val files = copyFiles()
-                        val settings = activity.importLegacySettings()
+                        val settings = activity.importLegacySettings(replace = replaceExisting)
                         settings to files
                     }
                 }
@@ -96,6 +102,7 @@ internal class LegacyPackageMigration(private val activity: ComponentActivity) {
             }
             val (settings, files) = result ?: return@launch showHelp(R.string.legacy_migration_failed)
             PreferenceManager.getDefaultSharedPreferences(activity).edit { putBoolean(COMPLETE, true) }
+            if (replaceExisting && files > 0) onMigrated()
             val summary = activity.getString(
                 if (settings) R.string.legacy_migration_done else R.string.legacy_migration_done_files,
                 files,
@@ -126,7 +133,7 @@ internal class LegacyPackageMigration(private val activity: ComponentActivity) {
             title = activity.getString(R.string.legacy_migration_title),
             message = activity.getString(message),
             body = guide,
-            confirm = SheetButton(activity.getString(R.string.legacy_migration_retry), ::show),
+            confirm = SheetButton(activity.getString(R.string.legacy_migration_retry)) { show(replaceExisting) },
             extra = SheetButton(activity.getString(R.string.legacy_migration_skip), ::finish),
             cancelable = false,
         ).apply {

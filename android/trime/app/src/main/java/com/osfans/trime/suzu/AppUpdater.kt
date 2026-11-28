@@ -137,7 +137,7 @@ object AppUpdater {
         (Json.parseToJsonElement(json) as JsonArray).mapNotNull { el ->
             val r = el.jsonObject
             val tag = r.str("tag_name") ?: return@mapNotNull null
-            if (!tag.startsWith(TAG_PREFIX)) return@mapNotNull null
+            if (!tag.startsWith(TAG_PREFIX, ignoreCase = true)) return@mapNotNull null
             if (r["draft"]?.jsonPrimitive?.boolean == true || r["prerelease"]?.jsonPrimitive?.boolean == true) {
                 return@mapNotNull null
             }
@@ -148,7 +148,7 @@ object AppUpdater {
                 ?: return@mapNotNull null
             val digest = wanted.str("digest")?.removePrefix("sha256:") ?: return@mapNotNull null
             Release(
-                version = tag.removePrefix(TAG_PREFIX),
+                version = tag.substring(TAG_PREFIX.length),
                 notes = r.str("body").orEmpty(),
                 page = r.str("html_url") ?: RELEASES_PAGE,
                 apk = RemoteFile(

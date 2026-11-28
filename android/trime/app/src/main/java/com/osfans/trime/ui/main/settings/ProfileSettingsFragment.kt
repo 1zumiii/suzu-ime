@@ -97,7 +97,7 @@ class ProfileSettingsFragment : PaddingPreferenceFragment() {
                 isIconSpaceReserved = false
                 val host = activity as? MainActivity
                 if (host != null && LegacyPackageMigration.hasLegacyPackage(host)) {
-                    addPreference(R.string.legacy_migration_title, onClick = host::showLegacyMigration)
+                    addPreference(R.string.legacy_migration_title) { host.showLegacyMigration(replaceExisting = true) }
                     getPreference(preferenceCount - 1).mdiIcon("archive_outline")
                 }
                 addPreference(R.string.settings_export, R.string.settings_export_summary) {

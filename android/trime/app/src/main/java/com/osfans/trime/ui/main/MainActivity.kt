@@ -63,9 +63,11 @@ class MainActivity : AppCompatActivity() {
     private lateinit var updateItem: MenuItem
     private var testInputMode = 0
     private var testInputSheet: BottomSheetDialog? = null
-    private val legacyMigration = LegacyPackageMigration(this)
+    private val legacyMigration = LegacyPackageMigration(this) {
+        viewModel.rime.launchOnReady { it.deploy() }
+    }
 
-    internal fun showLegacyMigration() = legacyMigration.show()
+    internal fun showLegacyMigration(replaceExisting: Boolean = false) = legacyMigration.show(replaceExisting)
 
     override fun onCreate(savedInstanceState: Bundle?) {
         val uiMode =
